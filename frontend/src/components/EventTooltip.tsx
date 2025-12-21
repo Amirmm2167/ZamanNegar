@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarEvent, Department } from "@/types";
-import { Clock, Target, User, Flag, AlignLeft, X, Building } from "lucide-react";
+import { Clock, Target, User, Flag, AlignLeft, Building } from "lucide-react";
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { useEffect, useRef } from "react";
@@ -10,12 +10,21 @@ interface EventTooltipProps {
   event: CalendarEvent;
   departments: Department[];
   onClose: () => void;
+  // 👇 Added these two optional props to fix the build error
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
-export default function EventTooltip({ event, departments, onClose }: EventTooltipProps) {
+export default function EventTooltip({ 
+  event, 
+  departments, 
+  onClose,
+  onMouseEnter, // Destructure them here
+  onMouseLeave 
+}: EventTooltipProps) {
   const tooltipRef = useRef<HTMLDivElement>(null);
 
-  // --- MOUSE FOLLOW LOGIC (Direct DOM for Performance) ---
+  // --- MOUSE FOLLOW LOGIC ---
   useEffect(() => {
     const moveHandler = (e: MouseEvent) => {
       if (!tooltipRef.current) return;
@@ -28,7 +37,7 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
-      // Flip Logic
+      // Flip Logic to keep it on screen
       if (x + rect.width > viewportWidth) {
         x = e.clientX - rect.width - offset;
       }
@@ -40,7 +49,6 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
       tooltipRef.current.style.left = `${x}px`;
     };
 
-    // Attach global listener to track mouse even if it leaves the grid slightly
     window.addEventListener("mousemove", moveHandler);
     return () => window.removeEventListener("mousemove", moveHandler);
   }, []);
@@ -56,7 +64,6 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
     ? "(تمام روز)" 
     : `${startDate.toLocaleTimeString("fa-IR", { hour: '2-digit', minute: '2-digit', hour12: false })} - ${endDate.toLocaleTimeString("fa-IR", { hour: '2-digit', minute: '2-digit', hour12: false })}`;
 
-  // Status Styles
   const getStatusStyles = () => {
     if (event.status === 'pending') return { border: 'border-yellow-500/50', text: 'text-yellow-500', bg: 'bg-black/80' };
     if (event.status === 'rejected') return { border: 'border-gray-600/50', text: 'text-gray-400', bg: 'bg-black/90' };
@@ -68,6 +75,9 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
   return (
     <div 
       ref={tooltipRef}
+      // 👇 Attach the handlers here
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={clsx(
         "fixed z-[9999] w-80 rounded-md shadow-2xl border-r-4 text-gray-200 overflow-hidden backdrop-blur-xl transition-opacity duration-200",
         styles.bg,
@@ -75,8 +85,10 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
       )}
       style={{ 
         direction: "rtl",
-        pointerEvents: "none", // Allow clicks to pass through to grid if needed, or remove to interact
-        top: -1000, left: -1000 // Initial hidden pos
+        // 👇 CHANGED from "none" to "auto". 
+        // If "none", onMouseEnter will never fire because the mouse ignores the div!
+        pointerEvents: "auto", 
+        top: -1000, left: -1000 
       }}
     >
       {/* Header */}
@@ -88,7 +100,6 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
             {event.status === 'rejected' && <span className="text-xs opacity-70 mr-2">(رد شده)</span>}
           </h4>
           
-          {/* Time Row */}
           {!isAllDay && (
             <div className="text-xs text-gray-400 mt-1.5 flex items-center gap-1.5">
                <Clock size={14} /> 
@@ -108,7 +119,6 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
             </div>
         )}
 
-        {/* Dynamic Fields from Tooltip.js Logic */}
         {(event as any).organizer && (
           <div className="flex items-start gap-2">
             <User size={16} className="text-emerald-500 mt-0.5 shrink-0" />
@@ -155,4 +165,4 @@ export default function EventTooltip({ event, departments, onClose }: EventToolt
       </div>
     </div>
   );
-}   
+}

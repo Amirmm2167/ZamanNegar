@@ -4,7 +4,13 @@ export interface VisualEvent extends CalendarEvent {
   right: number;
   width: number;
   laneIndex: number;
-  totalLanes: number; // <--- NEW: Tells us how to size the height
+  totalLanes: number; 
+}
+
+// 👇 Internal interface to make TS happy about the helper properties
+interface ProcessedEvent extends VisualEvent {
+  _start: number;
+  _end: number;
 }
 
 export function calculateEventLayout(events: CalendarEvent[]): VisualEvent[] {
@@ -18,8 +24,8 @@ export function calculateEventLayout(events: CalendarEvent[]): VisualEvent[] {
     return (endB - startB) - (endA - startA);
   });
 
-  // Intermediate storage
-  const tempEvents: (VisualEvent & { endsAt: number })[] = [];
+  // Intermediate storage with CORRECT type
+  const tempEvents: ProcessedEvent[] = [];
 
   // 2. Assign Lanes (Packing)
   sorted.forEach(event => {
@@ -29,7 +35,8 @@ export function calculateEventLayout(events: CalendarEvent[]): VisualEvent[] {
     const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
     const duration = endMinutes - startMinutes;
 
-    const visualEvent = {
+    // Create the object with the explicit type
+    const visualEvent: ProcessedEvent = {
       ...event,
       right: (startMinutes / 1440) * 100,
       width: (duration / 1440) * 100,
@@ -40,15 +47,10 @@ export function calculateEventLayout(events: CalendarEvent[]): VisualEvent[] {
       _end: endMinutes
     };
 
-    // Find Lane
-    let placed = false;
-    // Check existing lanes for space
-    // We need to track lanes differently. 
-    // Simple greedy approach: check previous events in temp array
-    
     const usedLanes = new Set<number>();
     
     // Find collisions with already placed events
+    // Now 'e' is correctly typed as ProcessedEvent, so e._end works!
     const collidingEvents = tempEvents.filter(e => 
       (visualEvent._start < e._end) && (visualEvent._end > e._start)
     );
@@ -61,18 +63,15 @@ export function calculateEventLayout(events: CalendarEvent[]): VisualEvent[] {
       lane++;
     }
     visualEvent.laneIndex = lane;
-    tempEvents.push(visualEvent as any);
+    tempEvents.push(visualEvent);
   });
 
   // 3. Calculate "Total Lanes" per Cluster (To size height)
-  // For every event, find the max lane index used by ANY event it collides with.
   const finalEvents = tempEvents.map(ev => {
-    // Find all events that overlap with THIS event
     const cluster = tempEvents.filter(other => 
       (ev._start < other._end) && (ev._end > other._start)
     );
     
-    // The total height divisor is (Max Lane Index in Cluster) + 1
     const maxLane = Math.max(...cluster.map(e => e.laneIndex));
     
     return {
