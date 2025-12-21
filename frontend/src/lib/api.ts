@@ -1,17 +1,17 @@
 import axios from 'axios';
 
 // 1. Create the Axios Instance
-// This sets the base URL for all requests
+// Use environment variable NEXT_PUBLIC_API_URL if available, otherwise fallback to localhost
+const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000', // Our Python API
+  baseURL: baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// 2. Request Interceptor (The "Middleman")
-// Before any request is sent, this checks if we have a token 
-// and attaches it to the header.
+// 2. Request Interceptor
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('token');
