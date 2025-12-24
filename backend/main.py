@@ -16,6 +16,7 @@ app = FastAPI(lifespan=lifespan)
 
 origins = [
     os.getenv("FRONTEND_URL"),
+    "http://188.121.117.154:3000",
 ]
 
 app.add_middleware(
