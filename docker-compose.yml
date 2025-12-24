@@ -1,5 +1,4 @@
 services:
-  # 1. Database Service
   db:
     image: postgres:17-alpine
     container_name: zaman_db
@@ -13,33 +12,25 @@ services:
       timeout: 5s
       retries: 5
 
-  # 2. Backend Service
   backend:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     container_name: zaman_backend
     restart: always
     env_file: .env
     depends_on:
       db:
         condition: service_healthy
-    # No ports exposed here; Nginx handles internal communication
 
-  # 3. Frontend Service
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: zaman_frontend
     restart: always
     depends_on:
       - backend
-    # No ports exposed here; Nginx handles internal communication
 
-  # 4. Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
     container_name: zaman_nginx
