@@ -15,8 +15,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 origins = [
-    os.getenv("FRONTEND_URL"),
     "http://localhost:3000",
+    os.getenv("FRONTEND_URL","http://localhost:3000"),
     "https://mohaman.ir",
     "https://api.mohaman.ir"
 ]
