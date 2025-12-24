@@ -28,8 +28,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:8000"
 
   # 3. Frontend Service
   frontend:
@@ -41,9 +39,22 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: zaman_frontend
     restart: always
-    ports:
-      - "3000:3000"
     depends_on:
+      - backend
+
+    nginx:
+    image: nginx:alpine
+    container_name: zaman_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf:/etc/nginx/conf.d
+      - ./nginx/certbot/conf:/etc/letsencrypt
+      - ./nginx/certbot/www:/var/www/certbot
+    depends_on:
+      - frontend
       - backend
 
   certbot:
