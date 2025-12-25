@@ -1,8 +1,0 @@
-{
-  "app": "zback",
-  "port": 8000,
-  "build": {
-    "location": "germany"
-  },
-  "disks": []
-}

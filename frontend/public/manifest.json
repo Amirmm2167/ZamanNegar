@@ -1,0 +1,25 @@
+{
+  "name": "زمان‌نگار",
+  "short_name": "زمان‌نگار",
+  "description": "سامانه مدیریت رویدادها",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020205",
+  "theme_color": "#020205",
+  "dir": "rtl",
+  "lang": "fa",
+  "icons": [
+    {
+      "src": "/icons/icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

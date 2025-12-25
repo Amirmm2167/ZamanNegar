@@ -15,6 +15,11 @@ const pinar = localFont({
 export const metadata: Metadata = {
   title: "زمان‌نگار",
   description: "سامانه مدیریت رویدادها",
+  manifest: "/manifest.json", // Links the manifest file
+  icons: {
+    icon: "/icons/icon.png", // Sets the tab icon
+    apple: "/icons/logo.png", // Sets the icon for iOS home screens
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

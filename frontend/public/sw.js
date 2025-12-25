@@ -6,20 +6,24 @@ const STATIC_ASSETS = [
   '/',
   '/login',
   '/manifest.json',
-  '/icons/icon-192x192.png', // Ensure you have these icons or remove
-  '/icons/icon-512x512.png'
+  '/icons/icon.png', // Ensure you have these icons or remove
+  '/icons/logo.png'
 ];
 
 // 1. Install Event
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Force activation
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      // Use map to attempt adding each asset individually
+      return Promise.allSettled(
+        STATIC_ASSETS.map(asset => 
+          cache.add(asset).catch(err => console.warn(`Failed to cache ${asset}:`, err))
+        )
+      );
     })
   );
 });
-
 // 2. Activate Event (Cleanup old caches)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
