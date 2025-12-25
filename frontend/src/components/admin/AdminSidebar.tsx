@@ -12,7 +12,7 @@ interface AdminSidebarProps {
 
 export default function AdminSidebar({ activeTab, onChangeTab, onLogout }: AdminSidebarProps) {
   const menuItems = [
-    { id: "companies", label: "مدیریت شرکت‌ها", icon: Building },
+    { id: "companies", label: "مدیریت همه شرکت‌ها", icon: Building },
     { id: "holidays", label: "تعطیلات سراسری", icon: CalendarOff },
     { id: "reports", label: "گزارشات کاربران", icon: MessageSquare },
   ];
