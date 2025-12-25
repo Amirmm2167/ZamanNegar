@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import BackgroundParticles from "@/components/ui/BackgroundParticles";
+import ModernBackground from "@/components/ui/ModernBackground";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 const pinar = localFont({
@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         
         {/* 1. The Living Background */}
         <div className="fixed inset-0 z-0">
-            <BackgroundParticles />
+            <ModernBackground />
         </div>
         
         {/* 2. The App Layer (Glass sits on top) */}
