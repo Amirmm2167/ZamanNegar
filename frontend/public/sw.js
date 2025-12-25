@@ -94,3 +94,29 @@ self.addEventListener('sync', (event) => {
         // Logic to read IndexedDB and post to API would go here
     }
 });
+
+
+// 5. Push Notification Event
+self.addEventListener('push', (event) => {
+  const data = event.data ? event.data.json() : { title: 'زمان‌نگار', body: 'اعلان جدید دریافت شد' };
+  
+  const options = {
+    body: data.body,
+    icon: '/icons/logo.png', // The app icon we set earlier
+    badge: '/icons/icon.png',
+    vibrate: [100, 50, 100],
+    data: { url: data.url || '/' }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// 6. Notification Click Action
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.openWindow(event.notification.data.url)
+  );
+});

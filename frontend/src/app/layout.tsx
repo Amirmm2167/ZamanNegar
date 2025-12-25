@@ -14,7 +14,7 @@ const pinar = localFont({
 
 export const metadata: Metadata = {
   title: "زمان‌نگار",
-  description: "سامانه مدیریت رویدادها",
+  description: "مدیریت رویداد ها",
   manifest: "/manifest.json", // Links the manifest file
   icons: {
     icon: "/icons/icon.png", // Sets the tab icon
