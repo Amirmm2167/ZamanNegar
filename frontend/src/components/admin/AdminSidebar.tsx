@@ -24,7 +24,7 @@ export default function AdminSidebar({ activeTab, onChangeTab, onLogout }: Admin
              <Shield className="text-red-500" size={24} />
         </div>
         <div>
-            <h1 className="font-bold text-white text-lg">پنل ادمین</h1>
+            <h1 className="font-bold text-white text-lg">صفحه ادمین</h1>
             <span className="text-xs text-gray-400">مدیریت سیستم</span>
         </div>
       </div>
