@@ -7,6 +7,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// 1. Request Interceptor: Attach Token
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('token');
@@ -17,17 +18,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// --- ADDED: Response Interceptor for Session Expiry ---
+// 2. Response Interceptor: Handle Session Expiry (401)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear session and redirect
-      localStorage.removeItem('token');
-      localStorage.removeItem('role');
-      localStorage.removeItem('username');
+      // Clear session and redirect to login
       if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        localStorage.removeItem('username');
+        // Prevent infinite loop if already on login
+        if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);

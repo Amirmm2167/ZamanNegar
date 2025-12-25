@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, LogOut } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus } from "lucide-react";
 import clsx from "clsx";
 import { toPersianDigits } from "@/lib/utils";
 import EventModal from "./EventModal";
@@ -42,8 +41,6 @@ export interface CalendarGridHandle {
 }
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
-  const router = useRouter();
-
   // --- DATA STATE ---
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -53,7 +50,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [username, setUsername] = useState("");
   const [userId, setUserId] = useState<number>(0);
   const [now, setNow] = useState(new Date());
 
@@ -64,7 +60,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   // --- TOOLTIP STATE ---
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{x:number, y:number} | null>(null);
   const tooltipTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -80,7 +75,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   // --- 1. INIT ---
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 60000);
-    setUsername(localStorage.getItem("username") || "کاربر");
     return () => clearInterval(interval);
   }, []);
 
@@ -108,11 +102,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   useEffect(() => { fetchData(); }, []);
   const handleEventUpdate = () => { fetchData(); };
-
-  const handleLogout = () => {
-    localStorage.clear();
-    router.push("/login");
-  };
 
   // --- 3. AUTO SCROLL ---
   useEffect(() => {
@@ -206,7 +195,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   // --- 7. TOOLTIP HANDLERS ---
   const handleMouseEnter = (e: React.MouseEvent, event: CalendarEvent) => {
     if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
-    setTooltipPos({ x: e.clientX + 15, y: e.clientY + 15 });
     setHoveredEvent(event);
   };
 
@@ -224,21 +212,13 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   if (error) return <div className="flex justify-center items-center h-full text-red-400 gap-2"><AlertCircle /> {error}</div>;
 
   return (
-    // GLASS CONTAINER: Ensure full width/height here
+    // GLASS CONTAINER
     <GlassPane intensity="medium" className="flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10 shadow-none sm:shadow-2xl">
       
-      {/* 1. HEADER */}
+      {/* 1. CALENDAR TOOLBAR (Removed Logout/User) */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10 shadow-sm z-20 bg-black/20 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          {/* Logout Button Added Here */}
-          <button 
-            onClick={handleLogout} 
-            className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-gray-400 hover:text-red-400"
-            title="خروج"
-          >
-            <LogOut size={20} />
-          </button>
-
+          
           <button onClick={nextWeek} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300"><ChevronRight size={22} /></button>
           <button onClick={goToToday} className="px-4 sm:px-5 py-1.5 text-sm font-medium bg-blue-600/80 hover:bg-blue-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-900/20 border border-blue-500/30">امروز</button>
           <button onClick={prevWeek} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300"><ChevronLeft size={22} /></button>
@@ -263,14 +243,8 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
             {startOfWeek.toLocaleDateString("fa-IR", { month: "long", year: "numeric" })}
           </h2>
           <div className="hidden sm:block h-8 w-px bg-white/10"></div>
-          <div className="flex items-center gap-4">
-             <div className="hidden sm:block">
-                <DigitalClock />
-             </div>
-             <div className="flex items-center gap-3 bg-white/5 px-4 py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-inner">
-                <User size={18} className="text-blue-400" />
-                <span className="text-sm font-medium text-gray-200">{username}</span>
-             </div>
+          <div className="hidden sm:block">
+            <DigitalClock />
           </div>
         </div>
       </div>
@@ -308,7 +282,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                   <span className="text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
                 </div>
 
-                {/* All-Day Event Chips (Vertical Bars) */}
+                {/* All-Day Event Chips */}
                 <div className="flex-1 flex flex-row gap-1 items-center justify-start overflow-hidden">
                   {allDayEvents.map(ev => {
                     const style = getEventStyle(ev);
@@ -430,7 +404,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                           right: `${event.right}%`, 
                           width: `${event.width}%`,
                           top: `${topPos}%`, 
-                          height: `calc(${laneHeightPercent}% - 3px)`, // Added gap
+                          height: `calc(${laneHeightPercent}% - 3px)`, 
                           backgroundColor: style.backgroundColor,
                           color: style.color,
                           boxShadow: style.boxShadow, 
@@ -466,7 +440,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
           event={hoveredEvent} 
           departments={departments}
           onClose={() => setHoveredEvent(null)}
-          // Passing bridge handlers to tooltip
           onMouseEnter={keepTooltipOpen}
           onMouseLeave={handleMouseLeave}
         />
@@ -475,6 +448,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   );
 });
 
-CalendarGrid.displayName = "CalendarGrid"; // Required for forwardRef
+CalendarGrid.displayName = "CalendarGrid";
 
 export default CalendarGrid;

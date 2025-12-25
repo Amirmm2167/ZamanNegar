@@ -1,13 +1,14 @@
 const CACHE_NAME = 'zaman-negar-v1';
 const DYNAMIC_CACHE = 'zaman-negar-dynamic-v1';
 
-// Assets to cache immediately
 const STATIC_ASSETS = [
   '/',
   '/login',
   '/manifest.json',
-  '/icons/icon.png', // Ensure you have these icons or remove
-  '/icons/logo.png'
+  '/icons/icon.png',
+  '/icons/logo.png',
+  '/globe.svg',
+  '/window.svg'
 ];
 
 // 1. Install Event
@@ -15,7 +16,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Use map to attempt adding each asset individually
+      // Use map to safely add assets; logs failures but doesn't crash the whole install
       return Promise.allSettled(
         STATIC_ASSETS.map(asset => 
           cache.add(asset).catch(err => console.warn(`Failed to cache ${asset}:`, err))
@@ -24,7 +25,8 @@ self.addEventListener('install', (event) => {
     })
   );
 });
-// 2. Activate Event (Cleanup old caches)
+
+// 2. Activate Event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -37,19 +39,18 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  return self.clients.claim(); // Take control immediately
+  return self.clients.claim();
 });
 
-// 3. Fetch Event (The Proxy)
+// 3. Fetch Event
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // A. API Requests: Network First -> Cache Fallback
+  // A. API Requests
   if (url.pathname.startsWith('/api/') || url.href.includes('localhost:8000')) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // Clone and cache successful responses
           if (response.status === 200) {
             const responseClone = response.clone();
             caches.open(DYNAMIC_CACHE).then((cache) => {
@@ -58,22 +59,16 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => {
-          // If offline, return cached API response
-          return caches.match(event.request);
-        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }
 
-  // B. Static Assets (Next.js chunks, CSS, Images): Cache First -> Network
+  // B. Static Assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+      if (cachedResponse) return cachedResponse;
       return fetch(event.request).then((response) => {
-        // Cache new static assets dynamically
         if (response.status === 200 && (url.pathname.startsWith('/_next') || url.pathname.match(/\.(png|jpg|jpeg|svg|css|js)$/))) {
              const responseClone = response.clone();
              caches.open(CACHE_NAME).then((cache) => {
@@ -86,26 +81,18 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// 4. Background Sync (Optional - for advanced "save later" logic)
-// This requires the frontend to register a 'sync' event.
-self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-events') {
-        console.log("Service Worker: Syncing events...");
-        // Logic to read IndexedDB and post to API would go here
-    }
-});
-
-
-// 5. Push Notification Event
+// 4. Push Notification Event
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'زمان‌نگار', body: 'اعلان جدید دریافت شد' };
+  const data = event.data ? event.data.json() : { title: 'زمان‌نگار', body: 'اعلان جدید' };
   
   const options = {
     body: data.body,
-    icon: '/icons/logo.png', // The app icon we set earlier
+    icon: '/icons/logo.png',
     badge: '/icons/icon.png',
     vibrate: [100, 50, 100],
-    data: { url: data.url || '/' }
+    data: { url: data.url || '/' },
+    dir: 'rtl',
+    lang: 'fa'
   };
 
   event.waitUntil(
@@ -113,10 +100,24 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// 6. Notification Click Action
+// 5. Notification Click Action (FIXED)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
+
   event.waitUntil(
-    clients.openWindow(event.notification.data.url)
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Check if there is already a window for this app open
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // If not, open a new one
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
+    })
   );
 });

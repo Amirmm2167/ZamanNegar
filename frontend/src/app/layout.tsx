@@ -14,27 +14,28 @@ const pinar = localFont({
 
 export const metadata: Metadata = {
   title: "زمان‌نگار",
-  description: "مدیریت رویداد ها",
-  manifest: "/manifest.json", // Links the manifest file
+  description: "سامانه مدیریت رویدادها",
+  manifest: "/manifest.json",
   icons: {
-    icon: "/icons/icon.png", // Sets the tab icon
-    apple: "/icons/logo.png", // Sets the icon for iOS home screens
+    icon: "/icons/icon.png",
+    apple: "/icons/logo.png",
   },
+  themeColor: "#000000",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fa" dir="rtl">
       <body className={`${pinar.className} bg-black min-h-screen overflow-hidden text-gray-100`}>
-        
         <ServiceWorkerRegister />
         
-        {/* 1. The Living Background */}
+        {/* 1. Background */}
         <div className="fixed inset-0 z-0">
             <ModernBackground />
         </div>
         
-        {/* 2. The App Layer (Glass sits on top) */}
+        {/* 2. Content */}
         <div className="relative z-10 h-full">
           {children}
         </div>
