@@ -13,7 +13,12 @@ import IssueModal from "@/components/IssueModal"; // Ensure this is imported
 export default function Dashboard() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  // Create Ref for CalendarGrid
   const calendarRef = useRef<CalendarGridHandle>(null);
 
   useEffect(() => {
@@ -38,11 +43,16 @@ export default function Dashboard() {
     router.push("/login");
   };
 
-  if (isAuthenticated === null) return null;
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-black text-white">
+        <span className="text-lg">در حال بارگذاری...</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden text-gray-200 relative z-10">
-      {/* --- ADDED: Persistent Header --- */}
+    <div className="h-screen bg-transparent flex flex-col overflow-hidden text-gray-200 relative z-10">
       <header className="flex items-center justify-between px-6 py-3 bg-black/40 backdrop-blur-md border-b border-white/10">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-white">زمان‌نگار</h1>
@@ -62,11 +72,12 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
-
-      <main className="flex-1 w-full overflow-hidden relative">
-        {/* If the grid fails, the header above is still shown */}
+      <main className="flex-1 w-full overflow-hidden relative p-0">
+        {" "}
+        {/* Padding removed for full screen */}
         <CalendarGrid ref={calendarRef} />
       </main>
+
       <FabMenu
         onOpenDepartments={() => setIsDeptModalOpen(true)}
         onOpenUsers={() => setIsUserModalOpen(true)}
