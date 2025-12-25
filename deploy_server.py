@@ -5,7 +5,7 @@ import hashlib
 
 app = Flask(__name__)
 # Secure this with a secret set in your GitHub Webhook settings
-GITHUB_SECRET = b'your_webhook_secret_here'
+GITHUB_SECRET = b'pDCGvC5K7C1SkZWXagc2LesZgF242v7Ee2RJOw6DAeLOkNFjdc4aFZkcfTxs6TVAjkdIm0WI4zB2akvl'
 
 def verify_signature(payload, signature):
     sha_name, signature = signature.split('=')
