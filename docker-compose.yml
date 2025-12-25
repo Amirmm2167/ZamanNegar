@@ -30,8 +30,6 @@ services:
     restart: always
     depends_on:
       - backend
-    environment:
-      - GIT_COMMIT_HASH=${GIT_COMMIT_HASH}
 
   nginx:
     image: nginx:alpine

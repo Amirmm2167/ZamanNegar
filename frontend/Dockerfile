@@ -19,9 +19,7 @@ COPY . .
 # Pass this ARG if you need it baked in, 
 # or rely on the ConfigMap approach in K8s (preferred)
 ARG NEXT_PUBLIC_API_URL
-ARG GIT_COMMIT_HASH
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-ENV GIT_COMMIT_HASH=${GIT_COMMIT_HASH}
 
 RUN npm run build
 
