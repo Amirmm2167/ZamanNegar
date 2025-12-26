@@ -295,14 +295,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               >
                 {/* 1. Day Name Container */}
                 <div className="flex flex-row items-center justify-between shrink-0 pl-1 pr-1 border-l border-white/5 bg-black/20 w-10">
-                    
-                    {/* Day Number/Name */}
-                    <div className="flex flex-col items-center justify-center">
-                        <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
-                        <span className="text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
-                    </div>
-
-                    {/* Holiday Text (Vertical) */}
                     {holidayObj && (
                         <div className="h-full flex items-center justify-center pt-1 pb-1">
                             <span 
@@ -313,6 +305,11 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                             </span>
                         </div>
                     )}
+                    {/* Day Number/Name */}
+                    <div className="flex flex-col items-center justify-center">
+                        <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
+                        <span className="text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
+                    </div>                    
                 </div>
 
                 {/* 2. All-Day Event Chips */}
