@@ -284,7 +284,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                     );
                   })}
                 </div>
-                {holidayObj && <span className="absolute bottom-0 left-1 text-[8px] text-red-400/60 px-1 truncate max-w-[50px]">{holidayObj.occasion}</span>}
+                {holidayObj && <span className="absolute bottom-0 right-1 text-[8px] text-red-400/60 p-1 truncate max-w-[100px]">{holidayObj.occasion}</span>}
                 {isToday(dayDate) && <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-500 z-10 shadow-[0_0_15px_rgba(59,130,246,0.8)]"></div>}
               </div>
             );
