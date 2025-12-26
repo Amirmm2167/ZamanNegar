@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "react";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, LogOut } from "lucide-react";
 import clsx from "clsx";
 import { toPersianDigits } from "@/lib/utils";
 import EventModal from "./EventModal";
@@ -40,6 +41,8 @@ export interface CalendarGridHandle {
 }
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
+  const router = useRouter();
+
   // --- DATA ---
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -49,6 +52,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [username, setUsername] = useState("");
   const [userId, setUserId] = useState<number>(0);
   const [now, setNow] = useState(new Date());
 
@@ -57,24 +61,24 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [hiddenDeptIds, setHiddenDeptIds] = useState<number[]>([]); 
   
-  // Hover State for Grid
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
 
-  // Modal Defaults (for new events)
   const [modalInitialDate, setModalInitialDate] = useState(new Date());
   const [modalStart, setModalStart] = useState("09:00");
   const [modalEnd, setModalEnd] = useState("10:00");
 
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{x:number, y:number} | null>(null);
   const tooltipTimeout = useRef<NodeJS.Timeout | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
 
   useImperativeHandle(ref, () => ({
     openNewEventModal: () => {
       setSelectedEvent(null);
-      setModalInitialDate(new Date()); // Defaults to today
+      setModalInitialDate(new Date());
       setModalStart("09:00");
       setModalEnd("10:00");
       setIsModalOpen(true);
@@ -83,6 +87,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 60000);
+    setUsername(localStorage.getItem("username") || "کاربر");
     return () => clearInterval(interval);
   }, []);
 
@@ -110,6 +115,11 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   useEffect(() => { fetchData(); }, []);
   const handleEventUpdate = () => { fetchData(); };
 
+  const handleLogout = () => {
+    localStorage.clear();
+    router.push("/login");
+  };
+
   useEffect(() => {
     if (!loading && scrollRef.current) {
       const currentHour = new Date().getHours();
@@ -121,7 +131,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     }
   }, [loading]);
 
-  // Date Logic
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay(); 
@@ -157,7 +166,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     return `${percent}%`;
   };
 
-  // --- SLOT CLICK HANDLER ---
   const handleSlotClick = (date: Date, hour: number) => {
     setSelectedEvent(null);
     setModalInitialDate(date);
@@ -205,6 +213,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   const handleMouseEnter = (e: React.MouseEvent, event: CalendarEvent) => {
     if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
+    setTooltipPos({ x: e.clientX + 15, y: e.clientY + 15 });
     setHoveredEvent(event);
   };
   const handleMouseLeave = () => {
@@ -222,6 +231,14 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       {/* HEADER */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10 shadow-sm z-20 bg-black/20 backdrop-blur-sm">
         <div className="flex items-center gap-3">
+          <button 
+            onClick={handleLogout} 
+            className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-gray-400 hover:text-red-400"
+            title="خروج"
+          >
+            <LogOut size={20} />
+          </button>
+
           <button onClick={nextWeek} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300"><ChevronRight size={22} /></button>
           <button onClick={goToToday} className="px-4 sm:px-5 py-1.5 text-sm font-medium bg-blue-600/80 hover:bg-blue-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-900/20 border border-blue-500/30">امروز</button>
           <button onClick={prevWeek} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300"><ChevronLeft size={22} /></button>
@@ -241,7 +258,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
             {startOfWeek.toLocaleDateString("fa-IR", { month: "long", year: "numeric" })}
           </h2>
           <div className="hidden sm:block h-8 w-px bg-white/10"></div>
-          <div className="hidden sm:block"><DigitalClock /></div>
+          <div className="flex items-center gap-4">
+             <div className="hidden sm:block">
+                <DigitalClock />
+             </div>
+             <div className="flex items-center gap-3 bg-white/5 px-4 py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-inner">
+                <User size={18} className="text-blue-400" />
+                <span className="text-sm font-medium text-gray-200">{username}</span>
+             </div>
+          </div>
         </div>
       </div>
 
@@ -265,16 +290,33 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                   "flex-1 flex flex-row items-stretch border-b border-white/10 relative transition-all p-1 gap-1 group",
                   isToday(dayDate) ? "bg-white/5 text-blue-400 shadow-[inset_0_0_20px_rgba(59,130,246,0.1)]" : "text-gray-400",
                   isHoliday && !isToday(dayDate) && "bg-red-900/20 text-red-400",
-                  // Hover Effect for Sidebar
                   hoveredDayIndex === i && "bg-white/10 shadow-[inset_4px_0_0_#3b82f6]"
                 )}
               >
-                <div className="z-10 flex flex-col items-center justify-center w-8 shrink-0 group-hover:scale-105 transition-transform">
-                  <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
-                  <span className="text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
+                {/* 1. Day Name + Holiday Text Wrapper */}
+                <div className="flex flex-row items-center justify-between shrink-0 pl-1 pr-1 border-l border-white/5 bg-black/20 w-10">
+                    
+                    {/* Day Number/Name */}
+                    <div className="flex flex-col items-center justify-center">
+                        <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
+                        <span className="text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
+                    </div>
+
+                    {/* Holiday Text (Vertical) */}
+                    {holidayObj && (
+                        <div className="h-full flex items-center justify-center pt-1 pb-1">
+                            <span 
+                                className="text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" 
+                                style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
+                            >
+                                {holidayObj.occasion}
+                            </span>
+                        </div>
+                    )}
                 </div>
-                {/* Chips... */}
-                <div className="flex-1 flex flex-row gap-1 items-center justify-start overflow-hidden">
+
+                {/* 2. All-Day Event Chips */}
+                <div className="flex-1 flex flex-row gap-1 items-center justify-start overflow-hidden px-1">
                   {allDayEvents.map(ev => {
                     const style = getEventStyle(ev);
                     return (
@@ -284,7 +326,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                     );
                   })}
                 </div>
-                {holidayObj && <span className="absolute bottom-0 right-1 text-[8px] text-red-400/60 p-1 truncate max-w-[100px]">{holidayObj.occasion}</span>}
+                
                 {isToday(dayDate) && <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-500 z-10 shadow-[0_0_15px_rgba(59,130,246,0.8)]"></div>}
               </div>
             );
@@ -293,24 +335,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
         {/* TIMELINE */}
         <div className="flex-1 flex flex-col min-w-0 relative overflow-x-auto custom-scrollbar" ref={scrollRef}>
-          {/* Timeline Header */}
           <div className="flex h-12 border-b border-white/10 bg-white/5 select-none min-w-[1200px] sticky top-0 z-10 backdrop-blur-md shadow-sm">
             {Array.from({ length: 24 }).map((_, i) => (
-              <div 
-                key={i} 
-                className={clsx(
-                  "flex-1 flex items-center justify-start text-[10px] font-medium text-gray-500 border-l border-white/10 px-2 transition-colors duration-100",
-                  // Header Highlight
-                  hoveredHour === i && "bg-white/10 text-white shadow-[inset_0_-2px_0_#3b82f6]"
-                )}
-              >
+              <div key={i} className={clsx("flex-1 flex items-center justify-start text-[10px] font-medium text-gray-500 border-l border-white/10 px-2 transition-colors duration-100", hoveredHour === i && "bg-white/10 text-white shadow-[inset_0_-2px_0_#3b82f6]")}>
                 {toPersianDigits(i)}:{toPersianDigits("00")}
               </div>
             ))}
           </div>
 
           <div className="flex-1 flex flex-col relative min-w-[1200px]">
-             {/* Background Lines */}
             <div className="absolute inset-0 flex pointer-events-none">
               {Array.from({ length: 24 }).map((_, i) => (
                 <div key={i} className="flex-1 border-l border-white/5 h-full"></div>
@@ -346,20 +379,16 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                   className={clsx(
                     "flex-1 border-b border-white/5 relative group min-h-[60px]", 
                     isHoliday && "bg-red-900/10",
-                    // Row Highlight
                     hoveredDayIndex === dayIndex && "bg-white/[0.03]"
                   )}
                 >
-                  {/* INTERACTIVE SLOT GRID (Z-0) */}
                   <div className="absolute inset-0 flex z-0">
                     {Array.from({ length: 24 }).map((_, h) => (
                        <div 
                           key={h}
                           className={clsx(
                              "flex-1 h-full border-r border-white/5 transition-all duration-75 cursor-pointer",
-                             // Column Highlight (Part 1)
                              hoveredHour === h && "bg-white/[0.02]",
-                             // Intersection Highlight (Double Lit)
                              hoveredHour === h && hoveredDayIndex === dayIndex && "!bg-white/10 shadow-[inset_0_0_15px_rgba(255,255,255,0.05)] border-white/10 backdrop-blur-[1px]"
                           )}
                           onMouseEnter={() => { setHoveredDayIndex(dayIndex); setHoveredHour(h); }}
@@ -368,7 +397,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                     ))}
                   </div>
 
-                  {/* RED INDICATOR */}
                   {isCurrentDay && (
                     <div 
                       className="absolute top-0 bottom-0 w-px bg-red-500 z-0 shadow-[0_0_12px_rgba(239,68,68,0.9)] pointer-events-none"
@@ -378,7 +406,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                     </div>
                   )}
 
-                  {/* EVENTS (Z-10) */}
                   {visualEvents.map((event, idx) => {
                     const originalEvent = dayEvents.find(e => e.id === event.id);
                     if (!originalEvent) return null;
@@ -413,9 +440,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
         isOpen={isModalOpen} 
         onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }}
         onSuccess={handleEventUpdate}
-        initialDate={modalInitialDate} // Updated prop
-        initialStartTime={modalStart}  // Updated prop
-        initialEndTime={modalEnd}      // Updated prop
+        initialDate={modalInitialDate}
+        initialStartTime={modalStart}
+        initialEndTime={modalEnd}
         eventToEdit={selectedEvent}
         currentUserId={userId}
       />
