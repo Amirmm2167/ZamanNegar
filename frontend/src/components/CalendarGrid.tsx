@@ -295,23 +295,23 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               >
                 {/* 1. Day Name Container */}
                 <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-15">
-                    {/* Day Number/Name */}
+                    <div className="flex-1 flex flex-row flex-start right-1 px-1">
+                      {holidayObj && (
+                            <div className="h-full flex items-center justify-center pt-1 pb-1">
+                                <span 
+                                    className="text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" 
+                                    style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
+                                >
+                                    {holidayObj.occasion}
+                                </span>
+                            </div>
+                      )}
+                    </div>                   
                     <div className="flex flex-col items-center justify-center">
                         <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
                         <span className="text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
                     </div>      
-                    <div className="flex-1 flex flex-row flex-end left-1 px-1">
-                  {holidayObj && (
-                        <div className="h-full flex items-center justify-center pt-1 pb-1">
-                            <span 
-                                className="text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" 
-                                style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
-                            >
-                                {holidayObj.occasion}
-                            </span>
-                        </div>
-                    )}
-                </div>              
+                               
                 </div>
 
                 {/* 2. All-Day Event Chips */}
