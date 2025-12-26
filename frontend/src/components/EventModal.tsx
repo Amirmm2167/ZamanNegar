@@ -6,14 +6,11 @@ import {
   Clock,
   AlignLeft,
   Type,
-  Calendar as CalendarIcon,
   Repeat,
   Target,
   User,
   Flag,
-  Building,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Trash2,
   Check,
@@ -32,6 +29,8 @@ interface EventModalProps {
   onClose: () => void;
   onSuccess: () => void;
   initialDate?: Date;
+  initialStartTime?: string; // New Prop
+  initialEndTime?: string;   // New Prop
   eventToEdit?: CalendarEvent | null;
   currentUserId: number;
 }
@@ -43,6 +42,8 @@ export default function EventModal({
   onClose,
   onSuccess,
   initialDate,
+  initialStartTime,
+  initialEndTime,
   eventToEdit,
   currentUserId,
 }: EventModalProps) {
@@ -58,7 +59,7 @@ export default function EventModal({
   const [title, setTitle] = useState("");
   const [departmentId, setDepartmentId] = useState<number | null>(null);
 
-  // Timing (Multi-Day REMOVED)
+  // Timing
   const [startDate, setStartDate] = useState("");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
@@ -66,9 +67,7 @@ export default function EventModal({
 
   // Recurrence
   const [recurrenceType, setRecurrenceType] = useState("none");
-  const [recurrenceEndMode, setRecurrenceEndMode] = useState<"count" | "date">(
-    "count"
-  );
+  const [recurrenceEndMode, setRecurrenceEndMode] = useState<"count" | "date">("count");
   const [recurrenceCount, setRecurrenceCount] = useState("");
   const [recurrenceUntil, setRecurrenceUntil] = useState("");
 
@@ -96,6 +95,7 @@ export default function EventModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose, pickerMode, showStartTimePicker, showEndTimePicker]);
 
+  // --- INITIALIZATION ---
   useEffect(() => {
     if (isOpen) {
       const role = localStorage.getItem("role") || "viewer";
@@ -103,7 +103,7 @@ export default function EventModal({
       if (["manager", "superadmin", "evaluator"].includes(role))
         fetchDepartments();
 
-      // Permissions
+      // Permissions Logic
       let editable = true;
       if (eventToEdit) {
         if (role === "viewer") editable = false;
@@ -115,7 +115,7 @@ export default function EventModal({
       }
       setCanEdit(editable);
 
-      // Populate
+      // Populate Form
       if (eventToEdit) {
         setTitle(eventToEdit.title);
         setDescription(eventToEdit.description || "");
@@ -143,15 +143,18 @@ export default function EventModal({
         );
         setIsAllDay(eventToEdit.is_all_day);
 
+        // Recurrence Parsing
         if (eventToEdit.recurrence_rule) {
           const rule = eventToEdit.recurrence_rule;
           const freqMatch = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY)/i);
           if (freqMatch) setRecurrenceType(freqMatch[1].toLowerCase());
+          
           const countMatch = rule.match(/COUNT=(\d+)/);
           if (countMatch) {
             setRecurrenceEndMode("count");
             setRecurrenceCount(countMatch[1]);
           }
+          
           const untilMatch = rule.match(/UNTIL=(\d{8})/);
           if (untilMatch) {
             setRecurrenceEndMode("date");
@@ -166,14 +169,17 @@ export default function EventModal({
           setRecurrenceUntil("");
         }
       } else {
-        // Create
+        // Create New Event
         const targetDate = initialDate || new Date();
         const isoDate = targetDate.toISOString().split("T")[0];
         setStartDate(isoDate);
         setTitle("");
         setDepartmentId(null);
-        setStartTime("09:00");
-        setEndTime("10:00");
+        
+        // Use passed props for time or fallback to defaults
+        setStartTime(initialStartTime || "09:00");
+        setEndTime(initialEndTime || "10:00");
+        
         setIsAllDay(false);
         setRecurrenceType("none");
         setRecurrenceEndMode("count");
@@ -190,7 +196,7 @@ export default function EventModal({
       }
       setError("");
     }
-  }, [isOpen, initialDate, eventToEdit, currentUserId]);
+  }, [isOpen, initialDate, initialStartTime, initialEndTime, eventToEdit, currentUserId]);
 
   const fetchDepartments = async () => {
     try {
@@ -201,7 +207,6 @@ export default function EventModal({
     }
   };
 
-  // --- HIERARCHY HELPER (FIXED KEY ISSUE) ---
   const renderDeptOptions = (parentId: number | null = null, level = 0) => {
     const children = departments.filter(
       (d) => (d.parent_id || null) === parentId
@@ -228,7 +233,6 @@ export default function EventModal({
       const eTime = isAllDay ? "23:59" : endTime;
 
       const startDT = `${startDate}T${sTime}:00`;
-      // End date is same as start date (Multi-day removed)
       const endDT = `${startDate}T${eTime}:00`;
 
       let rrule = null;
@@ -346,6 +350,7 @@ export default function EventModal({
           dir="rtl"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 bg-[#2d2d2e] border-b border-gray-700">
             <h3 className="text-xl font-bold text-gray-100">
               {eventToEdit ? "ویرایش رویداد" : "برنامه‌ریزی جدید"}
@@ -363,6 +368,7 @@ export default function EventModal({
             </button>
           </div>
 
+          {/* Tabs */}
           <div className="flex border-b border-gray-700 bg-[#1e1e1e]">
             {[
               { id: "general", label: "عمومی", icon: Type },
