@@ -287,14 +287,14 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               <div 
                 key={i} 
                 className={clsx(
-                  "flex-1 flex flex-row items-stretch border-b border-white/10 relative transition-all p-1 gap-1 group",
+                  "flex-1 flex flex-row items-stretch border-b border-white/10 relative transition-all gap-1 group",
                   isToday(dayDate) ? "bg-white/5 text-blue-400 shadow-[inset_0_0_20px_rgba(59,130,246,0.1)]" : "text-gray-400",
                   isHoliday && !isToday(dayDate) && "bg-red-900/20 text-red-400",
                   hoveredDayIndex === i && "bg-white/10 shadow-[inset_4px_0_0_#3b82f6]"
                 )}
               >
                 {/* 1. Day Name Container */}
-                <div className="flex flex-row items-center justify-between shrink-0 pl-1 pr-1 border-l border-white/5 bg-black/20 w-15">
+                <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-15">
                     {/* Day Number/Name */}
                     <div className="flex flex-col items-center justify-center">
                         <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
