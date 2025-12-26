@@ -4,6 +4,9 @@ services:
     container_name: zaman_db
     restart: always
     env_file: .env
+    environment:
+      - TZ=Asia/Tehran
+      - PGTZ=Asia/Tehran
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +20,8 @@ services:
     container_name: zaman_backend
     restart: always
     env_file: .env
+    environment:
+      - TZ=Asia/Tehran
     depends_on:
       db:
         condition: service_healthy
@@ -28,6 +33,8 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: zaman_frontend
     restart: always
+    environment:
+      - TZ=Asia/Tehran
     depends_on:
       - backend
 
@@ -37,6 +44,8 @@ services:
     restart: always
     ports:
       - "80:80"
+    environment:
+      - TZ=Asia/Tehran
     volumes:
       - ./nginx/conf:/etc/nginx/conf.d:ro
     depends_on:
