@@ -418,7 +418,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                         onMouseEnter={(e) => handleMouseEnter(e, originalEvent)}
                         onMouseLeave={handleMouseLeave}
                         className={clsx(
-                          "absolute rounded-lg px-2 flex items-center shadow-lg cursor-pointer hover:brightness-125 transition-all overflow-hidden z-10 border-y border-r border-white/10 p-[1px] backdrop-blur-sm hover:scale-[1.01] hover:z-20",
+                          "absolute rounded-sm px-2 flex items-center shadow-lg cursor-pointer hover:brightness-125 transition-all overflow-hidden z-10 border-y border-r border-white/10 p-[1px] backdrop-blur-sm hover:scale-[1.01] hover:z-20",
                           event.status === 'rejected' && "opacity-60 grayscale"
                         )}
                         style={{ right: `${event.right}%`, width: `${event.width}%`, top: `${topPos}%`, height: `calc(${laneHeightPercent}% - 3px)`, backgroundColor: style.backgroundColor, color: style.color, boxShadow: style.boxShadow, backgroundImage: (style as any).backgroundImage, filter: (style as any).filter, textDecoration: (style as any).textDecoration }}
