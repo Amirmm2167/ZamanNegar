@@ -294,7 +294,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                 )}
               >
                 {/* 1. Day Name Container */}
-                <div className="flex flex-row items-center justify-between shrink-0 mr-2 border-l border-white/5 bg-black/20 w-15">
+                <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-15">
                     {/* Day Number/Name */}
                     <div className="flex flex-col items-center justify-center">
                         <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
