@@ -293,7 +293,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                   hoveredDayIndex === i && "bg-white/10 shadow-[inset_4px_0_0_#3b82f6]"
                 )}
               >
-                {/* 1. Day Name + Holiday Text Wrapper */}
+                {/* 1. Day Name Container */}
                 <div className="flex flex-row items-center justify-between shrink-0 pl-1 pr-1 border-l border-white/5 bg-black/20 w-10">
                     
                     {/* Day Number/Name */}
