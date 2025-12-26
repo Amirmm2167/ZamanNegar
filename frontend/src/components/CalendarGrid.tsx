@@ -307,9 +307,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                             </div>
                       )}
                     </div>                   
-                    <div className="flex flex-col items-center justify-center">
-                        <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
-                        <span className="text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
+                    <div className="flex flex-row items-center justify-center">
+                        <span className="text-[10px] font-bold" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>{WEEK_DAYS[i]}</span>
+                        <span className="text-xs opacity-70 mt-0.5" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
                     </div>      
                                
                 </div>
