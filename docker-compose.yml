@@ -37,6 +37,11 @@ services:
       - TZ=Asia/Tehran
     depends_on:
       - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 1G
 
   nginx:
     image: nginx:alpine
