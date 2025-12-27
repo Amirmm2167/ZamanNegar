@@ -27,7 +27,7 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
- useEffect(() => {
+  useEffect(() => {
     // Current state as string
     const currentStr = selectedTags.join("، ");
     // Incoming prop
@@ -39,13 +39,10 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
   }, [value]);
 
   useEffect(() => {
-    api.get<TagData[]>(`/tags/?category=${category}`).then(res => setSuggestions(res.data));
+    // FETCH ONLY ACTIVE TAGS
+    // We append ?status=active to ensure we don't show pending junk
+    api.get<TagData[]>(`/tags/?category=${category}&status=active`).then(res => setSuggestions(res.data));
   }, [category]);
-
-  const updateParent = (newTags: string[]) => {
-    setSelectedTags(newTags);
-    onChange(newTags.join("، "));
-  };
 
   const addTag = (text: string) => {
     const trimmed = text.trim();
@@ -57,18 +54,20 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
     }
 
     const newTags = [...selectedTags, trimmed];
-    setSelectedTags(newTags); // Update Local State INSTANTLY
-    onChange(newTags.join("، ")); // Update Parent
+    setSelectedTags(newTags); 
+    onChange(newTags.join("، ")); 
     setInputValue("");
     setHighlightLast(false);
     setShowSuggestions(false);
+    
+    // Create logic (Backend will default to PENDING)
     api.post("/tags/", { text: trimmed, category });
   };
 
- const removeTag = (index: number) => {
+  const removeTag = (index: number) => {
     const newTags = selectedTags.filter((_, i) => i !== index);
-    setSelectedTags(newTags); // Update Local State INSTANTLY
-    onChange(newTags.join("، ")); // Update Parent
+    setSelectedTags(newTags); 
+    onChange(newTags.join("، ")); 
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -78,7 +77,6 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
     }
 
     if (e.key === 'Backspace' && !inputValue) {
-      e.preventDefault(); 
       if (selectedTags.length > 0) {
         if (highlightLast) {
           removeTag(selectedTags.length - 1);
@@ -107,7 +105,6 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
     s => s.text.includes(inputValue) && !selectedTags.includes(s.text)
   );
 
-  // Check if current input exists in suggestions
   const exactMatch = filteredSuggestions.some(s => s.text === inputValue);
 
   return (
@@ -159,7 +156,7 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
 
         {showSuggestions && (inputValue || filteredSuggestions.length > 0) && (
           <div className="absolute top-full right-0 left-0 z-50 mt-1 bg-[#2d2d2e] border border-gray-600 rounded-lg shadow-xl max-h-40 overflow-y-auto custom-scrollbar">
-            {/* 1. Suggest "Create New" if no exact match */}
+            {/* Suggest creation if not exact match */}
             {inputValue && !exactMatch && !selectedTags.includes(inputValue) && (
                 <div
                   onClick={(e) => { e.stopPropagation(); addTag(inputValue); }}
@@ -172,7 +169,6 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
                 </div>
             )}
 
-            {/* 2. Existing Suggestions */}
             {filteredSuggestions.map((tag) => (
               <div
                 key={tag.id}
@@ -186,10 +182,9 @@ export default function MultiTagInput({ category, value, onChange, placeholder }
         )}
       </div>
       
-      {/* 3. Helper Text */}
       <div className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 px-1">
         <Info size={10} />
-        <span>برای افزودن، دکمه <b>Enter</b> را بزنید یا از لیست انتخاب کنید.</span>
+        <span>برای افزودن، دکمه <b>Enter</b> را بزنید.</span>
       </div>
     </div>
   );

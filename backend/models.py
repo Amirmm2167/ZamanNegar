@@ -125,3 +125,4 @@ class Tag(SQLModel, table=True):
     category: str # 'goal', 'for', 'by'
     usage_count: int = 0
     company_id: int = Field(foreign_key="company.id")
+    status: str = Field(default="pending") # 'pending', 'active'
