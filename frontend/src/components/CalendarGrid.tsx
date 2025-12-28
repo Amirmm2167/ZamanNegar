@@ -151,7 +151,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
         <div className="flex items-center gap-2">
           {/* View Switcher (Responsive) */}
           <div className="flex bg-black/40 rounded-lg p-1 border border-white/10">
-             <button onClick={() => setViewMode("desktop")} className={clsx("p-1.5 rounded transition-all", viewMode==="desktop" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white")} title="هفتگی"><Monitor size={16}/></button>
              <button onClick={() => setViewMode("3day")} className={clsx("p-1.5 rounded transition-all", viewMode==="3day" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white")} title="۳ روزه"><CalIcon size={16}/></button>
              <button onClick={() => setViewMode("1day")} className={clsx("p-1.5 rounded transition-all", viewMode==="1day" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white")} title="روزانه"><Smartphone size={16}/></button>
              <button onClick={() => setViewMode("agenda")} className={clsx("p-1.5 rounded transition-all", viewMode==="agenda" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white")} title="لیست"><List size={16}/></button>
