@@ -28,6 +28,8 @@ export interface CalendarEvent {
   proposer_id?: number;
   // Visual helper for grid
   color?: string; 
+  target_audience?: string;
+  organizer?: string;
 }
 
 export interface AuthResponse {
