@@ -12,7 +12,7 @@ import EventTooltip from "./EventTooltip";
 import LegendFilter from "./LegendFilter";
 import GlassPane from "@/components/ui/GlassPane";
 import BottomSheet from "./ui/BottomSheet";
-import MoveConfirmationSheet from "./mobile/MoveConfirmationSheet"; // New Sheet
+import MoveConfirmationSheet from "./views/mobile/MoveConfirmationSheet"; // New Sheet
 import { toPersianDigits } from "@/lib/utils"; 
 
 // Views
