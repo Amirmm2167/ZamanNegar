@@ -11,6 +11,8 @@ import DigitalClock from "./DigitalClock";
 import EventTooltip from "./EventTooltip";
 import LegendFilter from "./LegendFilter";
 import GlassPane from "@/components/ui/GlassPane";
+import BottomSheet from "./ui/BottomSheet";
+import MobileContextMenu from "./mobile/MobileContextMenu";
 
 // Import Views from new Structure
 import DesktopWeekView from "./views/desktop/WeekView";
@@ -209,11 +211,47 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
 
   const handleEventLongPress = (event: CalendarEvent) => {
-      const isOwner = event.proposer_id === userId;
-      const isManager = ["manager", "superadmin", "evaluator"].includes(userRole);
-      if (isOwner || isManager) {
-          handleOpenModal(new Date(event.start_time), "", "", event);
+      // On mobile, open Bottom Sheet Context Menu
+      if (isMobile) {
+          setContextMenuEvent(event);
+          setIsContextMenuOpen(true);
+      } else {
+          // On Desktop, verify permission then open Edit Modal directly
+          const isOwner = event.proposer_id === userId;
+          const isManager = ["manager", "superadmin", "evaluator"].includes(userRole);
+          if (isOwner || isManager) {
+              handleOpenModal(new Date(event.start_time), "", "", event);
+          }
       }
+  };
+
+  // 2. Context Menu Actions
+  const handleMenuEdit = () => {
+      if (contextMenuEvent) {
+          setIsContextMenuOpen(false);
+          handleOpenModal(new Date(contextMenuEvent.start_time), "", "", contextMenuEvent);
+      }
+  };
+
+  const handleMenuDelete = async () => {
+      if (!contextMenuEvent) return;
+      if (confirm("آیا از حذف این رویداد اطمینان دارید؟")) {
+          try {
+              setLoading(true);
+              await api.delete(`/events/${contextMenuEvent.id}`);
+              setIsContextMenuOpen(false);
+              fetchData();
+          } catch (e) {
+              setError("خطا در حذف رویداد");
+              setLoading(false);
+          }
+      }
+  };
+
+  const handleMenuMove = () => {
+      // PHASE 3: Will implement Drag Mode triggering here
+      alert("قابلیت جابجایی (Drag & Drop) در مرحله بعد فعال می‌شود.");
+      setIsContextMenuOpen(false);
   };
 
   const handleEventHover = (e: React.MouseEvent, event: CalendarEvent) => {
@@ -322,6 +360,24 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                 )}
             </div>
         </div>
+        <BottomSheet 
+        isOpen={isContextMenuOpen} 
+        onClose={() => setIsContextMenuOpen(false)}
+        title="عملیات رویداد"
+      >
+        {contextMenuEvent && (
+            <MobileContextMenu 
+                event={contextMenuEvent}
+                userRole={userRole}
+                currentUserId={userId}
+                departments={departments}
+                onClose={() => setIsContextMenuOpen(false)}
+                onEdit={handleMenuEdit}
+                onDelete={handleMenuDelete}
+                onMove={handleMenuMove}
+            />
+        )}
+      </BottomSheet>
 
         <EventModal 
           isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }}
