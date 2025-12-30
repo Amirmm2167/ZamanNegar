@@ -5,7 +5,6 @@ import { CalendarEvent, Department } from "@/types";
 import { 
   Edit, Trash2, Move, Info, Clock, User, Target, Flag, AlignLeft, ArrowRight 
 } from "lucide-react";
-import clsx from "clsx";
 import { toPersianDigits } from "@/lib/utils";
 
 interface MobileContextMenuProps {
@@ -16,7 +15,7 @@ interface MobileContextMenuProps {
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onMove: () => void; // Will trigger the drag logic
+  onMove: () => void; 
 }
 
 type MenuState = "menu" | "properties";
