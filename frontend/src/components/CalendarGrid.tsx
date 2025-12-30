@@ -12,7 +12,7 @@ import EventTooltip from "./EventTooltip";
 import LegendFilter from "./LegendFilter";
 import GlassPane from "@/components/ui/GlassPane";
 import BottomSheet from "./ui/BottomSheet";
-import MobileContextMenu from "./mobile/MobileContextMenu";
+import MobileContextMenu from "./views/mobile/MobileContextMenu";
 
 // Import Views from new Structure
 import DesktopWeekView from "./views/desktop/WeekView";
