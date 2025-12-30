@@ -5,6 +5,7 @@ import { CalendarEvent, Department } from "@/types";
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
+import { Plus } from "lucide-react";
 
 interface DesktopViewProps {
   currentDate: Date;
@@ -13,9 +14,11 @@ interface DesktopViewProps {
   departments: Department[];
   hiddenDeptIds: number[];
   onEventClick: (e: CalendarEvent) => void;
+  onEventLongPress: (e: CalendarEvent) => void;
   onSlotClick: (date: Date, hour: number) => void;
   onEventHover: (e: React.MouseEvent, event: CalendarEvent) => void;
   onEventLeave: () => void;
+  draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
 
 export default function DesktopView({
@@ -25,9 +28,11 @@ export default function DesktopView({
   departments,
   hiddenDeptIds,
   onEventClick,
+  onEventLongPress,
   onSlotClick,
   onEventHover,
   onEventLeave,
+  draftEvent
 }: DesktopViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
@@ -49,7 +54,6 @@ export default function DesktopView({
     return () => clearInterval(interval);
   }, []);
 
-  // --- Date Helpers ---
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay(); 
@@ -66,24 +70,17 @@ export default function DesktopView({
   });
   const isToday = (date: Date) => new Date().toDateString() === date.toDateString();
 
-  // --- Styling ---
   const getEventStyle = (event: CalendarEvent) => {
     const dept = departments.find(d => d.id === event.department_id);
     const baseColor = dept ? dept.color : "#6b7280"; 
-    // (Styles copied from your previous code)
+    
     if (event.status === 'pending') {
       return { backgroundColor: `${baseColor}40`, border: `1px dashed ${baseColor}`, color: '#fef08a' };
     }
     if (event.status === 'rejected') {
       return { backgroundColor: '#000000', color: '#9ca3af', textDecoration: 'line-through' };
     }
-    return { backgroundColor: `${baseColor}60`, color: "#e5e7eb", borderLeft: `4px solid ${baseColor}` };
-  };
-
-  const getIndicatorPosition = () => {
-    const minutes = now.getHours() * 60 + now.getMinutes();
-    const percent = (minutes / 1440) * 100;
-    return `${percent}%`;
+    return { backgroundColor: `${baseColor}60`, color: "#e5e7eb", borderLeft: `3px solid ${baseColor}` };
   };
 
   return (
@@ -101,7 +98,6 @@ export default function DesktopView({
             return (
               <div key={i} className={clsx("flex-1 flex flex-row items-stretch border-b border-white/10 relative transition-all gap-1 group", isToday(dayDate) && "bg-white/5", hoveredDayIndex === i && "bg-white/10")}>
                 
-                {/* Day Label + Holiday (Vertical) */}
                 <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-10">
                     <div className="flex flex-col items-center justify-center w-full">
                         <span className="text-[10px] font-bold">{WEEK_DAYS[i]}</span>
@@ -116,10 +112,9 @@ export default function DesktopView({
                     )}
                 </div>
 
-                {/* All Day Chips */}
                 <div className="flex-1 flex flex-row gap-1 items-center justify-start overflow-hidden px-1">
                   {allDayEvents.map(ev => (
-                      <div key={ev.id} onClick={(e) => { e.stopPropagation(); onEventClick(ev); }} className="h-[90%] w-[6px] rounded-full" style={{ backgroundColor: getEventStyle(ev).backgroundColor }} title={ev.title}></div>
+                      <div key={ev.id} onClick={(e) => { e.stopPropagation(); onEventClick(ev); }} className="h-[90%] w-[6px] rounded-full cursor-pointer" style={{ backgroundColor: getEventStyle(ev).backgroundColor }} title={ev.title}></div>
                   ))}
                 </div>
               </div>
@@ -143,7 +138,6 @@ export default function DesktopView({
             </div>
 
             {weekDays.map((dayDate, dayIndex) => {
-              // ... Event Filtering & Layout logic from original ...
               const dayEvents = events.filter(e => {
                 const eStart = new Date(e.start_time).getTime();
                 const eEnd = new Date(e.end_time).getTime();
@@ -160,6 +154,9 @@ export default function DesktopView({
                  return { ...e, start_time: new Date(visualStart).toISOString(), end_time: new Date(visualEnd).toISOString() };
               }));
 
+              // Placeholder Logic for Desktop
+              const isDraftDay = draftEvent && draftEvent.date.toDateString() === dayDate.toDateString();
+
               return (
                 <div key={dayIndex} className={clsx("flex-1 border-b border-white/5 relative group min-h-[60px]", hoveredDayIndex === dayIndex && "bg-white/[0.03]")}>
                   <div className="absolute inset-0 flex z-0">
@@ -169,14 +166,33 @@ export default function DesktopView({
                             onClick={() => onSlotClick(dayDate, h)} />
                     ))}
                   </div>
-                  {/* Events Render */}
+
+                  {/* Placeholder Render */}
+                  {isDraftDay && (
+                      <div 
+                        className="absolute z-20 h-[80%] top-[10%] bg-emerald-500/20 border-2 border-dashed border-emerald-500 rounded flex items-center justify-center animate-pulse cursor-pointer"
+                        style={{
+                            right: `${(draftEvent!.startHour / 24) * 100}%`,
+                            width: `${((draftEvent!.endHour - draftEvent!.startHour) / 24) * 100}%`
+                        }}
+                        onClick={() => onSlotClick(dayDate, draftEvent!.startHour)}
+                      >
+                          <Plus className="text-emerald-400" size={20} />
+                      </div>
+                  )}
+
                   {visualEvents.map((event) => {
                     const originalEvent = dayEvents.find(e => e.id === event.id);
                     if(!originalEvent) return null;
                     const style = getEventStyle(originalEvent);
                     const laneHeightPercent = 100 / event.totalLanes;
                     return (
-                      <div key={event.id} onClick={(e) => { e.stopPropagation(); onEventClick(originalEvent); }} onMouseEnter={(e) => onEventHover(e, originalEvent)} onMouseLeave={onEventLeave}
+                      <div 
+                        key={event.id} 
+                        onClick={(e) => { e.stopPropagation(); onEventClick(originalEvent); }} 
+                        onContextMenu={(e) => { e.preventDefault(); onEventLongPress(originalEvent); }} // Desktop Right Click = Long Press
+                        onMouseEnter={(e) => onEventHover(e, originalEvent)} 
+                        onMouseLeave={onEventLeave}
                         className="absolute rounded-sm px-1 flex items-center shadow-lg cursor-pointer hover:brightness-125 z-10 border-y border-r border-white/10 text-[10px]"
                         style={{ right: `${event.right}%`, width: `${event.width}%`, top: `${event.laneIndex * laneHeightPercent}%`, height: `calc(${laneHeightPercent}% - 2px)`, ...style }}>
                         <div className="truncate w-full">{event.title}</div>
