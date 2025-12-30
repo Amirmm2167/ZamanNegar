@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "re
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, LogOut, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
 import clsx from "clsx";
 import EventModal from "./EventModal";
 import DigitalClock from "./DigitalClock";
@@ -12,9 +12,10 @@ import EventTooltip from "./EventTooltip";
 import LegendFilter from "./LegendFilter";
 import GlassPane from "@/components/ui/GlassPane";
 import BottomSheet from "./ui/BottomSheet";
-import MobileContextMenu from "./views/mobile/MobileContextMenu";
+import MoveConfirmationModal from "./modals/MoveConfirmationModal";
 
-// Import Views from new Structure
+// --- CORRECTED IMPORT PATHS ---
+import MobileContextMenu from "./views/mobile/MobileContextMenu"; 
 import DesktopWeekView from "./views/desktop/WeekView";
 import DesktopMonthView from "./views/desktop/MonthView"; 
 import MobileGrid from "./views/mobile/MobileGrid"; 
@@ -58,47 +59,65 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [modalStart, setModalStart] = useState("09:00");
   const [modalEnd, setModalEnd] = useState("10:00");
 
-  // Landscape Mode for Mobile
+  // Mobile Specifics
   const [isLandscape, setIsLandscape] = useState(false);
+  
+  // --- MISSING STATE FIXED HERE ---
+  const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
+  const [contextMenuEvent, setContextMenuEvent] = useState<CalendarEvent | null>(null);
 
-  // Swipe State
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const [isSwiping, setIsSwiping] = useState(false);
-  const touchStartX = useRef(0);
+  // --- DRAG & DROP STATE ---
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragEvent, setDragEvent] = useState<CalendarEvent | null>(null);
+  const [dragPosition, setDragPosition] = useState<{x: number, y: number} | null>(null);
+  const [isMoveConfirmOpen, setIsMoveConfirmOpen] = useState(false);
+  const [dropTime, setDropTime] = useState<Date | null>(null);
+  const scrollInterval = useRef<NodeJS.Timeout | null>(null);
 
   useImperativeHandle(ref, () => ({
-    openNewEventModal: () => {
-      handleOpenModal(new Date(), "09:00", "10:00");
-    }
+    openNewEventModal: () => handleOpenModal(new Date(), "09:00", "10:00")
   }));
 
   useEffect(() => {
     const handleResize = () => {
         const mobile = window.innerWidth < 768;
         setIsMobile(mobile);
-        // Auto-switch to appropriate default view if changing context
-        if (mobile && (viewMode === 'week' || viewMode === 'month')) {
-            setViewMode('1day');
-        } else if (!mobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week')) {
-            setViewMode('week');
-        }
+        if (mobile && (viewMode === 'week' || viewMode === 'month')) setViewMode('1day');
+        else if (!mobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week')) setViewMode('week');
     };
-    
-    // Initial check
     handleResize();
     window.addEventListener('resize', handleResize);
-
     setUsername(localStorage.getItem("username") || "کاربر");
     setUserRole(localStorage.getItem("role") || "viewer");
     fetchData();
-
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // --- GLOBAL EVENT LISTENERS FOR DRAG ---
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('touchmove', handleGlobalMove, { passive: false });
+      window.addEventListener('touchend', handleGlobalUp);
+      window.addEventListener('mousemove', handleGlobalMove);
+      window.addEventListener('mouseup', handleGlobalUp);
+    } else {
+      window.removeEventListener('touchmove', handleGlobalMove);
+      window.removeEventListener('touchend', handleGlobalUp);
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('mouseup', handleGlobalUp);
+      if (scrollInterval.current) clearInterval(scrollInterval.current);
+    }
+    return () => {
+      window.removeEventListener('touchmove', handleGlobalMove);
+      window.removeEventListener('touchend', handleGlobalUp);
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('mouseup', handleGlobalUp);
+    };
+  }, [isDragging]);
 
   const fetchData = async () => {
     try {
       if(events.length === 0) setLoading(true);
-      
       const [eventsRes, holidaysRes, deptsRes, meRes] = await Promise.all([
         api.get<CalendarEvent[]>("/events/"),
         api.get<Holiday[]>("/holidays/"),
@@ -117,41 +136,110 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    router.push("/login");
+  // --- DRAG ENGINE ---
+  const startDrag = (event: CalendarEvent) => {
+    setDragEvent(event);
+    setIsDragging(true);
+    setIsContextMenuOpen(false);
+    setDragPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   };
 
-  // --- Realtime Swipe Logic ---
-  const handleTouchStart = (e: React.TouchEvent) => {
-      if (!isMobile) return;
+  const handleGlobalMove = (e: TouchEvent | MouseEvent) => {
+    e.preventDefault(); 
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setDragPosition({ x: clientX, y: clientY });
+
+    const edgeThreshold = 50;
+    if (clientY < edgeThreshold) {
+       startEdgeScroll('prev');
+    } else if (clientY > window.innerHeight - edgeThreshold) {
+       startEdgeScroll('next');
+    } else {
+       if (scrollInterval.current) clearInterval(scrollInterval.current);
+    }
+  };
+
+  const startEdgeScroll = (direction: 'next' | 'prev') => {
+    if (scrollInterval.current) return; 
+    scrollInterval.current = setInterval(() => {
+      if (direction === 'next') nextDate();
+      else prevDate();
+    }, 800); 
+  };
+
+  const handleGlobalUp = (e: TouchEvent | MouseEvent) => {
+    if (scrollInterval.current) clearInterval(scrollInterval.current);
+    setIsDragging(false);
+    
+    // Default proposed time (User will fine-tune in modal)
+    const proposedDate = new Date(currentDate); 
+    proposedDate.setHours(new Date().getHours(), 0, 0, 0); 
+    
+    setDropTime(proposedDate);
+    setIsMoveConfirmOpen(true);
+  };
+
+  const finalizeMove = async (newStart: Date, newEnd: Date) => {
+    if (!dragEvent) return;
+    try {
+      setLoading(true);
+      await api.patch(`/events/${dragEvent.id}`, {
+        start_time: newStart.toISOString(),
+        end_time: newEnd.toISOString()
+      });
+      fetchData();
+      setIsMoveConfirmOpen(false);
+      setDragEvent(null);
+    } catch (e) {
+      setError("خطا در جابجایی رویداد.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Normal Handlers ---
+  const handleMenuEdit = () => {
+      if (contextMenuEvent) {
+          setIsContextMenuOpen(false);
+          handleOpenModal(new Date(contextMenuEvent.start_time), "", "", contextMenuEvent);
+      }
+  };
+  const handleMenuDelete = async () => {
+      if (!contextMenuEvent) return;
+      if (confirm("آیا از حذف این رویداد اطمینان دارید؟")) {
+          await api.delete(`/events/${contextMenuEvent.id}`);
+          setIsContextMenuOpen(false);
+          fetchData();
+      }
+  };
+  const handleMenuMove = () => {
+      if (contextMenuEvent) startDrag(contextMenuEvent);
+  };
+
+  // --- Swipe Logic (Navigation) ---
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+
+  const handleTouchStartNav = (e: React.TouchEvent) => {
+      if (!isMobile || isDragging) return; 
       touchStartX.current = e.targetTouches[0].clientX;
       setIsSwiping(true);
   };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-      if (!isMobile || !isSwiping) return;
-      const currentX = e.targetTouches[0].clientX;
-      // Calculate delta. 
-      // User drags Left (<0) to see Future. 
-      // User drags Right (>0) to see Past.
-      const delta = currentX - touchStartX.current;
-      setSwipeOffset(delta);
+  const handleTouchMoveNav = (e: React.TouchEvent) => {
+      if (!isMobile || isDragging || !isSwiping) return;
+      setSwipeOffset(e.targetTouches[0].clientX - touchStartX.current);
   };
-
-  const handleTouchEnd = () => {
-      if (!isMobile) return;
-      const threshold = 80; 
-      if (swipeOffset > threshold) {
-          prevDate(); 
-      } else if (swipeOffset < -threshold) {
-          nextDate(); 
-      }
+  const handleTouchEndNav = () => {
+      if (!isMobile || isDragging) return;
+      if (swipeOffset > 80) prevDate();
+      else if (swipeOffset < -80) nextDate();
       setSwipeOffset(0);
       setIsSwiping(false);
   };
 
-  // --- Navigation Logic ---
+  // --- Navigation & Helper Functions ---
   const nextDate = () => { 
       const d = new Date(currentDate); 
       if (viewMode === 'week' || viewMode === 'mobile-week') d.setDate(d.getDate() + 7);
@@ -169,14 +257,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       setCurrentDate(d); 
   };
   const goToToday = () => setCurrentDate(new Date());
-
+  
   const handleHardRefresh = () => {
-      if (window.confirm("آیا می‌خواهید برنامه را مجددا بارگذاری کنید؟ (پاکسازی حافظه موقت)")) {
+      if (window.confirm("آیا می‌خواهید برنامه را مجددا بارگذاری کنید؟")) {
           if ('serviceWorker' in navigator) {
               navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                  for(let registration of registrations) {
-                      registration.unregister();
-                  }
+                  for(let registration of registrations) { registration.unregister(); }
                   window.location.reload();
               });
           } else {
@@ -185,73 +271,27 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       }
   };
 
-  // --- Interaction Handlers ---
   const handleOpenModal = (date: Date, start: string, end: string, event: CalendarEvent | null = null) => {
-      setModalInitialDate(date);
-      setModalStart(start);
-      setModalEnd(end);
-      setSelectedEvent(event);
-      setIsModalOpen(true);
-      setDraftEvent(null);
+      setModalInitialDate(date); setModalStart(start); setModalEnd(end); setSelectedEvent(event); setIsModalOpen(true); setDraftEvent(null);
   };
-
   const handleSlotClick = (date: Date, hour: number) => {
-      if (draftEvent && 
-          draftEvent.date.toDateString() === date.toDateString() && 
-          draftEvent.startHour === hour) {
-          handleOpenModal(date, `${hour.toString().padStart(2, '0')}:00`, `${(hour + 1).toString().padStart(2, '0')}:00`);
+      if (draftEvent && draftEvent.date.toDateString() === date.toDateString() && draftEvent.startHour === hour) {
+          handleOpenModal(date, `${hour}:00`, `${hour+1}:00`);
       } else {
           setDraftEvent({ date, startHour: hour, endHour: hour + 1 });
       }
   };
-
-  const handleEventClick = (event: CalendarEvent) => {
-      setHoveredEvent(event);
-      setDraftEvent(null);
-  };
-
+  const handleEventClick = (event: CalendarEvent) => { setHoveredEvent(event); setDraftEvent(null); };
+  
+  // FIX: Ensure setContextMenuEvent is available here
   const handleEventLongPress = (event: CalendarEvent) => {
-      // On mobile, open Bottom Sheet Context Menu
-      if (isMobile) {
-          setContextMenuEvent(event);
-          setIsContextMenuOpen(true);
-      } else {
-          // On Desktop, verify permission then open Edit Modal directly
-          const isOwner = event.proposer_id === userId;
-          const isManager = ["manager", "superadmin", "evaluator"].includes(userRole);
-          if (isOwner || isManager) {
-              handleOpenModal(new Date(event.start_time), "", "", event);
-          }
+      if (isMobile) { 
+          setContextMenuEvent(event); 
+          setIsContextMenuOpen(true); 
       }
-  };
-
-  // 2. Context Menu Actions
-  const handleMenuEdit = () => {
-      if (contextMenuEvent) {
-          setIsContextMenuOpen(false);
-          handleOpenModal(new Date(contextMenuEvent.start_time), "", "", contextMenuEvent);
+      else if (["manager", "superadmin", "evaluator"].includes(userRole) || event.proposer_id === userId) {
+          handleOpenModal(new Date(event.start_time), "", "", event);
       }
-  };
-
-  const handleMenuDelete = async () => {
-      if (!contextMenuEvent) return;
-      if (confirm("آیا از حذف این رویداد اطمینان دارید؟")) {
-          try {
-              setLoading(true);
-              await api.delete(`/events/${contextMenuEvent.id}`);
-              setIsContextMenuOpen(false);
-              fetchData();
-          } catch (e) {
-              setError("خطا در حذف رویداد");
-              setLoading(false);
-          }
-      }
-  };
-
-  const handleMenuMove = () => {
-      // PHASE 3: Will implement Drag Mode triggering here
-      alert("قابلیت جابجایی (Drag & Drop) در مرحله بعد فعال می‌شود.");
-      setIsContextMenuOpen(false);
   };
 
   const handleEventHover = (e: React.MouseEvent, event: CalendarEvent) => {
@@ -267,131 +307,58 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   return (
     <>
-      {isMobile && (
-        <button 
-            onClick={() => setIsLandscape(!isLandscape)}
-            className="fixed bottom-4 right-4 z-[9999] p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20 hover:scale-110 transition-transform"
-        >
-            {isLandscape ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-        </button>
-      )}
+      {isMobile && <button onClick={() => setIsLandscape(!isLandscape)} className="fixed bottom-4 right-4 z-[5000] p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20 hover:scale-110 transition-transform"><Maximize2 size={20} /></button>}
 
-      <GlassPane intensity="medium" className={clsx(
-          "flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10 shadow-none sm:shadow-2xl transition-all duration-300",
-          isLandscape && "fixed inset-0 z-[5000] w-[100vh] h-[100vw] origin-top-right rotate-90 translate-x-[100%]"
-      )}>
-        
+      <GlassPane intensity="medium" className={clsx("flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10 shadow-none sm:shadow-2xl transition-all duration-300", isLandscape && "fixed inset-0 z-[5000] w-[100vh] h-[100vw] origin-top-right rotate-90 translate-x-[100%]")}>
+        {/* Header */}
         <div className="flex flex-col sm:flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0">
-          
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
             <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />
-
             <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
               <button onClick={nextDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronRight size={18} /></button>
               <button onClick={goToToday} className="px-3 py-1 text-xs font-bold hover:bg-white/10 text-white rounded-lg">امروز</button>
               <button onClick={prevDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronLeft size={18} /></button>
             </div>
-
-            {isMobile && (
-                <div className="flex gap-2">
-                    <button onClick={handleHardRefresh} className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/10"><RefreshCw size={16} /></button>
-                    <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button>
-                </div>
-            )}
+            {isMobile && <div className="flex gap-2"><button onClick={handleHardRefresh} className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/10"><RefreshCw size={16} /></button><button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button></div>}
           </div>
-
           <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto justify-end">
-            <span className="text-sm font-bold text-gray-100 whitespace-nowrap">
-              {currentDate.toLocaleDateString("fa-IR", { month: "long", year: "numeric" })}
-            </span>
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/10">
-               <User size={14} className="text-blue-400" />
-               <span className="text-xs text-gray-200">{username}</span>
-            </div>
+            <span className="text-sm font-bold text-gray-100 whitespace-nowrap">{currentDate.toLocaleDateString("fa-IR", { month: "long", year: "numeric" })}</span>
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/10"><User size={14} className="text-blue-400" /><span className="text-xs text-gray-200">{username}</span></div>
             <LegendFilter departments={departments} hiddenIds={hiddenDeptIds} onToggle={(id) => setHiddenDeptIds(p => p.includes(id) ? p.filter(x=>x!==id) : [...p, id])} onShowAll={() => setHiddenDeptIds([])} />
-            <button 
-              onClick={() => handleOpenModal(new Date(), "09:00", "10:00")}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg shadow-lg border border-emerald-500/30"
-            >
-              <Plus size={16} /> <span>جدید</span>
-            </button>
+            <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg shadow-lg border border-emerald-500/30"><Plus size={16} /> <span>جدید</span></button>
           </div>
         </div>
 
-        <div 
-          className="flex-1 overflow-hidden relative"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-            <div 
-                className="h-full w-full transition-transform duration-75 ease-linear"
-                style={{ transform: `translateX(${swipeOffset}px)` }}
-            >
-                {viewMode === 'week' && (
-                    <DesktopWeekView 
-                        currentDate={currentDate} events={events} holidays={holidays} departments={departments} 
-                        hiddenDeptIds={hiddenDeptIds} 
-                        onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
-                        onSlotClick={handleSlotClick} onEventHover={handleEventHover} onEventLeave={handleEventLeave}
-                        draftEvent={draftEvent}
-                    />
-                )}
-                {viewMode === 'month' && (
-                    <DesktopMonthView 
-                        currentDate={currentDate} events={events} holidays={holidays} departments={departments}
-                        onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
-                        onSlotClick={handleSlotClick}
-                    />
-                )}
-
-                {(viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week') && (
-                    <MobileGrid 
-                        daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7}
-                        currentDate={currentDate} events={events} holidays={holidays} departments={departments} 
-                        hiddenDeptIds={hiddenDeptIds} 
-                        onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
-                        onSlotClick={handleSlotClick} draftEvent={draftEvent}
-                    />
-                )}
-
-                {viewMode === 'agenda' && (
-                    <AgendaView events={events} departments={departments} onEventClick={handleEventClick} />
-                )}
+        {/* View Container */}
+        <div className="flex-1 overflow-hidden relative" onTouchStart={handleTouchStartNav} onTouchMove={handleTouchMoveNav} onTouchEnd={handleTouchEndNav}>
+            <div className="h-full w-full transition-transform duration-75 ease-linear" style={{ transform: `translateX(${swipeOffset}px)` }}>
+                {/* Desktop Views */}
+                {viewMode === 'week' && <DesktopWeekView currentDate={currentDate} events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} onEventClick={handleEventClick} onEventLongPress={handleEventLongPress} onSlotClick={handleSlotClick} onEventHover={handleEventHover} onEventLeave={handleEventLeave} draftEvent={draftEvent} />}
+                {viewMode === 'month' && <DesktopMonthView currentDate={currentDate} events={events} holidays={holidays} departments={departments} onEventClick={handleEventClick} onEventLongPress={handleEventLongPress} onSlotClick={handleSlotClick} />}
+                {/* Mobile Views */}
+                {(viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week') && <MobileGrid daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} currentDate={currentDate} events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} onEventClick={handleEventClick} onEventLongPress={handleEventLongPress} onSlotClick={handleSlotClick} draftEvent={draftEvent} />}
+                {/* Shared */}
+                {viewMode === 'agenda' && <AgendaView events={events} departments={departments} onEventClick={handleEventClick} />}
             </div>
         </div>
-        <BottomSheet 
-        isOpen={isContextMenuOpen} 
-        onClose={() => setIsContextMenuOpen(false)}
-        title="عملیات رویداد"
-      >
-        {contextMenuEvent && (
-            <MobileContextMenu 
-                event={contextMenuEvent}
-                userRole={userRole}
-                currentUserId={userId}
-                departments={departments}
-                onClose={() => setIsContextMenuOpen(false)}
-                onEdit={handleMenuEdit}
-                onDelete={handleMenuDelete}
-                onMove={handleMenuMove}
-            />
-        )}
-      </BottomSheet>
 
-        <EventModal 
-          isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }}
-          onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd}
-          eventToEdit={selectedEvent} currentUserId={userId}
-        />
-        
-        {hoveredEvent && (
-          <EventTooltip 
-              event={hoveredEvent} departments={departments} onClose={() => setHoveredEvent(null)} 
-              onMouseEnter={() => { if(tooltipTimeout.current) clearTimeout(tooltipTimeout.current); }} 
-              onMouseLeave={handleEventLeave} 
-          />
+        {/* Overlays */}
+        {isDragging && dragEvent && dragPosition && (
+            <div className="fixed z-[9999] p-2 rounded-lg shadow-2xl pointer-events-none opacity-80 backdrop-blur-sm border-2 border-white/50" style={{ top: dragPosition.y - 30, left: dragPosition.x - 50, width: '120px', backgroundColor: departments.find(d => d.id === dragEvent.department_id)?.color || '#666', color: 'white' }}>
+                <div className="text-xs font-bold truncate">{dragEvent.title}</div>
+                <div className="text-[10px] mt-1 flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> رها کنید تا زمان تایید شود</div>
+            </div>
         )}
+
+        <EventModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }} onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd} eventToEdit={selectedEvent} currentUserId={userId} />
+        
+        {hoveredEvent && <EventTooltip event={hoveredEvent} departments={departments} onClose={() => setHoveredEvent(null)} onMouseEnter={() => { if(tooltipTimeout.current) clearTimeout(tooltipTimeout.current); }} onMouseLeave={() => tooltipTimeout.current = setTimeout(() => setHoveredEvent(null), 150)} />}
+        
+        <BottomSheet isOpen={isContextMenuOpen} onClose={() => setIsContextMenuOpen(false)} title="عملیات رویداد">
+            {contextMenuEvent && <MobileContextMenu event={contextMenuEvent} userRole={userRole} currentUserId={userId} departments={departments} onClose={() => setIsContextMenuOpen(false)} onEdit={handleMenuEdit} onDelete={handleMenuDelete} onMove={handleMenuMove} />}
+        </BottomSheet>
+
+        <MoveConfirmationModal isOpen={isMoveConfirmOpen} onClose={() => setIsMoveConfirmOpen(false)} onConfirm={finalizeMove} originalEvent={dragEvent} newStartTime={dropTime} />
       </GlassPane>
     </>
   );
