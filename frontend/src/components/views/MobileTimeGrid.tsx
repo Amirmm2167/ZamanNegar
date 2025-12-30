@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { CalendarEvent, Department } from "@/types";
 import { toPersianDigits } from "@/lib/utils";
+import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, LogOut, Smartphone, Monitor, List, Calendar as CalIcon } from "lucide-react";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 
