@@ -1,7 +1,6 @@
 "use client";
 
 import { CalendarEvent, Department } from "@/types";
-import clsx from "clsx";
 
 interface AgendaViewProps {
   events: CalendarEvent[];
@@ -10,10 +9,8 @@ interface AgendaViewProps {
 }
 
 export default function AgendaView({ events, departments, onEventClick }: AgendaViewProps) {
-  // Sort events by time
   const sortedEvents = [...events].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-  // Group by Day
   const grouped: { [key: string]: CalendarEvent[] } = {};
   sortedEvents.forEach(ev => {
       const day = new Date(ev.start_time).toLocaleDateString("fa-IR", { weekday: 'long', day: 'numeric', month: 'long' });
@@ -37,7 +34,7 @@ export default function AgendaView({ events, departments, onEventClick }: Agenda
                         <div 
                             key={ev.id} 
                             onClick={() => onEventClick(ev)}
-                            className="bg-white/5 border border-white/5 rounded-xl p-3 flex items-center gap-4 hover:bg-white/10 transition-colors cursor-pointer"
+                            className="bg-white/5 border border-white/5 rounded-xl p-3 flex items-center gap-4 hover:bg-white/10 transition-colors cursor-pointer active:scale-95 duration-200"
                         >
                             <div className="flex flex-col items-center min-w-[50px] border-l border-white/10 pl-3 text-gray-400">
                                 <span className="text-sm font-bold text-white">{startTime}</span>
@@ -53,7 +50,7 @@ export default function AgendaView({ events, departments, onEventClick }: Agenda
             </div>
         ))}
         {sortedEvents.length === 0 && (
-            <div className="text-center text-gray-500 mt-10">هیچ رویدادی یافت نشد.</div>
+            <div className="text-center text-gray-500 mt-10">هیچ رویدادی برای نمایش وجود ندارد.</div>
         )}
     </div>
   );

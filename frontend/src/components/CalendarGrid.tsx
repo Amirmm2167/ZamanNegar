@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "re
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, LogOut } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, LogOut, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
 import clsx from "clsx";
 import EventModal from "./EventModal";
 import DigitalClock from "./DigitalClock";
@@ -12,12 +12,12 @@ import EventTooltip from "./EventTooltip";
 import LegendFilter from "./LegendFilter";
 import GlassPane from "@/components/ui/GlassPane";
 
-// Views
-import WeekView from "./views/WeekView";
-import MobileTimeGrid from "./views/MobileTimeGrid";
-import AgendaView from "./views/AgendaView";
-import MonthView from "./views/MonthView";
-import ViewSwitcher, { ViewMode } from "./views/ViewSwitcher";
+// Import Views from new Structure
+import DesktopWeekView from "./views/desktop/WeekView";
+import DesktopMonthView from "./views/desktop/MonthView"; 
+import MobileGrid from "./views/mobile/MobileGrid"; 
+import AgendaView from "./views/shared/AgendaView";
+import ViewSwitcher, { ViewMode } from "./views/shared/ViewSwitcher";
 
 interface Holiday {
   id: number;
@@ -34,6 +34,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   // --- STATE ---
   const [viewMode, setViewMode] = useState<ViewMode>("1day"); 
+  const [isMobile, setIsMobile] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -55,6 +56,14 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [modalStart, setModalStart] = useState("09:00");
   const [modalEnd, setModalEnd] = useState("10:00");
 
+  // Landscape Mode for Mobile
+  const [isLandscape, setIsLandscape] = useState(false);
+
+  // Swipe State
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const touchStartX = useRef(0);
+
   useImperativeHandle(ref, () => ({
     openNewEventModal: () => {
       handleOpenModal(new Date(), "09:00", "10:00");
@@ -62,17 +71,32 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   }));
 
   useEffect(() => {
-    if (window.innerWidth >= 768) {
-        setViewMode("week");
-    }
+    const handleResize = () => {
+        const mobile = window.innerWidth < 768;
+        setIsMobile(mobile);
+        // Auto-switch to appropriate default view if changing context
+        if (mobile && (viewMode === 'week' || viewMode === 'month')) {
+            setViewMode('1day');
+        } else if (!mobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week')) {
+            setViewMode('week');
+        }
+    };
+    
+    // Initial check
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
     setUsername(localStorage.getItem("username") || "کاربر");
     setUserRole(localStorage.getItem("role") || "viewer");
     fetchData();
+
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      if(events.length === 0) setLoading(true);
+      
       const [eventsRes, holidaysRes, deptsRes, meRes] = await Promise.all([
         api.get<CalendarEvent[]>("/events/"),
         api.get<Holiday[]>("/holidays/"),
@@ -96,29 +120,39 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     router.push("/login");
   };
 
-  // --- Swipe Logic ---
-  const touchStartX = useRef(0);
-  const touchEndX = useRef(0);
-
+  // --- Realtime Swipe Logic ---
   const handleTouchStart = (e: React.TouchEvent) => {
+      if (!isMobile) return;
       touchStartX.current = e.targetTouches[0].clientX;
-  };
-  const handleTouchMove = (e: React.TouchEvent) => {
-      touchEndX.current = e.targetTouches[0].clientX;
-  };
-  const handleTouchEnd = () => {
-      const distance = touchStartX.current - touchEndX.current;
-      const minSwipeDistance = 50;
-      if (Math.abs(distance) > minSwipeDistance) {
-          if (distance > 0) prevDate(); // Swipe Right (RTL: Go Past)
-          else nextDate(); // Swipe Left (RTL: Go Future)
-      }
+      setIsSwiping(true);
   };
 
-  // --- Smart Navigation ---
+  const handleTouchMove = (e: React.TouchEvent) => {
+      if (!isMobile || !isSwiping) return;
+      const currentX = e.targetTouches[0].clientX;
+      // Calculate delta. 
+      // User drags Left (<0) to see Future. 
+      // User drags Right (>0) to see Past.
+      const delta = currentX - touchStartX.current;
+      setSwipeOffset(delta);
+  };
+
+  const handleTouchEnd = () => {
+      if (!isMobile) return;
+      const threshold = 80; 
+      if (swipeOffset > threshold) {
+          prevDate(); 
+      } else if (swipeOffset < -threshold) {
+          nextDate(); 
+      }
+      setSwipeOffset(0);
+      setIsSwiping(false);
+  };
+
+  // --- Navigation Logic ---
   const nextDate = () => { 
       const d = new Date(currentDate); 
-      if (viewMode === 'week') d.setDate(d.getDate() + 7);
+      if (viewMode === 'week' || viewMode === 'mobile-week') d.setDate(d.getDate() + 7);
       else if (viewMode === '3day') d.setDate(d.getDate() + 3);
       else if (viewMode === 'month') d.setMonth(d.getMonth() + 1);
       else d.setDate(d.getDate() + 1);
@@ -126,13 +160,28 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
   const prevDate = () => { 
       const d = new Date(currentDate); 
-      if (viewMode === 'week') d.setDate(d.getDate() - 7);
+      if (viewMode === 'week' || viewMode === 'mobile-week') d.setDate(d.getDate() - 7);
       else if (viewMode === '3day') d.setDate(d.getDate() - 3);
       else if (viewMode === 'month') d.setMonth(d.getMonth() - 1);
       else d.setDate(d.getDate() - 1);
       setCurrentDate(d); 
   };
   const goToToday = () => setCurrentDate(new Date());
+
+  const handleHardRefresh = () => {
+      if (window.confirm("آیا می‌خواهید برنامه را مجددا بارگذاری کنید؟ (پاکسازی حافظه موقت)")) {
+          if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  for(let registration of registrations) {
+                      registration.unregister();
+                  }
+                  window.location.reload();
+              });
+          } else {
+              window.location.reload();
+          }
+      }
+  };
 
   // --- Interaction Handlers ---
   const handleOpenModal = (date: Date, start: string, end: string, event: CalendarEvent | null = null) => {
@@ -179,100 +228,116 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   if (error) return <div className="flex justify-center items-center h-full text-red-400 gap-2"><AlertCircle /> {error}</div>;
 
   return (
-    <GlassPane intensity="medium" className="flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10 shadow-none sm:shadow-2xl">
-      
-      {/* MAIN HEADER */}
-      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0">
-        
-        {/* Left: Nav Controls */}
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
-          <ViewSwitcher currentView={viewMode} onChange={setViewMode} />
-
-          <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
-            <button onClick={nextDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronRight size={18} /></button>
-            <button onClick={goToToday} className="px-3 py-1 text-xs font-bold hover:bg-white/10 text-white rounded-lg">امروز</button>
-            <button onClick={prevDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronLeft size={18} /></button>
-          </div>
-
-          <button 
-            onClick={() => handleOpenModal(new Date(), "09:00", "10:00")}
-            className="flex sm:hidden items-center justify-center p-2 bg-emerald-600/80 text-white rounded-xl shadow-lg border border-emerald-500/30"
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-
-        {/* Right: Info */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-          <span className="text-sm font-bold text-gray-100 whitespace-nowrap hidden sm:block">
-            {currentDate.toLocaleDateString("fa-IR", { month: "long", year: "numeric" })}
-          </span>
-          <div className="hidden sm:flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/10">
-             <User size={14} className="text-blue-400" />
-             <span className="text-xs text-gray-200">{username}</span>
-          </div>
-          <LegendFilter departments={departments} hiddenIds={hiddenDeptIds} onToggle={(id) => setHiddenDeptIds(p => p.includes(id) ? p.filter(x=>x!==id) : [...p, id])} onShowAll={() => setHiddenDeptIds([])} />
-          <button 
-            onClick={() => handleOpenModal(new Date(), "09:00", "10:00")}
-            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-xl shadow-lg border border-emerald-500/30"
-          >
-            <Plus size={16} /> <span>جدید</span>
-          </button>
-        </div>
-      </div>
-
-      {/* VIEW CONTENT */}
-      <div 
-        className="flex-1 overflow-hidden relative" 
-        onMouseLeave={handleEventLeave}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {viewMode === 'week' && (
-            <WeekView 
-                currentDate={currentDate} events={events} holidays={holidays} departments={departments} 
-                hiddenDeptIds={hiddenDeptIds} 
-                onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
-                onSlotClick={handleSlotClick} onEventHover={handleEventHover} onEventLeave={handleEventLeave}
-                draftEvent={draftEvent}
-            />
-        )}
-        {(viewMode === '1day' || viewMode === '3day') && (
-            <MobileTimeGrid 
-                daysToShow={viewMode === '1day' ? 1 : 3}
-                currentDate={currentDate} events={events} holidays={holidays} departments={departments} 
-                hiddenDeptIds={hiddenDeptIds} 
-                onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
-                onSlotClick={handleSlotClick} draftEvent={draftEvent}
-            />
-        )}
-        {viewMode === 'month' && (
-            <MonthView 
-                currentDate={currentDate} events={events} holidays={holidays} departments={departments}
-                onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
-                onSlotClick={handleSlotClick}
-            />
-        )}
-        {viewMode === 'agenda' && (
-            <AgendaView events={events} departments={departments} onEventClick={handleEventClick} />
-        )}
-      </div>
-
-      <EventModal 
-        isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }}
-        onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd}
-        eventToEdit={selectedEvent} currentUserId={userId}
-      />
-      
-      {hoveredEvent && (
-        <EventTooltip 
-            event={hoveredEvent} departments={departments} onClose={() => setHoveredEvent(null)} 
-            onMouseEnter={() => { if(tooltipTimeout.current) clearTimeout(tooltipTimeout.current); }} 
-            onMouseLeave={handleEventLeave} 
-        />
+    <>
+      {isMobile && (
+        <button 
+            onClick={() => setIsLandscape(!isLandscape)}
+            className="fixed bottom-4 right-4 z-[9999] p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20 hover:scale-110 transition-transform"
+        >
+            {isLandscape ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+        </button>
       )}
-    </GlassPane>
+
+      <GlassPane intensity="medium" className={clsx(
+          "flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10 shadow-none sm:shadow-2xl transition-all duration-300",
+          isLandscape && "fixed inset-0 z-[5000] w-[100vh] h-[100vw] origin-top-right rotate-90 translate-x-[100%]"
+      )}>
+        
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0">
+          
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+            <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />
+
+            <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
+              <button onClick={nextDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronRight size={18} /></button>
+              <button onClick={goToToday} className="px-3 py-1 text-xs font-bold hover:bg-white/10 text-white rounded-lg">امروز</button>
+              <button onClick={prevDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronLeft size={18} /></button>
+            </div>
+
+            {isMobile && (
+                <div className="flex gap-2">
+                    <button onClick={handleHardRefresh} className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/10"><RefreshCw size={16} /></button>
+                    <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button>
+                </div>
+            )}
+          </div>
+
+          <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto justify-end">
+            <span className="text-sm font-bold text-gray-100 whitespace-nowrap">
+              {currentDate.toLocaleDateString("fa-IR", { month: "long", year: "numeric" })}
+            </span>
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+               <User size={14} className="text-blue-400" />
+               <span className="text-xs text-gray-200">{username}</span>
+            </div>
+            <LegendFilter departments={departments} hiddenIds={hiddenDeptIds} onToggle={(id) => setHiddenDeptIds(p => p.includes(id) ? p.filter(x=>x!==id) : [...p, id])} onShowAll={() => setHiddenDeptIds([])} />
+            <button 
+              onClick={() => handleOpenModal(new Date(), "09:00", "10:00")}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg shadow-lg border border-emerald-500/30"
+            >
+              <Plus size={16} /> <span>جدید</span>
+            </button>
+          </div>
+        </div>
+
+        <div 
+          className="flex-1 overflow-hidden relative"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+            <div 
+                className="h-full w-full transition-transform duration-75 ease-linear"
+                style={{ transform: `translateX(${swipeOffset}px)` }}
+            >
+                {viewMode === 'week' && (
+                    <DesktopWeekView 
+                        currentDate={currentDate} events={events} holidays={holidays} departments={departments} 
+                        hiddenDeptIds={hiddenDeptIds} 
+                        onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
+                        onSlotClick={handleSlotClick} onEventHover={handleEventHover} onEventLeave={handleEventLeave}
+                        draftEvent={draftEvent}
+                    />
+                )}
+                {viewMode === 'month' && (
+                    <DesktopMonthView 
+                        currentDate={currentDate} events={events} holidays={holidays} departments={departments}
+                        onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
+                        onSlotClick={handleSlotClick}
+                    />
+                )}
+
+                {(viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week') && (
+                    <MobileGrid 
+                        daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7}
+                        currentDate={currentDate} events={events} holidays={holidays} departments={departments} 
+                        hiddenDeptIds={hiddenDeptIds} 
+                        onEventClick={handleEventClick} onEventLongPress={handleEventLongPress}
+                        onSlotClick={handleSlotClick} draftEvent={draftEvent}
+                    />
+                )}
+
+                {viewMode === 'agenda' && (
+                    <AgendaView events={events} departments={departments} onEventClick={handleEventClick} />
+                )}
+            </div>
+        </div>
+
+        <EventModal 
+          isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }}
+          onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd}
+          eventToEdit={selectedEvent} currentUserId={userId}
+        />
+        
+        {hoveredEvent && (
+          <EventTooltip 
+              event={hoveredEvent} departments={departments} onClose={() => setHoveredEvent(null)} 
+              onMouseEnter={() => { if(tooltipTimeout.current) clearTimeout(tooltipTimeout.current); }} 
+              onMouseLeave={handleEventLeave} 
+          />
+        )}
+      </GlassPane>
+    </>
   );
 });
 

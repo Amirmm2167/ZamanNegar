@@ -7,7 +7,7 @@ import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
 
-interface MobileTimeGridProps {
+interface MobileGridProps {
   daysToShow: 1 | 3 | 7;
   currentDate: Date;
   events: CalendarEvent[];
@@ -20,7 +20,7 @@ interface MobileTimeGridProps {
   draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
 
-export default function MobileTimeGrid({
+export default function MobileGrid({
   daysToShow,
   currentDate,
   events,
@@ -31,7 +31,7 @@ export default function MobileTimeGrid({
   onEventLongPress,
   onSlotClick,
   draftEvent
-}: MobileTimeGridProps) {
+}: MobileGridProps) {
   const [now, setNow] = useState(new Date());
   
   useEffect(() => {
@@ -44,7 +44,6 @@ export default function MobileTimeGrid({
   const isLongPress = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent, event: CalendarEvent) => {
-      // Prevent drag scroll issues
       isLongPress.current = false;
       longPressTimer.current = setTimeout(() => {
           isLongPress.current = true;
@@ -64,7 +63,11 @@ export default function MobileTimeGrid({
   if (daysToShow === 1) {
     days.push(new Date(currentDate));
   } else if (daysToShow === 3) {
-    // 3 Days: Yesterday, Today, Tomorrow (Centered)
+    // 3 Days: [Yesterday, Today, Tomorrow]
+    // Since we use flex-row-reverse for the container:
+    // DOM Order: [Time] [Yesterday] [Today] [Tomorrow]
+    // Visual RTL: Tomorrow (Left) ... Yesterday (Right) | Time (Far Right)
+    // To see Past on Right and Future on Left, we need the array to be sorted chronologically.
     for (let i = -1; i <= 1; i++) {
         const d = new Date(currentDate);
         d.setDate(d.getDate() + i);
@@ -74,9 +77,8 @@ export default function MobileTimeGrid({
     // 7 Days: Start from beginning of week
     const start = new Date(currentDate);
     const day = start.getDay(); 
-    const diff = (day + 1) % 7;
+    const diff = (day + 1) % 7; 
     start.setDate(start.getDate() - diff);
-    
     for (let i = 0; i < 7; i++) {
         const d = new Date(start);
         d.setDate(d.getDate() + i);
@@ -103,9 +105,10 @@ export default function MobileTimeGrid({
   };
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-black/20">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-black/20 select-none">
         
-        {/* HEADER */}
+        {/* HEADER ROW */}
+        {/* flex-row-reverse to match body */}
         <div className="flex flex-row-reverse border-b border-white/10 h-12 bg-white/5 shrink-0">
             {/* Time Spacer */}
             <div className="w-10 border-l border-white/10 bg-black/40"></div>
@@ -120,10 +123,10 @@ export default function MobileTimeGrid({
                         <span className={clsx("text-[10px] font-bold", isToday ? "text-blue-400" : "text-gray-300")}>
                             {day.toLocaleDateString("fa-IR", { weekday: 'short' })}
                         </span>
-                        <div className={clsx("w-6 h-6 rounded-full flex items-center justify-center text-xs mt-0.5", isToday && "bg-blue-600 text-white shadow-lg")}>
+                        <div className={clsx("w-5 h-5 rounded-full flex items-center justify-center text-[10px] mt-0.5", isToday && "bg-blue-600 text-white shadow-lg")}>
                             {toPersianDigits(day.getDate())}
                         </div>
-                        {holiday && <div className="absolute bottom-0 w-1 h-1 rounded-full bg-red-500"></div>}
+                        {holiday && <div className="absolute bottom-0 w-full h-0.5 bg-red-500"></div>}
                     </div>
                 );
             })}
@@ -185,15 +188,14 @@ export default function MobileTimeGrid({
                             const style = getEventStyle(original);
                             
                             const start = new Date(original.start_time);
-                            const end = new Date(original.end_time);
                             const startMin = start.getHours() * 60 + start.getMinutes();
+                            const end = new Date(original.end_time);
                             const endMin = end.getHours() * 60 + end.getMinutes();
                             const dayMin = 1440; 
 
                             const topPercent = (startMin / dayMin) * 100;
                             const heightPercent = ((endMin - startMin) / dayMin) * 100;
 
-                            // Fill Width Logic: If event has no collisions (totalLanes=1), take 100%
                             const isSingle = ev.totalLanes === 1;
                             const width = isSingle ? '96%' : `${ev.width}%`;
                             const right = isSingle ? '2%' : `${ev.right}%`;
@@ -211,14 +213,13 @@ export default function MobileTimeGrid({
                                         height: `max(18px, ${heightPercent}%)`,
                                         right: right, 
                                         width: width,
-                                        fontSize: daysToShow === 7 ? '9px' : '10px',
+                                        fontSize: daysToShow === 7 ? '8px' : '10px',
                                         lineHeight: '1.1',
                                         borderRadius: '3px',
                                         ...style
                                     }}
                                 >
-                                    {/* Text Wrapping Logic */}
-                                    <span className="font-bold break-words whitespace-normal line-clamp-2">
+                                    <span className="font-bold break-words whitespace-normal line-clamp-2 leading-tight">
                                         {original.title}
                                     </span>
                                     {heightPercent > 2 && daysToShow !== 7 && (

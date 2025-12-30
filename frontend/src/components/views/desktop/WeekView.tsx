@@ -5,7 +5,7 @@ import { CalendarEvent, Department } from "@/types";
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
-import { Maximize2, Minimize2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 interface WeekViewProps {
   currentDate: Date;
@@ -37,7 +37,6 @@ export default function WeekView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
-  const [isLandscape, setIsLandscape] = useState(false);
 
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
 
@@ -51,21 +50,10 @@ export default function WeekView({
     }
   }, []);
 
-  // --- Helpers ---
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const isLongPress = useRef(false);
-
-  const handleTouchStart = (e: React.TouchEvent | React.MouseEvent, event: CalendarEvent) => {
-      isLongPress.current = false;
-      longPressTimer.current = setTimeout(() => {
-          isLongPress.current = true;
-          onEventLongPress(event);
-      }, 500);
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent | React.MouseEvent, event: CalendarEvent) => {
-      if (longPressTimer.current) clearTimeout(longPressTimer.current);
-      if (!isLongPress.current) onEventClick(event);
+  // --- Interaction Helpers ---
+  const handleContextMenu = (e: React.MouseEvent, event: CalendarEvent) => {
+      e.preventDefault();
+      onEventLongPress(event); // Right click triggers long press logic (context menu placeholder)
   };
 
   const getStartOfWeek = (date: Date) => {
@@ -95,29 +83,14 @@ export default function WeekView({
   };
 
   return (
-    <>
-      {/* Mobile Only: Landscape Toggle Button (Bottom Right) */}
-      <div className="fixed bottom-4 right-4 z-[9999] md:hidden">
-        <button 
-            onClick={() => setIsLandscape(!isLandscape)}
-            className="p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20 hover:scale-110 transition-transform"
-        >
-            {isLandscape ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-        </button>
-      </div>
-
-      <div 
-        className={clsx(
-          "flex flex-1 overflow-hidden relative transition-all duration-300 bg-[#020205]",
-          // Fullscreen Logic: Rotate 90deg and scale to fit window
-          isLandscape && "fixed inset-0 z-[5000] w-[100vh] h-[100vw] origin-top-right rotate-90 translate-x-[100%]"
-        )}
-        onMouseLeave={() => { setHoveredDayIndex(null); setHoveredHour(null); }}
-      >
+    <div 
+      className="flex flex-1 overflow-hidden relative transition-all duration-300 bg-[#020205]"
+      onMouseLeave={() => { setHoveredDayIndex(null); setHoveredHour(null); }}
+    >
           {/* SIDEBAR (Days) */}
           <div className="w-20 sm:w-32 flex flex-col border-l border-white/10 bg-black/40 backdrop-blur-md z-20 shadow-[4px_0_24px_rgba(0,0,0,0.5)] relative">
             <div className="h-12 border-b border-white/10 bg-white/5 flex items-center justify-center text-xs font-bold text-gray-400 shadow-sm">
-                {isLandscape ? "تمام روز" : "روزها"}
+                روزها
             </div>
             
             {weekDays.map((dayDate, i) => {
@@ -129,12 +102,12 @@ export default function WeekView({
                 <div key={i} className={clsx("flex-1 flex flex-row items-stretch border-b border-white/10 relative transition-all gap-1 group", isToday(dayDate) && "bg-white/5", hoveredDayIndex === i && "bg-white/10")}>
                   <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-8 sm:w-12">
                       <div className="flex flex-col items-center justify-center w-full">
-                          <span className="text-[8px] sm:text-[10px] font-bold">{WEEK_DAYS[i]}</span>
-                          <span className="text-[8px] sm:text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
+                          <span className="text-[9px] sm:text-[10px] font-bold">{WEEK_DAYS[i]}</span>
+                          <span className="text-[9px] sm:text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
                       </div>
                       {holidayObj && (
                           <div className="h-full flex items-center justify-center pt-1 pb-1">
-                              <span className="text-[7px] sm:text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                              <span className="text-[8px] sm:text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
                                   {holidayObj.occasion}
                               </span>
                           </div>
@@ -142,8 +115,8 @@ export default function WeekView({
                   </div>
                   <div className="flex-1 flex flex-row gap-1 items-center justify-start overflow-hidden px-1">
                     {allDayEvents.map(ev => (
-                        <div key={ev.id} onMouseDown={(e) => handleTouchStart(e, ev)} onMouseUp={(e) => handleTouchEnd(e, ev)} onTouchStart={(e) => handleTouchStart(e, ev)} onTouchEnd={(e) => handleTouchEnd(e, ev)} 
-                             className="h-[80%] w-[4px] sm:w-[6px] rounded-full cursor-pointer" style={{ backgroundColor: getEventStyle(ev).backgroundColor }}></div>
+                        <div key={ev.id} onClick={(e) => { e.stopPropagation(); onEventClick(ev); }} 
+                             className="h-[80%] w-[4px] sm:w-[6px] rounded-full cursor-pointer hover:scale-125 transition-transform" style={{ backgroundColor: getEventStyle(ev).backgroundColor }}></div>
                     ))}
                   </div>
                 </div>
@@ -215,10 +188,8 @@ export default function WeekView({
                       return (
                         <div 
                           key={event.id} 
-                          onMouseDown={(e) => handleTouchStart(e, originalEvent)} 
-                          onMouseUp={(e) => handleTouchEnd(e, originalEvent)}
-                          onTouchStart={(e) => handleTouchStart(e, originalEvent)} 
-                          onTouchEnd={(e) => handleTouchEnd(e, originalEvent)}
+                          onClick={(e) => { e.stopPropagation(); onEventClick(originalEvent); }} 
+                          onContextMenu={(e) => handleContextMenu(e, originalEvent)}
                           onMouseEnter={(e) => onEventHover(e, originalEvent)} 
                           onMouseLeave={onEventLeave}
                           className="absolute rounded-sm px-1 flex items-center shadow-lg cursor-pointer hover:brightness-125 z-10 border-y border-r border-white/10 text-[10px]"
@@ -232,7 +203,6 @@ export default function WeekView({
               })}
             </div>
           </div>
-      </div>
-    </>
+    </div>
   );
 }

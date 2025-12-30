@@ -4,25 +4,33 @@ import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Calendar, List, Smartphone, Monitor, Grid } from "lucide-react";
 import clsx from "clsx";
 
-export type ViewMode = "week" | "3day" | "1day" | "month" | "agenda";
+export type ViewMode = "week" | "3day" | "1day" | "month" | "agenda" | "mobile-week";
 
 interface ViewSwitcherProps {
   currentView: ViewMode;
   onChange: (view: ViewMode) => void;
+  isMobile: boolean;
 }
 
-export default function ViewSwitcher({ currentView, onChange }: ViewSwitcherProps) {
+export default function ViewSwitcher({ currentView, onChange, isMobile }: ViewSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const views: { id: ViewMode; label: string; icon: any }[] = [
+  const desktopViews: { id: ViewMode; label: string; icon: any }[] = [
     { id: "week", label: "هفتگی", icon: Monitor },
-    { id: "3day", label: "۳ روزه", icon: Calendar },
-    { id: "1day", label: "روزانه", icon: Smartphone },
     { id: "month", label: "ماهانه", icon: Grid },
-    { id: "agenda", label: "برنامه (لیست)", icon: List },
+    { id: "agenda", label: "برنامه", icon: List },
   ];
 
+  const mobileViews: { id: ViewMode; label: string; icon: any }[] = [
+    { id: "1day", label: "روزانه", icon: Smartphone },
+    { id: "3day", label: "۳ روزه", icon: Calendar },
+    { id: "mobile-week", label: "هفتگی", icon: Grid },
+    { id: "agenda", label: "برنامه", icon: List },
+  ];
+
+  // Force valid view if switching context
+  const views = isMobile ? mobileViews : desktopViews;
   const activeView = views.find((v) => v.id === currentView) || views[0];
 
   useEffect(() => {
@@ -36,7 +44,7 @@ export default function ViewSwitcher({ currentView, onChange }: ViewSwitcherProp
   }, []);
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative z-50" ref={containerRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-1.5 bg-black/40 hover:bg-black/60 border border-white/10 rounded-xl text-gray-200 transition-all text-xs sm:text-sm font-medium min-w-[110px] justify-between shadow-sm"
@@ -49,7 +57,7 @@ export default function ViewSwitcher({ currentView, onChange }: ViewSwitcherProp
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-48 bg-[#252526] border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col p-1">
+        <div className="absolute top-full right-0 mt-2 w-40 bg-[#252526] border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col p-1">
           {views.map((view) => (
             <button
               key={view.id}
