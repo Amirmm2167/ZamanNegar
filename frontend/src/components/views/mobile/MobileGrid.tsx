@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { CalendarEvent, Department } from "@/types";
-import { toPersianDigits } from "@/lib/utils";
+import { toPersianDigits, getPersianWeekday, getPersianMonth } from "@/lib/jalali";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
@@ -58,27 +58,26 @@ export default function MobileGrid({
       }
   };
 
-  // --- Day Generation Logic ---
+  // --- Day Generation Logic (Jalali Aware) ---
   const days = [];
   if (daysToShow === 1) {
     days.push(new Date(currentDate));
   } else if (daysToShow === 3) {
-    // 3 Days: [Yesterday, Today, Tomorrow]
-    // Since we use flex-row-reverse for the container:
-    // DOM Order: [Time] [Yesterday] [Today] [Tomorrow]
-    // Visual RTL: Tomorrow (Left) ... Yesterday (Right) | Time (Far Right)
-    // To see Past on Right and Future on Left, we need the array to be sorted chronologically.
+    // 3 Days: Yesterday (-1), Today (0), Tomorrow (+1)
     for (let i = -1; i <= 1; i++) {
         const d = new Date(currentDate);
         d.setDate(d.getDate() + i);
         days.push(d);
     }
   } else if (daysToShow === 7) {
-    // 7 Days: Start from beginning of week
+    // 7 Days: Start from beginning of PERSIAN week (Saturday)
     const start = new Date(currentDate);
-    const day = start.getDay(); 
+    const day = start.getDay(); // 0=Sun, 1=Mon... 6=Sat
+    // We want Sat(6) to be index 0.
+    // Mapping: Sat(6)->0, Sun(0)->1, Mon(1)->2 ...
     const diff = (day + 1) % 7; 
     start.setDate(start.getDate() - diff);
+    
     for (let i = 0; i < 7; i++) {
         const d = new Date(start);
         d.setDate(d.getDate() + i);
@@ -108,24 +107,35 @@ export default function MobileGrid({
     <div className="flex flex-col h-full w-full overflow-hidden bg-black/20 select-none">
         
         {/* HEADER ROW */}
-        {/* flex-row-reverse to match body */}
-        <div className="flex flex-row-reverse border-b border-white/10 h-12 bg-white/5 shrink-0">
+        <div className="flex flex-row-reverse border-b border-white/10 h-14 bg-white/5 shrink-0">
             {/* Time Spacer */}
             <div className="w-10 border-l border-white/10 bg-black/40"></div>
 
             {/* Days Header */}
             {days.map((day, i) => {
                 const isToday = day.toDateString() === new Date().toDateString();
-                const holiday = holidays.find(h => h.holiday_date.split('T')[0] === day.toISOString().split('T')[0]);
+                const dateStr = day.toISOString().split('T')[0];
+                const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
+                
+                // Use Intl to get Persian Day Number (e.g., ۱۲)
+                const dayNum = new Intl.DateTimeFormat("fa-IR", { day: "numeric" }).format(day);
                 
                 return (
                     <div key={i} className={clsx("flex-1 flex flex-col items-center justify-center border-r border-white/10 relative overflow-hidden", isToday && "bg-white/5")}>
                         <span className={clsx("text-[10px] font-bold", isToday ? "text-blue-400" : "text-gray-300")}>
-                            {day.toLocaleDateString("fa-IR", { weekday: 'short' })}
+                            {getPersianWeekday(day, true)}
                         </span>
-                        <div className={clsx("w-5 h-5 rounded-full flex items-center justify-center text-[10px] mt-0.5", isToday && "bg-blue-600 text-white shadow-lg")}>
-                            {toPersianDigits(day.getDate())}
+                        
+                        <div className="flex items-center gap-1 mt-0.5">
+                             <div className={clsx("w-5 h-5 rounded-full flex items-center justify-center text-[10px]", isToday && "bg-blue-600 text-white shadow-lg")}>
+                                {dayNum}
+                             </div>
+                             {/* Show Month Name only for first day shown or if it's the 1st of month */}
+                             {(i === 0 || dayNum === "۱") && (
+                                <span className="text-[8px] text-gray-500 opacity-80">{getPersianMonth(day)}</span>
+                             )}
                         </div>
+
                         {holiday && <div className="absolute bottom-0 w-full h-0.5 bg-red-500"></div>}
                     </div>
                 );
@@ -156,7 +166,6 @@ export default function MobileGrid({
 
                 return (
                     <div key={i} className="flex-1 relative border-r border-white/10 h-full group">
-                        {/* Grid Lines */}
                         <div className="absolute inset-0 flex flex-col z-0">
                             {Array.from({ length: 24 }).map((_, h) => (
                                 <div 
@@ -188,8 +197,8 @@ export default function MobileGrid({
                             const style = getEventStyle(original);
                             
                             const start = new Date(original.start_time);
-                            const startMin = start.getHours() * 60 + start.getMinutes();
                             const end = new Date(original.end_time);
+                            const startMin = start.getHours() * 60 + start.getMinutes();
                             const endMin = end.getHours() * 60 + end.getMinutes();
                             const dayMin = 1440; 
 
@@ -224,14 +233,13 @@ export default function MobileGrid({
                                     </span>
                                     {heightPercent > 2 && daysToShow !== 7 && (
                                         <span className="opacity-80 text-[8px] mt-0.5 block">
-                                            {start.toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}
+                                            {toPersianDigits(start.toLocaleTimeString('en-US', {hour12: false, hour:'2-digit', minute:'2-digit'}))}
                                         </span>
                                     )}
                                 </div>
                             );
                         })}
                         
-                        {/* Current Time Line */}
                         {day.toDateString() === now.toDateString() && (
                              <div 
                                 className="absolute left-0 right-0 h-0.5 bg-red-500 z-20 pointer-events-none shadow-[0_0_4px_rgba(239,68,68,0.8)]"
