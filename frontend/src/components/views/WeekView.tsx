@@ -5,7 +5,7 @@ import { CalendarEvent, Department } from "@/types";
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
-import { Plus, Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Plus } from "lucide-react";
 
 interface WeekViewProps {
   currentDate: Date;
@@ -37,15 +37,11 @@ export default function WeekView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
-  const [now, setNow] = useState(new Date());
-  
-  // Landscape Mode State
   const [isLandscape, setIsLandscape] = useState(false);
 
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 60000);
     if (scrollRef.current) {
         const currentHour = new Date().getHours();
         const scrollContainer = scrollRef.current;
@@ -53,10 +49,9 @@ export default function WeekView({
         const targetHour = Math.max(0, currentHour - 1);
         scrollContainer.scrollTo({ left: - (targetHour * hourWidth), behavior: "smooth" });
     }
-    return () => clearInterval(interval);
   }, []);
 
-  // --- Interaction Helpers ---
+  // --- Helpers ---
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const isLongPress = useRef(false);
 
@@ -96,34 +91,33 @@ export default function WeekView({
     if (event.status === 'pending') {
       return { backgroundColor: `${baseColor}40`, border: `1px dashed ${baseColor}`, color: '#fef08a' };
     }
-    if (event.status === 'rejected') {
-      return { backgroundColor: '#000000', color: '#9ca3af', textDecoration: 'line-through' };
-    }
     return { backgroundColor: `${baseColor}60`, color: "#e5e7eb", borderLeft: `3px solid ${baseColor}` };
   };
 
   return (
     <>
-      {/* Rotation Toggle Button (Mobile Only) */}
-      <button 
-        onClick={() => setIsLandscape(!isLandscape)}
-        className="fixed bottom-20 left-4 z-50 md:hidden p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20 hover:scale-110 transition-transform"
-        title="چرخش صفحه"
-      >
-        {isLandscape ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
-      </button>
+      {/* Mobile Only: Landscape Toggle Button (Bottom Right) */}
+      <div className="fixed bottom-4 right-4 z-[9999] md:hidden">
+        <button 
+            onClick={() => setIsLandscape(!isLandscape)}
+            className="p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20 hover:scale-110 transition-transform"
+        >
+            {isLandscape ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+        </button>
+      </div>
 
       <div 
         className={clsx(
           "flex flex-1 overflow-hidden relative transition-all duration-300 bg-[#020205]",
-          isLandscape && "fixed inset-0 z-[100] w-[100vh] h-[100vw] rotate-90 origin-bottom-left -translate-y-full"
+          // Fullscreen Logic: Rotate 90deg and scale to fit window
+          isLandscape && "fixed inset-0 z-[5000] w-[100vh] h-[100vw] origin-top-right rotate-90 translate-x-[100%]"
         )}
         onMouseLeave={() => { setHoveredDayIndex(null); setHoveredHour(null); }}
       >
           {/* SIDEBAR (Days) */}
-          <div className="w-24 sm:w-32 flex flex-col border-l border-white/10 bg-black/40 backdrop-blur-md z-20 shadow-[4px_0_24px_rgba(0,0,0,0.5)] relative">
+          <div className="w-20 sm:w-32 flex flex-col border-l border-white/10 bg-black/40 backdrop-blur-md z-20 shadow-[4px_0_24px_rgba(0,0,0,0.5)] relative">
             <div className="h-12 border-b border-white/10 bg-white/5 flex items-center justify-center text-xs font-bold text-gray-400 shadow-sm">
-                {isLandscape ? "هفته جاری" : "تمام روز"}
+                {isLandscape ? "تمام روز" : "روزها"}
             </div>
             
             {weekDays.map((dayDate, i) => {
@@ -133,25 +127,23 @@ export default function WeekView({
 
               return (
                 <div key={i} className={clsx("flex-1 flex flex-row items-stretch border-b border-white/10 relative transition-all gap-1 group", isToday(dayDate) && "bg-white/5", hoveredDayIndex === i && "bg-white/10")}>
-                  
-                  <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-8 sm:w-10">
+                  <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-8 sm:w-12">
                       <div className="flex flex-col items-center justify-center w-full">
-                          <span className="text-[9px] sm:text-[10px] font-bold">{WEEK_DAYS[i]}</span>
-                          <span className="text-[9px] sm:text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
+                          <span className="text-[8px] sm:text-[10px] font-bold">{WEEK_DAYS[i]}</span>
+                          <span className="text-[8px] sm:text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
                       </div>
                       {holidayObj && (
                           <div className="h-full flex items-center justify-center pt-1 pb-1">
-                              <span className="text-[8px] sm:text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                              <span className="text-[7px] sm:text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
                                   {holidayObj.occasion}
                               </span>
                           </div>
                       )}
                   </div>
-
                   <div className="flex-1 flex flex-row gap-1 items-center justify-start overflow-hidden px-1">
                     {allDayEvents.map(ev => (
                         <div key={ev.id} onMouseDown={(e) => handleTouchStart(e, ev)} onMouseUp={(e) => handleTouchEnd(e, ev)} onTouchStart={(e) => handleTouchStart(e, ev)} onTouchEnd={(e) => handleTouchEnd(e, ev)} 
-                             className="h-[90%] w-[6px] rounded-full cursor-pointer" style={{ backgroundColor: getEventStyle(ev).backgroundColor }} title={ev.title}></div>
+                             className="h-[80%] w-[4px] sm:w-[6px] rounded-full cursor-pointer" style={{ backgroundColor: getEventStyle(ev).backgroundColor }}></div>
                     ))}
                   </div>
                 </div>
@@ -177,11 +169,10 @@ export default function WeekView({
               {weekDays.map((dayDate, dayIndex) => {
                 const dayEvents = events.filter(e => {
                   const eStart = new Date(e.start_time).getTime();
-                  const eEnd = new Date(e.end_time).getTime();
                   const dStart = dayDate.getTime();
                   const dEnd = dStart + 86400000;
                   if (e.department_id && hiddenDeptIds.includes(e.department_id)) return false;
-                  return eStart < dEnd && eEnd > dStart && !e.is_all_day;
+                  return eStart < dEnd && eStart >= dStart && !e.is_all_day;
                 });
                 const visualEvents = calculateEventLayout(dayEvents.map(e => {
                    const eStart = new Date(e.start_time).getTime();

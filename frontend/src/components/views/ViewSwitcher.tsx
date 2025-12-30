@@ -20,7 +20,7 @@ export default function ViewSwitcher({ currentView, onChange }: ViewSwitcherProp
     { id: "3day", label: "۳ روزه", icon: Calendar },
     { id: "1day", label: "روزانه", icon: Smartphone },
     { id: "month", label: "ماهانه", icon: Grid },
-    { id: "agenda", label: "لیست (برنامه)", icon: List },
+    { id: "agenda", label: "برنامه (لیست)", icon: List },
   ];
 
   const activeView = views.find((v) => v.id === currentView) || views[0];
@@ -39,17 +39,17 @@ export default function ViewSwitcher({ currentView, onChange }: ViewSwitcherProp
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-black/40 hover:bg-black/60 border border-white/10 rounded-lg text-gray-200 transition-all text-sm font-medium min-w-[120px] justify-between"
+        className="flex items-center gap-2 px-3 py-1.5 bg-black/40 hover:bg-black/60 border border-white/10 rounded-xl text-gray-200 transition-all text-xs sm:text-sm font-medium min-w-[110px] justify-between shadow-sm"
       >
         <div className="flex items-center gap-2">
           <activeView.icon size={16} className="text-blue-400" />
           <span>{activeView.label}</span>
         </div>
-        <ChevronDown size={14} className={clsx("transition-transform", isOpen && "rotate-180")} />
+        <ChevronDown size={14} className={clsx("transition-transform text-gray-500", isOpen && "rotate-180")} />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-48 bg-[#252526] border border-gray-700 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col p-1">
+        <div className="absolute top-full right-0 mt-2 w-48 bg-[#252526] border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col p-1">
           {views.map((view) => (
             <button
               key={view.id}
@@ -60,7 +60,7 @@ export default function ViewSwitcher({ currentView, onChange }: ViewSwitcherProp
               className={clsx(
                 "flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-colors w-full text-right",
                 currentView === view.id
-                  ? "bg-blue-600/20 text-blue-400"
+                  ? "bg-blue-600/20 text-blue-400 font-bold"
                   : "text-gray-300 hover:bg-white/5 hover:text-white"
               )}
             >

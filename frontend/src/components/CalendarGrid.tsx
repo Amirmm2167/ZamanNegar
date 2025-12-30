@@ -44,13 +44,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [userId, setUserId] = useState<number>(0);
   const [userRole, setUserRole] = useState("");
 
-  // --- INTERACTION ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [hiddenDeptIds, setHiddenDeptIds] = useState<number[]>([]); 
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
-  const tooltipTimeout = useRef<NodeJS.Timeout | null>(null);
   const [draftEvent, setDraftEvent] = useState<{ date: Date; startHour: number; endHour: number } | null>(null);
+  const tooltipTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const [modalInitialDate, setModalInitialDate] = useState(new Date());
   const [modalStart, setModalStart] = useState("09:00");
@@ -63,7 +62,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   }));
 
   useEffect(() => {
-    // Default to 'week' if wide, '1day' if narrow
     if (window.innerWidth >= 768) {
         setViewMode("week");
     }
@@ -98,7 +96,26 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     router.push("/login");
   };
 
-  // --- Navigation Logic ---
+  // --- Swipe Logic ---
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+      touchStartX.current = e.targetTouches[0].clientX;
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+      touchEndX.current = e.targetTouches[0].clientX;
+  };
+  const handleTouchEnd = () => {
+      const distance = touchStartX.current - touchEndX.current;
+      const minSwipeDistance = 50;
+      if (Math.abs(distance) > minSwipeDistance) {
+          if (distance > 0) prevDate(); // Swipe Right (RTL: Go Past)
+          else nextDate(); // Swipe Left (RTL: Go Future)
+      }
+  };
+
+  // --- Smart Navigation ---
   const nextDate = () => { 
       const d = new Date(currentDate); 
       if (viewMode === 'week') d.setDate(d.getDate() + 7);
@@ -171,21 +188,21 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
         <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
           <ViewSwitcher currentView={viewMode} onChange={setViewMode} />
 
-          <div className="flex items-center gap-1 bg-white/5 rounded-lg p-0.5 border border-white/10">
-            <button onClick={nextDate} className="p-1.5 hover:bg-white/10 rounded-md text-gray-300"><ChevronRight size={18} /></button>
-            <button onClick={goToToday} className="px-3 py-1 text-xs font-bold hover:bg-white/10 text-white rounded-md">امروز</button>
-            <button onClick={prevDate} className="p-1.5 hover:bg-white/10 rounded-md text-gray-300"><ChevronLeft size={18} /></button>
+          <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
+            <button onClick={nextDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronRight size={18} /></button>
+            <button onClick={goToToday} className="px-3 py-1 text-xs font-bold hover:bg-white/10 text-white rounded-lg">امروز</button>
+            <button onClick={prevDate} className="p-2 hover:bg-white/10 rounded-lg text-gray-300"><ChevronLeft size={18} /></button>
           </div>
 
           <button 
             onClick={() => handleOpenModal(new Date(), "09:00", "10:00")}
-            className="flex sm:hidden items-center justify-center p-2 bg-emerald-600/80 text-white rounded-lg shadow-lg border border-emerald-500/30"
+            className="flex sm:hidden items-center justify-center p-2 bg-emerald-600/80 text-white rounded-xl shadow-lg border border-emerald-500/30"
           >
-            <Plus size={18} />
+            <Plus size={20} />
           </button>
         </div>
 
-        {/* Right: Info + Tools */}
+        {/* Right: Info */}
         <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
           <span className="text-sm font-bold text-gray-100 whitespace-nowrap hidden sm:block">
             {currentDate.toLocaleDateString("fa-IR", { month: "long", year: "numeric" })}
@@ -197,7 +214,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
           <LegendFilter departments={departments} hiddenIds={hiddenDeptIds} onToggle={(id) => setHiddenDeptIds(p => p.includes(id) ? p.filter(x=>x!==id) : [...p, id])} onShowAll={() => setHiddenDeptIds([])} />
           <button 
             onClick={() => handleOpenModal(new Date(), "09:00", "10:00")}
-            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg shadow-lg border border-emerald-500/30"
+            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-xl shadow-lg border border-emerald-500/30"
           >
             <Plus size={16} /> <span>جدید</span>
           </button>
@@ -205,7 +222,13 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       </div>
 
       {/* VIEW CONTENT */}
-      <div className="flex-1 overflow-hidden relative" onMouseLeave={handleEventLeave}>
+      <div 
+        className="flex-1 overflow-hidden relative" 
+        onMouseLeave={handleEventLeave}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         {viewMode === 'week' && (
             <WeekView 
                 currentDate={currentDate} events={events} holidays={holidays} departments={departments} 
