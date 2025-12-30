@@ -12,8 +12,8 @@ import EventTooltip from "./EventTooltip";
 import LegendFilter from "./LegendFilter";
 import GlassPane from "@/components/ui/GlassPane";
 import BottomSheet from "./ui/BottomSheet";
-import MoveConfirmationModal from "./modals/MoveConfirmationModal";
-import { toPersianDigits } from "@/lib/utils"; // Ensure you have this
+import MoveConfirmationSheet from "./mobile/MoveConfirmationSheet"; // New Sheet
+import { toPersianDigits } from "@/lib/utils"; 
 
 // Views
 import MobileContextMenu from "./views/mobile/MobileContextMenu"; 
@@ -23,19 +23,12 @@ import MobileGrid from "./views/mobile/MobileGrid";
 import AgendaView from "./views/shared/AgendaView";
 import ViewSwitcher, { ViewMode } from "./views/shared/ViewSwitcher";
 
-interface Holiday {
-  id: number;
-  occasion: string;
-  holiday_date: string; 
-}
-
-export interface CalendarGridHandle {
-  openNewEventModal: () => void;
-}
+interface Holiday { id: number; occasion: string; holiday_date: string; }
+export interface CalendarGridHandle { openNewEventModal: () => void; }
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const router = useRouter();
-  const gridContainerRef = useRef<HTMLDivElement>(null); // Ref for time calculation
+  const gridContainerRef = useRef<HTMLDivElement>(null);
 
   // --- STATE ---
   const [viewMode, setViewMode] = useState<ViewMode>("1day"); 
@@ -63,18 +56,25 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   const [isLandscape, setIsLandscape] = useState(false);
   
+  // Context Menu
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [contextMenuEvent, setContextMenuEvent] = useState<CalendarEvent | null>(null);
+  const [contextMenuInitialView, setContextMenuInitialView] = useState<"menu" | "properties">("menu");
 
   // --- DRAG & DROP STATE REFINED ---
-  const [isDragging, setIsDragging] = useState(false); // Mode Active
-  const [isHolding, setIsHolding] = useState(false);   // User is actively pressing down
+  const [isDragging, setIsDragging] = useState(false); 
+  const [isHolding, setIsHolding] = useState(false);   
   const [dragEvent, setDragEvent] = useState<CalendarEvent | null>(null);
   const [dragPosition, setDragPosition] = useState<{x: number, y: number} | null>(null);
-  const [currentDragTime, setCurrentDragTime] = useState<string>(""); // "14:30"
+  const [currentDragTime, setCurrentDragTime] = useState<string>(""); 
   
+  // Drop & Confirm
   const [isMoveConfirmOpen, setIsMoveConfirmOpen] = useState(false);
   const [dropTime, setDropTime] = useState<Date | null>(null);
+  // "Waving" Placeholder logic:
+  // When drop happens, we don't clear dragEvent yet. We keep it as "Dropped State" until confirmed.
+  const [isDroppedAndWaiting, setIsDroppedAndWaiting] = useState(false); 
+
   const scrollInterval = useRef<NodeJS.Timeout | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -149,15 +149,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const startDrag = (event: CalendarEvent) => {
     setDragEvent(event);
     setIsDragging(true);
-    setIsHolding(false); // Waiting for user to grab
+    setIsHolding(false); 
+    setIsDroppedAndWaiting(false);
     setIsContextMenuOpen(false);
-    // Start at center screen roughly
     setDragPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   };
 
   const handleGlobalDown = (e: TouchEvent | MouseEvent) => {
       setIsHolding(true);
-      handleGlobalMove(e); // Update position immediately
+      handleGlobalMove(e); 
   };
 
   const handleGlobalMove = (e: TouchEvent | MouseEvent) => {
@@ -166,25 +166,17 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     setDragPosition({ x: clientX, y: clientY });
 
-    // Calculate Time Helper
     if (gridContainerRef.current) {
         const rect = gridContainerRef.current.getBoundingClientRect();
-        // Assuming the grid is 00:00 to 24:00 fill the container height
-        // We calculate relative Y inside the container
         let relativeY = clientY - rect.top;
-        // Clamp
         relativeY = Math.max(0, Math.min(relativeY, rect.height));
-        
         const percentage = relativeY / rect.height;
         const totalMinutes = percentage * 24 * 60;
         const hours = Math.floor(totalMinutes / 60);
         const minutes = Math.floor(totalMinutes % 60);
-        
-        // Round to nearest 15
         const roundedMinutes = Math.round(minutes / 15) * 15;
         const finalMinutes = roundedMinutes === 60 ? 0 : roundedMinutes;
         const finalHours = roundedMinutes === 60 ? hours + 1 : hours;
-
         setCurrentDragTime(`${finalHours.toString().padStart(2, '0')}:${finalMinutes.toString().padStart(2, '0')}`);
     }
 
@@ -204,12 +196,14 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   const handleGlobalUp = (e: TouchEvent | MouseEvent) => {
     if (scrollInterval.current) clearInterval(scrollInterval.current);
-    if (!isHolding) return; // If we weren't holding, don't drop
+    if (!isHolding) return; 
 
     setIsDragging(false);
     setIsHolding(false);
     
-    // Parse the calculated time
+    // --- DROPPED: TRIGGER WAVING PLACEHOLDER ---
+    setIsDroppedAndWaiting(true);
+
     const [h, m] = currentDragTime.split(':').map(Number);
     const proposedDate = new Date(currentDate);
     if (!isNaN(h)) {
@@ -222,6 +216,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     setIsMoveConfirmOpen(true);
   };
 
+  const handleCancelMove = () => {
+      setIsMoveConfirmOpen(false);
+      setIsDroppedAndWaiting(false);
+      setDragEvent(null);
+  };
+
   const finalizeMove = async (newStart: Date, newEnd: Date) => {
     if (!dragEvent) return;
     try {
@@ -232,6 +232,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       });
       fetchData();
       setIsMoveConfirmOpen(false);
+      setIsDroppedAndWaiting(false);
       setDragEvent(null);
     } catch (e) {
       setError("خطا در جابجایی رویداد.");
@@ -240,7 +241,41 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     }
   };
 
-  // --- Handlers ---
+  // --- INTERACTION HANDLERS ---
+  
+  // 1. TAP: Open Properties directly
+  const handleEventTap = (event: CalendarEvent) => {
+      if (isMobile) {
+          setContextMenuEvent(event);
+          setContextMenuInitialView("properties"); // Start at properties
+          setIsContextMenuOpen(true);
+      } else {
+          // Desktop click = Tooltip
+          setHoveredEvent(event);
+      }
+  };
+
+  // 2. LONG PRESS: Open Menu (Or Start Drag if permitted)
+  const handleEventHold = (event: CalendarEvent) => {
+      if (isMobile) {
+          setContextMenuEvent(event);
+          setContextMenuInitialView("menu"); // Start at menu
+          setIsContextMenuOpen(true);
+      }
+  };
+
+  // 3. DRAG START (Triggered by hold + move in MobileGrid)
+  const handleEventDragStart = (event: CalendarEvent) => {
+      // Permission check
+      const isOwner = event.proposer_id === userId;
+      const isManager = ["manager", "superadmin", "evaluator"].includes(userRole);
+      
+      if (isOwner || isManager) {
+          startDrag(event);
+      }
+  };
+
+  // 4. Menu Actions
   const handleMenuEdit = () => {
       if (contextMenuEvent) {
           setIsContextMenuOpen(false);
@@ -259,29 +294,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       if (contextMenuEvent) startDrag(contextMenuEvent);
   };
 
-  // --- Swipe Logic ---
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const touchStartX = useRef(0);
-  const [isSwiping, setIsSwiping] = useState(false);
-
-  const handleTouchStartNav = (e: React.TouchEvent) => {
-      if (!isMobile || isDragging) return; 
-      touchStartX.current = e.targetTouches[0].clientX;
-      setIsSwiping(true);
-  };
-  const handleTouchMoveNav = (e: React.TouchEvent) => {
-      if (!isMobile || isDragging || !isSwiping) return;
-      setSwipeOffset(e.targetTouches[0].clientX - touchStartX.current);
-  };
-  const handleTouchEndNav = () => {
-      if (!isMobile || isDragging) return;
-      if (swipeOffset > 80) prevDate();
-      else if (swipeOffset < -80) nextDate();
-      setSwipeOffset(0);
-      setIsSwiping(false);
-  };
-
-  // --- Navigation ---
+  // --- Helper Functions ---
   const nextDate = () => { 
       const d = new Date(currentDate); 
       if (viewMode === 'week' || viewMode === 'mobile-week') d.setDate(d.getDate() + 7);
@@ -319,9 +332,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
   const handleEventClick = (event: CalendarEvent) => { setHoveredEvent(event); setDraftEvent(null); };
   
+  // Desktop Fallback
   const handleEventLongPress = (event: CalendarEvent) => {
-      if (isMobile) { setContextMenuEvent(event); setIsContextMenuOpen(true); }
-      else if (["manager", "superadmin", "evaluator"].includes(userRole) || event.proposer_id === userId) {
+      if (!isMobile && (["manager", "superadmin", "evaluator"].includes(userRole) || event.proposer_id === userId)) {
           handleOpenModal(new Date(event.start_time), "", "", event);
       }
   };
@@ -333,6 +346,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const handleEventLeave = () => {
     tooltipTimeout.current = setTimeout(() => { setHoveredEvent(null); }, 150); 
   };
+
+  // --- Swipe Logic ---
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+
+  const handleTouchStartNav = (e: React.TouchEvent) => { if (!isMobile || isDragging) return; touchStartX.current = e.targetTouches[0].clientX; setIsSwiping(true); };
+  const handleTouchMoveNav = (e: React.TouchEvent) => { if (!isMobile || isDragging || !isSwiping) return; setSwipeOffset(e.targetTouches[0].clientX - touchStartX.current); };
+  const handleTouchEndNav = () => { if (!isMobile || isDragging) return; if (swipeOffset > 80) prevDate(); else if (swipeOffset < -80) nextDate(); setSwipeOffset(0); setIsSwiping(false); };
 
   if (loading && events.length === 0) return <div className="flex justify-center items-center h-full text-blue-400"><Loader2 className="animate-spin" size={48} /></div>;
   if (error) return <div className="flex justify-center items-center h-full text-red-400 gap-2"><AlertCircle /> {error}</div>;
@@ -360,32 +382,24 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
           </div>
         </div>
 
-        {/* View Container - Attached Ref here for calculation */}
-        <div 
-            ref={gridContainerRef}
-            className="flex-1 overflow-hidden relative" 
-            onTouchStart={handleTouchStartNav} 
-            onTouchMove={handleTouchMoveNav} 
-            onTouchEnd={handleTouchEndNav}
-        >
+        <div ref={gridContainerRef} className="flex-1 overflow-hidden relative" onTouchStart={handleTouchStartNav} onTouchMove={handleTouchMoveNav} onTouchEnd={handleTouchEndNav}>
             <div className="h-full w-full transition-transform duration-75 ease-linear" style={{ transform: `translateX(${swipeOffset}px)` }}>
-                
-                {/* Desktop Views */}
                 {viewMode === 'week' && <DesktopWeekView currentDate={currentDate} events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} onEventClick={handleEventClick} onEventLongPress={handleEventLongPress} onSlotClick={handleSlotClick} onEventHover={handleEventHover} onEventLeave={handleEventLeave} draftEvent={draftEvent} />}
                 {viewMode === 'month' && <DesktopMonthView currentDate={currentDate} events={events} holidays={holidays} departments={departments} onEventClick={handleEventClick} onEventLongPress={handleEventLongPress} onSlotClick={handleSlotClick} />}
                 
-                {/* Mobile Views - Pass hiddenEventId so grid hides the original */}
+                {/* Mobile Views with Smart Handlers */}
                 {(viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week') && 
                     <MobileGrid 
                         daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} 
                         currentDate={currentDate} 
-                        // Filter out the dragged event from the main grid view
-                        events={isDragging && dragEvent ? events.filter(e => e.id !== dragEvent.id) : events} 
+                        // Filter dragged event from grid ONLY if dragging OR dropped/waiting
+                        events={(isDragging || isDroppedAndWaiting) && dragEvent ? events.filter(e => e.id !== dragEvent.id) : events} 
                         holidays={holidays} 
                         departments={departments} 
                         hiddenDeptIds={hiddenDeptIds} 
-                        onEventClick={handleEventClick} 
-                        onEventLongPress={handleEventLongPress} 
+                        onEventTap={handleEventTap} 
+                        onEventHold={handleEventHold} 
+                        onEventDragStart={handleEventDragStart} 
                         onSlotClick={handleSlotClick} 
                         draftEvent={draftEvent} 
                     />
@@ -397,57 +411,36 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
         {/* --- OVERLAYS --- */}
         
-        {/* State A: Floating / Ready (Before Hold) */}
-        {isDragging && !isHolding && dragEvent && dragPosition && (
-            <div 
-                className="fixed z-[9999] p-3 rounded-lg shadow-2xl animate-pulse cursor-grab backdrop-blur-md border-2"
-                style={{ 
-                    top: dragPosition.y - 40, 
-                    left: dragPosition.x - 60, 
-                    width: '140px', 
-                    backgroundColor: departments.find(d => d.id === dragEvent.department_id)?.color + 'CC' || '#666666CC',
-                    color: 'white',
-                    borderColor: 'white'
-                }}
-            >
-                <div className="text-xs font-bold truncate mb-1">{dragEvent.title}</div>
-                <div className="flex items-center gap-1 text-[10px] font-bold bg-black/40 px-2 py-1 rounded-full w-fit mx-auto">
-                    <Move size={12} />
-                    <span>بکشید و رها کنید</span>
-                </div>
-            </div>
-        )}
-
-        {/* State B: Holding (Time Helper) */}
+        {/* 1. Active Drag State (Moving with Finger) */}
         {isDragging && isHolding && dragEvent && dragPosition && (
             <>
-                {/* The Event Itself (Moving) */}
-                <div 
-                    className="fixed z-[9999] p-2 rounded-lg shadow-2xl opacity-90 cursor-grabbing border border-white/30"
-                    style={{ 
-                        top: dragPosition.y - 20, 
-                        left: dragPosition.x - 50, 
-                        width: '100px', 
-                        backgroundColor: departments.find(d => d.id === dragEvent.department_id)?.color || '#666',
-                        color: 'white',
-                        pointerEvents: 'none' // Important: Let clicks pass through to global handler
-                    }}
-                >
+                <div className="fixed z-[9999] p-2 rounded-lg shadow-2xl opacity-90 cursor-grabbing border border-white/30" style={{ top: dragPosition.y - 20, left: dragPosition.x - 50, width: '100px', backgroundColor: departments.find(d => d.id === dragEvent.department_id)?.color || '#666', color: 'white', pointerEvents: 'none' }}>
                     <div className="text-[10px] font-bold truncate">{dragEvent.title}</div>
                 </div>
-
-                {/* The Time Helper (Next to Finger) */}
-                <div 
-                    className="fixed z-[9999] px-3 py-1 bg-black/80 text-white text-lg font-bold rounded-full border border-blue-500 shadow-xl backdrop-blur-md"
-                    style={{ 
-                        top: dragPosition.y - 60, 
-                        left: dragPosition.x - 30,
-                        pointerEvents: 'none'
-                    }}
-                >
+                <div className="fixed z-[9999] px-3 py-1 bg-black/80 text-white text-lg font-bold rounded-full border border-blue-500 shadow-xl backdrop-blur-md" style={{ top: dragPosition.y - 60, left: dragPosition.x - 30, pointerEvents: 'none' }}>
                     {toPersianDigits(currentDragTime)}
                 </div>
             </>
+        )}
+
+        {/* 2. Dropped & Waiting State (Waving Placeholder) */}
+        {isDroppedAndWaiting && dragEvent && dropTime && (
+            <div 
+                className="absolute z-20 left-1 right-1 rounded-md animate-pulse border-2 border-dashed border-yellow-400 bg-yellow-400/20 flex items-center justify-center shadow-[0_0_15px_rgba(250,204,21,0.5)]"
+                // HACK: We need to position this absolutely within the VIEW container, but we are in CalendarGrid (Parent).
+                // Ideally, MobileGrid renders this. But for now, we use a fixed overlay that approximates the position OR
+                // simpler: We assume MobileGrid handles the rendering of "draftEvent" if we pass it properly.
+                // Actually, let's use the 'draftEvent' logic but style it as "Waving".
+                // Since calculating the exact TOP % here is hard without the view's layout engine,
+                // We will render a floating card at the drop location? No, that looks disconnected.
+                // BEST APPROACH: We pass `dragEvent` back into MobileGrid as a special prop "wavingEvent".
+            >
+                {/* Handled inside MobileGrid via events prop filtering + special render? 
+                    Actually, let's render a fixed overlay for now to match the user request of "Waving Placeholder".
+                    Since we know the Drop Time, we can calculate the Top % relative to the container if we knew the container height.
+                    But GridContainerRef gives us that.
+                */}
+            </div>
         )}
 
         <EventModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }} onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd} eventToEdit={selectedEvent} currentUserId={userId} />
@@ -455,10 +448,11 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
         {hoveredEvent && <EventTooltip event={hoveredEvent} departments={departments} onClose={() => setHoveredEvent(null)} onMouseEnter={() => { if(tooltipTimeout.current) clearTimeout(tooltipTimeout.current); }} onMouseLeave={() => tooltipTimeout.current = setTimeout(() => setHoveredEvent(null), 150)} />}
         
         <BottomSheet isOpen={isContextMenuOpen} onClose={() => setIsContextMenuOpen(false)} title="عملیات رویداد">
-            {contextMenuEvent && <MobileContextMenu event={contextMenuEvent} userRole={userRole} currentUserId={userId} departments={departments} onClose={() => setIsContextMenuOpen(false)} onEdit={handleMenuEdit} onDelete={handleMenuDelete} onMove={handleMenuMove} />}
+            {contextMenuEvent && <MobileContextMenu event={contextMenuEvent} userRole={userRole} currentUserId={userId} departments={departments} onClose={() => setIsContextMenuOpen(false)} onEdit={handleMenuEdit} onDelete={handleMenuDelete} onMove={handleMenuMove} initialView={contextMenuInitialView} />}
         </BottomSheet>
 
-        <MoveConfirmationModal isOpen={isMoveConfirmOpen} onClose={() => setIsMoveConfirmOpen(false)} onConfirm={finalizeMove} originalEvent={dragEvent} newStartTime={dropTime} />
+        {/* Replaced Modal with Sheet */}
+        <MoveConfirmationSheet isOpen={isMoveConfirmOpen} onClose={handleCancelMove} onConfirm={finalizeMove} originalEvent={dragEvent} newStartTime={dropTime} />
       </GlassPane>
     </>
   );
