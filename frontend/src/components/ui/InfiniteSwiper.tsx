@@ -5,7 +5,7 @@ import { useRef, useState, ReactNode, useEffect } from "react";
 interface InfiniteSwiperProps {
   currentIndex: number;
   onChange: (newIndex: number) => void;
-  renderItem: (offset: number) => ReactNode; // offset: -1 (Past), 0 (Current), 1 (Future)
+  renderItem: (offset: number) => ReactNode; 
 }
 
 export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: InfiniteSwiperProps) {
@@ -14,8 +14,7 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
   const [offset, setOffset] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // When index changes (after a successful swipe), we MUST reset the offset instantly
-  // so the user doesn't see the "snap back".
+  // Reset offset instantly when index changes to maintain the illusion of infinite scrolling
   useEffect(() => {
     setIsAnimating(false);
     setOffset(0);
@@ -23,7 +22,7 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.touches[0].clientX);
-    setIsAnimating(false); // Disable animation for 1:1 tracking
+    setIsAnimating(false); // Disable animation for 1:1 finger tracking
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -37,7 +36,7 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
     if (touchStart === null) return;
     
     const width = containerRef.current?.offsetWidth || 0;
-    const threshold = width * 0.25; // Swipe 25% to trigger
+    const threshold = width * 0.25; // 25% swipe threshold
 
     if (offset > threshold) {
       // Swiped Right -> Go to Past (Index - 1)
@@ -54,32 +53,20 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
     setTouchStart(null);
   };
 
-  const triggerSwipe = (direction: -1 | 1, width: number) => {
+  const triggerSwipe = (direction: number, width: number) => {
     setIsAnimating(true);
-    // 1. Animate visually to the next panel
-    // If direction is 1 (Future), we want to slide to -66.66% (which is -33.33% - width)
-    // If direction is -1 (Past), we want to slide to 0% (which is -33.33% + width)
-    // Current base transform is -33.33% (Center Panel)
-    
-    // We visually move the container. 
-    // direction 1 (Next) means we drag LEFT (negative offset).
-    // direction -1 (Prev) means we drag RIGHT (positive offset).
-    
-    // Actually, let's just animate the 'offset' state to the full width
-    // If dragging Left (negative offset), we want to animate to -width
-    setOffset(direction === 1 ? -width : width);
+    // Animate the full width to finish the slide visually
+    setOffset(direction === 1 ? -width : width); // direction 1 (Next) requires negative offset (slide left)
 
-    // 2. Wait for animation to finish, then fire logic
+    // Wait for CSS transition, then update index
     setTimeout(() => {
-      // The parent will update 'currentIndex'. 
-      // The useEffect above will catch that change and reset offset to 0 instantly.
-      onChange(currentIndex + direction); 
+      onChange(currentIndex + direction);
     }, 200);
   };
 
   return (
     <div 
-      className="w-full h-full overflow-hidden relative"
+      className="w-full h-full overflow-hidden relative touch-pan-y bg-[#121212]"
       ref={containerRef}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -88,27 +75,20 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
       <div 
         className="flex h-full w-[300%]"
         style={{
-          // Base position is -33.333% (showing the middle panel)
-          // We add the user's touch 'offset' in pixels
+          // Base position is -33.33% (showing the middle panel) + user offset
           transform: `translateX(calc(-33.333333% + ${offset}px))`,
           transition: isAnimating ? "transform 200ms cubic-bezier(0.25, 1, 0.5, 1)" : "none",
           willChange: "transform"
         }}
       >
-        {/* Left Panel (Past: Offset -1) */}
-        <div className="w-1/3 h-full shrink-0">
-          {renderItem(-1)}
-        </div>
-
-        {/* Center Panel (Current: Offset 0) */}
-        <div className="w-1/3 h-full shrink-0">
-          {renderItem(0)}
-        </div>
-
-        {/* Right Panel (Future: Offset 1) */}
-        <div className="w-1/3 h-full shrink-0">
-          {renderItem(1)}
-        </div>
+        {/* Past Panel */}
+        <div className="w-1/3 h-full shrink-0 relative border-r border-white/5">{renderItem(-1)}</div>
+        
+        {/* Current Panel */}
+        <div className="w-1/3 h-full shrink-0 relative border-r border-white/5">{renderItem(0)}</div>
+        
+        {/* Future Panel */}
+        <div className="w-1/3 h-full shrink-0 relative">{renderItem(1)}</div>
       </div>
     </div>
   );
