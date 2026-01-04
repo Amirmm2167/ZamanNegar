@@ -16,7 +16,7 @@ import GlassPane from "@/components/ui/GlassPane";
 // Mobile UX Components
 import InfiniteSwiper from "./ui/InfiniteSwiper";
 import ExpandableBottomSheet from "./ui/ExpandableBottomSheet";
-import MobileEventSheet from "./mobile/MobileEventSheet";
+import MobileEventSheet from "./views/mobile/MobileEventSheet";
 
 // Views
 import DesktopWeekView from "./views/desktop/WeekView";
