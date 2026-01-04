@@ -13,7 +13,7 @@ import GlassPane from "@/components/ui/GlassPane";
 
 // Components
 import ExpandableBottomSheet from "./ui/ExpandableBottomSheet";
-import MobileEventSheet from "./mobile/MobileEventSheet";
+import MobileEventSheet from "./views/mobile/MobileEventSheet";
 import DesktopWeekView from "./views/desktop/WeekView";
 import DesktopMonthView from "./views/desktop/MonthView"; 
 import MobileGrid from "./views/mobile/MobileGrid"; 
