@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState, useRef } from "react";
 import { CalendarEvent, Department } from "@/types";
 import { toPersianDigits, getPersianWeekday, getPersianMonth } from "@/lib/jalali";
 import clsx from "clsx";
@@ -8,14 +9,18 @@ import { Plus } from "lucide-react";
 
 interface MobileGridProps {
   daysToShow: 1 | 3 | 7;
-  startDate: Date; // The anchor date for this specific panel
+  startDate: Date;
   events: CalendarEvent[];
   holidays: any[];
   departments: Department[];
   hiddenDeptIds: number[];
   
-  // Interaction Handlers
+  // --- MISSING PROPS ADDED HERE ---
   onEventTap: (e: CalendarEvent) => void;
+  onEventHold: (e: CalendarEvent) => void;
+  onEventDragStart: (e: CalendarEvent) => void;
+  // -------------------------------
+
   onSlotClick: (date: Date, hour: number) => void;
   draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
@@ -28,34 +33,90 @@ export default function MobileGrid({
   departments,
   hiddenDeptIds,
   onEventTap,
+  onEventHold,      // Destructured
+  onEventDragStart, // Destructured
   onSlotClick,
   draftEvent
 }: MobileGridProps) {
   // We use a fixed "now" for rendering the current time line to prevent hydration errors.
-  // In a real app, you might pass "now" as a prop from the parent.
-  const now = new Date();
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    const interval = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   // --- Day Generation (Pure Logic) ---
   const days: Date[] = [];
   
   if (daysToShow === 1) {
-      // 1 Day View: Just the start date
       days.push(new Date(startDate));
   } else if (daysToShow === 3) {
-      // 3 Day View: Center the startDate (Yesterday, TODAY, Tomorrow)
       for (let i = -1; i <= 1; i++) {
           const d = new Date(startDate);
           d.setDate(d.getDate() + i);
           days.push(d);
       }
   } else if (daysToShow === 7) {
-      // 7 Day View: startDate is the anchor, usually start of week
       for (let i = 0; i < 7; i++) {
           const d = new Date(startDate);
           d.setDate(d.getDate() + i);
           days.push(d);
       }
   }
+
+  // --- Smart Gesture Logic ---
+  const holdTimer = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPos = useRef<{x: number, y: number} | null>(null);
+  const isHolding = useRef(false);
+  const hasMoved = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent, event: CalendarEvent) => {
+      touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      isHolding.current = false;
+      hasMoved.current = false;
+      
+      holdTimer.current = setTimeout(() => {
+          isHolding.current = true;
+          if (navigator.vibrate) navigator.vibrate(50);
+          // Optional: Trigger visual feedback here via local state if needed
+      }, 500);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent, event: CalendarEvent) => {
+      if (!touchStartPos.current) return;
+      const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
+      const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
+
+      if (dx > 10 || dy > 10) {
+          hasMoved.current = true;
+          
+          if (isHolding.current) {
+              if (holdTimer.current) clearTimeout(holdTimer.current);
+              onEventDragStart(event);
+              touchStartPos.current = null;
+              isHolding.current = false;
+          } else {
+              // Cancel hold if moved before timer
+              if (holdTimer.current) clearTimeout(holdTimer.current);
+          }
+      }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent, event: CalendarEvent) => {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+
+      if (isHolding.current && !hasMoved.current) {
+          onEventHold(event);
+      } else if (!isHolding.current && !hasMoved.current) {
+          onEventTap(event);
+      }
+      
+      touchStartPos.current = null;
+      isHolding.current = false;
+      hasMoved.current = false;
+  };
 
   const getEventStyle = (event: CalendarEvent) => {
     const dept = departments.find(d => d.id === event.department_id);
@@ -74,7 +135,7 @@ export default function MobileGrid({
         <div className="flex flex-row-reverse border-b border-white/10 h-14 bg-white/5 shrink-0">
             <div className="w-10 border-l border-white/10 bg-black/20"></div>
             {days.map((day, i) => {
-                const isToday = day.toDateString() === now.toDateString();
+                const isToday = now && day.toDateString() === now.toDateString();
                 const dateStr = day.toISOString().split('T')[0];
                 const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
                 const dayNum = new Intl.DateTimeFormat("fa-IR", { day: "numeric" }).format(day);
@@ -89,7 +150,6 @@ export default function MobileGrid({
                              <div className={clsx("w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold", isToday ? "bg-blue-600 text-white shadow-lg" : "text-gray-200")}>
                                 {dayNum}
                              </div>
-                             {/* Show Month for first day or 1st of month */}
                              {(i === 0 || dayNum === "۱") && (
                                 <span className="text-[9px] text-gray-500">{getPersianMonth(day)}</span>
                              )}
@@ -164,7 +224,9 @@ export default function MobileGrid({
                             return (
                                 <div
                                     key={ev.id}
-                                    onClick={(e) => { e.stopPropagation(); onEventTap(original); }}
+                                    onTouchStart={(e) => handleTouchStart(e, original)}
+                                    onTouchMove={(e) => handleTouchMove(e, original)}
+                                    onTouchEnd={(e) => handleTouchEnd(e, original)}
                                     className="absolute z-10 px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-pointer active:scale-95 transition-all"
                                     style={{
                                         top: `${topPercent}%`,
@@ -188,7 +250,7 @@ export default function MobileGrid({
                         })}
                         
                         {/* Current Time Line */}
-                        {day.toDateString() === now.toDateString() && (
+                        {now && day.toDateString() === now.toDateString() && (
                              <div className="absolute left-0 right-0 h-0.5 bg-red-500 z-20 pointer-events-none shadow-glow" style={{ top: `${(now.getHours() * 60 + now.getMinutes()) / 1440 * 100}%` }}>
                                  <div className="absolute right-[-4px] -top-[2.5px] w-1.5 h-1.5 bg-red-500 rounded-full"></div>
                              </div>
