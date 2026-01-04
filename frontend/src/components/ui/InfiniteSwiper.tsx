@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect, ReactNode } from "react";
+import { useRef, useState, ReactNode, useEffect } from "react";
 
 interface InfiniteSwiperProps {
   currentIndex: number;
@@ -14,12 +14,16 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
   const [offset, setOffset] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // Constants
-  const threshold = 100; // px to trigger swipe
+  // When index changes (after a successful swipe), we MUST reset the offset instantly
+  // so the user doesn't see the "snap back".
+  useEffect(() => {
+    setIsAnimating(false);
+    setOffset(0);
+  }, [currentIndex]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.touches[0].clientX);
-    setIsAnimating(false); // Disable transition for 1:1 movement
+    setIsAnimating(false); // Disable animation for 1:1 tracking
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -32,15 +36,17 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
   const handleTouchEnd = () => {
     if (touchStart === null) return;
     
-    // Snap Logic
+    const width = containerRef.current?.offsetWidth || 0;
+    const threshold = width * 0.25; // Swipe 25% to trigger
+
     if (offset > threshold) {
-      // Swipe Right -> Go Past
-      triggerChange(-1);
+      // Swiped Right -> Go to Past (Index - 1)
+      triggerSwipe(-1, width);
     } else if (offset < -threshold) {
-      // Swipe Left -> Go Future
-      triggerChange(1);
+      // Swiped Left -> Go to Future (Index + 1)
+      triggerSwipe(1, width);
     } else {
-      // Reset (Bounce back)
+      // Bounce back to center
       setIsAnimating(true);
       setOffset(0);
     }
@@ -48,49 +54,59 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
     setTouchStart(null);
   };
 
-  const triggerChange = (direction: -1 | 1) => {
+  const triggerSwipe = (direction: -1 | 1, width: number) => {
     setIsAnimating(true);
-    // 1. Animate to the full width
-    const width = containerRef.current?.offsetWidth || 0;
-    setOffset(direction * width);
+    // 1. Animate visually to the next panel
+    // If direction is 1 (Future), we want to slide to -66.66% (which is -33.33% - width)
+    // If direction is -1 (Past), we want to slide to 0% (which is -33.33% + width)
+    // Current base transform is -33.33% (Center Panel)
+    
+    // We visually move the container. 
+    // direction 1 (Next) means we drag LEFT (negative offset).
+    // direction -1 (Prev) means we drag RIGHT (positive offset).
+    
+    // Actually, let's just animate the 'offset' state to the full width
+    // If dragging Left (negative offset), we want to animate to -width
+    setOffset(direction === 1 ? -width : width);
 
-    // 2. Wait for animation, then reset instantly
+    // 2. Wait for animation to finish, then fire logic
     setTimeout(() => {
-      setIsAnimating(false);
-      onChange(currentIndex - direction); // Note: Swiping Left (negative delta) means INCREASING index (Future)
-      setOffset(0); // Snap back to center instantly (user won't see it because data swapped)
-    }, 200); // Match CSS transition duration
+      // The parent will update 'currentIndex'. 
+      // The useEffect above will catch that change and reset offset to 0 instantly.
+      onChange(currentIndex + direction); 
+    }, 200);
   };
 
   return (
     <div 
-      className="flex-1 overflow-hidden relative w-full h-full"
+      className="w-full h-full overflow-hidden relative"
+      ref={containerRef}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      ref={containerRef}
     >
       <div 
         className="flex h-full w-[300%]"
         style={{
-          // We start at -100% (Center Panel), then add user offset
-          transform: `translateX(calc(-33.333% + ${offset}px))`,
-          transition: isAnimating ? "transform 200ms ease-out" : "none",
+          // Base position is -33.333% (showing the middle panel)
+          // We add the user's touch 'offset' in pixels
+          transform: `translateX(calc(-33.333333% + ${offset}px))`,
+          transition: isAnimating ? "transform 200ms cubic-bezier(0.25, 1, 0.5, 1)" : "none",
           willChange: "transform"
         }}
       >
-        {/* Left Panel (Past) */}
-        <div className="w-1/3 h-full flex-shrink-0">
+        {/* Left Panel (Past: Offset -1) */}
+        <div className="w-1/3 h-full shrink-0">
           {renderItem(-1)}
         </div>
 
-        {/* Center Panel (Current) */}
-        <div className="w-1/3 h-full flex-shrink-0">
+        {/* Center Panel (Current: Offset 0) */}
+        <div className="w-1/3 h-full shrink-0">
           {renderItem(0)}
         </div>
 
-        {/* Right Panel (Future) */}
-        <div className="w-1/3 h-full flex-shrink-0">
+        {/* Right Panel (Future: Offset 1) */}
+        <div className="w-1/3 h-full shrink-0">
           {renderItem(1)}
         </div>
       </div>
