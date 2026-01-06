@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import models, database 
 from routers import auth, events, departments, users, superadmin, holidays, issues, tags, analytics # Added analytics
+from utils.logger import LogMiddleware
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -13,6 +15,8 @@ async def lifespan(app: FastAPI):
     print("Shutdown: Cleaning up...")
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(LogMiddleware)
 
 origins = [
     "http://localhost:3000",
