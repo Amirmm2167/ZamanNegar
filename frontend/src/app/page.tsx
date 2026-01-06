@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BellOff, LogOut, Download, User } from "lucide-react";
+import { Bell, BellOff, LogOut, Download, User, RefreshCw } from "lucide-react";
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
 import DepartmentModal from "@/components/DepartmentModal";
@@ -24,6 +24,7 @@ export default function Dashboard() {
   // Features
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const calendarRef = useRef<CalendarGridHandle>(null);
 
@@ -58,8 +59,6 @@ export default function Dashboard() {
     if (!("Notification" in window)) return;
     const permission = await Notification.requestPermission();
     setNotificationsEnabled(permission === "granted");
-    
-    // Optional: Send this status to backend if you want to save preference
   };
 
   const handleInstallClick = () => {
@@ -77,6 +76,19 @@ export default function Dashboard() {
     router.push("/login");
   };
 
+  const handleHardRefresh = async () => {
+    setIsRefreshing(true);
+    // 1. Unregister Service Worker to clear PWA cache
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+    }
+    // 2. Force Reload
+    window.location.reload();
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
@@ -92,6 +104,15 @@ export default function Dashboard() {
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-white tracking-tight">زمان‌نگار</h1>
           
+          {/* Refresh Button */}
+          <button 
+            onClick={handleHardRefresh}
+            className="p-2 rounded-full hover:bg-white/10 transition-colors text-gray-400 hover:text-white"
+            title="بروزرسانی برنامه (Hard Refresh)"
+          >
+            <RefreshCw size={20} className={isRefreshing ? "animate-spin" : ""} />
+          </button>
+
           {/* Notification Toggle */}
           <button 
             onClick={toggleNotifications}
@@ -105,7 +126,7 @@ export default function Dashboard() {
             )}
           </button>
 
-          {/* Install App Button (Only shows if browser allows it) */}
+          {/* Install App Button */}
           {installPrompt && (
             <button
               onClick={handleInstallClick}
