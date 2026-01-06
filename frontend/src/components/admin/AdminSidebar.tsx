@@ -1,8 +1,7 @@
 "use client";
 
-import { Building, CalendarOff, MessageSquare, LogOut, Shield } from "lucide-react";
+import { Building, Calendar, FileText, LogOut, LayoutDashboard, Activity } from "lucide-react"; // Added Activity
 import clsx from "clsx";
-import GlassPane from "@/components/ui/GlassPane";
 
 interface AdminSidebarProps {
   activeTab: string;
@@ -12,21 +11,17 @@ interface AdminSidebarProps {
 
 export default function AdminSidebar({ activeTab, onChangeTab, onLogout }: AdminSidebarProps) {
   const menuItems = [
-    { id: "companies", label: "مدیریت همه شرکت‌ها", icon: Building },
-    { id: "holidays", label: "تعطیلات سراسری", icon: CalendarOff },
-    { id: "reports", label: "گزارشات کاربران", icon: MessageSquare },
+    { id: "companies", label: "سازمان‌ها", icon: Building },
+    { id: "holidays", label: "تعطیلات", icon: Calendar },
+    { id: "reports", label: "گزارشات", icon: FileText },
+    { id: "analytics", label: "آمار و تحلیل", icon: Activity }, // New Item
   ];
 
   return (
-    <GlassPane intensity="medium" className="w-72 h-full flex flex-col border-l border-white/10 rounded-l-2xl my-4 ms-4">
-      <div className="h-20 flex items-center gap-3 px-6 border-b border-white/10">
-        <div className="p-2 bg-red-500/20 rounded-lg">
-             <Shield className="text-red-500" size={24} />
-        </div>
-        <div>
-            <h1 className="font-bold text-white text-lg">صفحه ادمین</h1>
-            <span className="text-xs text-gray-400">مدیریت سیستم</span>
-        </div>
+    <aside className="w-64 bg-[#1e1e1e]/80 backdrop-blur-xl border-l border-white/10 flex flex-col shrink-0">
+      <div className="p-6 flex items-center gap-3 border-b border-white/5">
+        <LayoutDashboard className="text-blue-500" />
+        <h1 className="font-bold text-lg">پنل مدیریت</h1>
       </div>
 
       <nav className="flex-1 p-4 space-y-2">
@@ -35,27 +30,27 @@ export default function AdminSidebar({ activeTab, onChangeTab, onLogout }: Admin
             key={item.id}
             onClick={() => onChangeTab(item.id)}
             className={clsx(
-              "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all border",
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all",
               activeTab === item.id 
-                ? "bg-blue-600/20 border-blue-500/50 text-blue-100 shadow-[0_0_15px_rgba(37,99,235,0.2)]" 
-                : "border-transparent text-gray-400 hover:bg-white/5 hover:text-white"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
+                : "text-gray-400 hover:bg-white/5 hover:text-white"
             )}
           >
             <item.icon size={20} />
-            <span className="font-medium">{item.label}</span>
+            <span className="font-medium text-sm">{item.label}</span>
           </button>
         ))}
       </nav>
 
-      <div className="p-4 border-t border-white/10">
-        <button
+      <div className="p-4 border-t border-white/5">
+        <button 
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-900/20 rounded-xl transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors"
         >
           <LogOut size={20} />
-          <span>خروج</span>
+          <span className="font-medium text-sm">خروج</span>
         </button>
       </div>
-    </GlassPane>
+    </aside>
   );
 }
