@@ -6,7 +6,6 @@ import { toPersianDigits, getPersianWeekday } from "@/lib/jalali";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
-import { motion } from "framer-motion";
 
 interface MobileGridProps {
   daysToShow: 1 | 3 | 7;
@@ -67,7 +66,7 @@ export default function MobileGrid({
       console.error("Error generating dates", e);
   }
 
-  // --- Gesture Logic (Tap vs Hold) ---
+  // --- Gesture Logic ---
   const holdTimer = useRef<NodeJS.Timeout | null>(null);
   const touchStartPos = useRef<{x: number, y: number} | null>(null);
   const isHolding = useRef(false);
@@ -133,7 +132,7 @@ export default function MobileGrid({
   return (
     <div className="flex flex-col h-full w-full bg-[#121212] select-none relative">
         {/* HEADER */}
-        <div className="flex flex-row border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
+        <div className="flex flex-row-reverse border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
             <div className="w-10 border-l border-white/10 bg-black/20"></div>
             {days.map((day, i) => {
                 const isToday = now && day.toDateString() === now.toDateString();
@@ -151,9 +150,10 @@ export default function MobileGrid({
             })}
         </div>
 
-        {/* BODY */}
+        {/* BODY - FIX: Added overflow-y-auto and touch-pan-y */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y">
-            <div className="flex flex-row relative h-[1440px]">
+            {/* FIX: Fixed height 1440px to ensure px calculations are correct */}
+            <div className="flex flex-row-reverse relative h-[1440px]">
                 
                 {/* Time Column */}
                 <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
@@ -196,7 +196,7 @@ export default function MobileGrid({
                                 const styleInfo = getEventStyle(original);
 
                                 return (
-                                    <motion.div 
+                                    <div 
                                         key={ev.id} 
                                         onTouchStart={(e) => handleTouchStart(e, original)} 
                                         onTouchMove={(e) => handleTouchMove(e)} 
@@ -214,7 +214,7 @@ export default function MobileGrid({
                                         <span className="text-[9px] opacity-80 pointer-events-none">
                                             {toPersianDigits(`${start.getHours()}:${String(start.getMinutes()).padStart(2,'0')}`)}
                                         </span>
-                                    </motion.div>
+                                    </div>
                                 );
                             })}
                             
