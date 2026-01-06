@@ -1,95 +1,87 @@
 "use client";
 
-import { useRef, useState, ReactNode, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { motion, useAnimation, PanInfo } from "framer-motion";
 
 interface InfiniteSwiperProps {
   currentIndex: number;
   onChange: (newIndex: number) => void;
-  renderItem: (offset: number) => ReactNode; 
+  renderItem: (offset: number) => React.ReactNode; 
 }
 
 export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: InfiniteSwiperProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [offset, setOffset] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
+  const controls = useAnimation();
+  const [indexOffset, setIndexOffset] = useState(0); // Used to trigger re-renders if needed, largely internal
 
-  // Reset offset instantly when index changes to maintain the illusion of infinite scrolling
+  // When the external index changes, we ensure we are visually centered (offset 0)
+  // But since we use framer controls, we just reset the X immediately.
   useEffect(() => {
-    setIsAnimating(false);
-    setOffset(0);
-  }, [currentIndex]);
+    controls.set({ x: "0%" });
+  }, [currentIndex, controls]);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStart(e.touches[0].clientX);
-    setIsAnimating(false); // Disable animation for 1:1 finger tracking
-  };
+  const handleDragEnd = async (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const { offset, velocity } = info;
+    const threshold = 100; // px
+    const velocityThreshold = 200;
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStart === null) return;
-    const current = e.touches[0].clientX;
-    const delta = current - touchStart;
-    setOffset(delta);
-  };
-
-  const handleTouchEnd = () => {
-    if (touchStart === null) return;
+    // We are viewing 3 panels. 
+    // -33.33% is "Past", 0% is "Current" (Wait, CSS layout logic below)
+    // Actually, in the layout:
+    // Left Panel: -100% (relative to container)
+    // Center Panel: 0%
+    // Right Panel: 100%
     
-    const width = containerRef.current?.offsetWidth || 0;
-    const threshold = width * 0.25; // 25% swipe threshold
-
-    if (offset > threshold) {
-      // Swiped Right -> Go to Past (Index - 1)
-      triggerSwipe(-1, width);
-    } else if (offset < -threshold) {
-      // Swiped Left -> Go to Future (Index + 1)
-      triggerSwipe(1, width);
-    } else {
-      // Bounce back to center
-      setIsAnimating(true);
-      setOffset(0);
+    // Swipe Right (positive X) -> Go to Past
+    if (offset.x > threshold || velocity.x > velocityThreshold) {
+      await controls.start({ x: "100%", transition: { type: "spring", stiffness: 300, damping: 30 } });
+      onChange(currentIndex - 1);
+      controls.set({ x: "0%" }); // Instant reset after state change
+    } 
+    // Swipe Left (negative X) -> Go to Future
+    else if (offset.x < -threshold || velocity.x < -velocityThreshold) {
+      await controls.start({ x: "-100%", transition: { type: "spring", stiffness: 300, damping: 30 } });
+      onChange(currentIndex + 1);
+      controls.set({ x: "0%" }); // Instant reset after state change
+    } 
+    // Snap back
+    else {
+      controls.start({ x: "0%", transition: { type: "spring", stiffness: 400, damping: 40 } });
     }
-    
-    setTouchStart(null);
-  };
-
-  const triggerSwipe = (direction: number, width: number) => {
-    setIsAnimating(true);
-    // Animate the full width to finish the slide visually
-    setOffset(direction === 1 ? -width : width); // direction 1 (Next) requires negative offset (slide left)
-
-    // Wait for CSS transition, then update index
-    setTimeout(() => {
-      onChange(currentIndex + direction);
-    }, 200);
   };
 
   return (
-    <div 
-      className="w-full h-full overflow-hidden relative touch-pan-y bg-[#121212]"
-      ref={containerRef}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-      <div 
-        className="flex h-full w-[300%]"
-        style={{
-          // Base position is -33.33% (showing the middle panel) + user offset
-          transform: `translateX(calc(-33.333333% + ${offset}px))`,
-          transition: isAnimating ? "transform 200ms cubic-bezier(0.25, 1, 0.5, 1)" : "none",
-          willChange: "transform"
-        }}
+    <div className="w-full h-full overflow-hidden bg-[#121212] relative">
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }} // Constraints 0 makes it "elastic" around the center
+        dragElastic={0.2}
+        onDragEnd={handleDragEnd}
+        animate={controls}
+        className="flex h-full w-full absolute top-0 left-0"
+        style={{ x: "0%" }} // Controlled by animation
       >
-        {/* Past Panel */}
-        <div className="w-1/3 h-full shrink-0 relative border-r border-white/5">{renderItem(-1)}</div>
+        {/* Layout Trick:
+           We position the panels absolutely so we can slide the container easily.
+           Wait, simpler approach for framer motion:
+           Render 3 divs side by side: [-100%, 0%, 100%]
+        */}
         
-        {/* Current Panel */}
-        <div className="w-1/3 h-full shrink-0 relative border-r border-white/5">{renderItem(0)}</div>
-        
-        {/* Future Panel */}
-        <div className="w-1/3 h-full shrink-0 relative">{renderItem(1)}</div>
-      </div>
+        {/* Past Panel (-1) */}
+        <div className="absolute top-0 left-[-100%] w-full h-full border-r border-white/5">
+          {renderItem(-1)}
+        </div>
+
+        {/* Current Panel (0) */}
+        <div className="absolute top-0 left-0 w-full h-full border-r border-white/5">
+          {renderItem(0)}
+        </div>
+
+        {/* Future Panel (+1) */}
+        <div className="absolute top-0 left-[100%] w-full h-full">
+          {renderItem(1)}
+        </div>
+
+      </motion.div>
     </div>
   );
 }
