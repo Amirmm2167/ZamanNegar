@@ -3,9 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import models, database 
-from routers import auth, events, departments, users, superadmin, holidays, issues, tags, analytics # Added analytics
+from routers import auth, events, departments, users, superadmin, holidays, issues, tags, analytics
 from utils.logger import LogMiddleware
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -16,6 +15,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Add Logger FIRST so it captures everything
 app.add_middleware(LogMiddleware)
 
 origins = [
@@ -43,7 +43,7 @@ app.include_router(superadmin.router, prefix="/superadmin", tags=["SuperAdmin"])
 app.include_router(holidays.router, prefix="/holidays", tags=["Holidays"])
 app.include_router(issues.router, prefix="/issues", tags=["Issues"])
 app.include_router(tags.router, prefix="/tags", tags=["Tags"])
-app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"]) # Registered
+app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 
 @app.get("/")
 def read_root():
