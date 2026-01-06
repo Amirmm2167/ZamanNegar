@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "re
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Plus, Maximize2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Plus, Maximize2, Calendar as CalendarIcon } from "lucide-react";
 import clsx from "clsx";
 import EventModal from "./EventModal";
 import EventTooltip from "./EventTooltip";
@@ -13,6 +13,8 @@ import GlassPane from "@/components/ui/GlassPane";
 import InfiniteSwiper from "./ui/InfiniteSwiper";
 import ExpandableBottomSheet from "./ui/ExpandableBottomSheet";
 import MobileEventSheet from "./views/mobile/MobileEventSheet";
+import QuickViewSheet from "./views/mobile/QuickViewSheet"; // NEW
+import SkeletonGrid from "./views/mobile/SkeletonGrid"; // NEW
 import DesktopWeekView from "./views/desktop/WeekView";
 import DesktopMonthView from "./views/desktop/MonthView"; 
 import MobileGrid from "./views/mobile/MobileGrid"; 
@@ -34,11 +36,19 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  const [loading, setLoading] = useState(true); // Tracks initial load
+  
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentIndex, setCurrentIndex] = useState(0); 
+  
+  // Sheet States
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
+  
+  // Distinguish between QuickView (Read) and Edit Mode
+  const [activeSheetMode, setActiveSheetMode] = useState<"quick" | "edit" | "create">("quick");
+  
   const [sheetEvent, setSheetEvent] = useState<CalendarEvent | null>(null);
   const [sheetDraft, setSheetDraft] = useState<{ date: Date; startHour: number; endHour: number } | null>(null);
   const [hiddenDeptIds, setHiddenDeptIds] = useState<number[]>([]); 
@@ -52,6 +62,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
+  
+  // Date Picker Ref
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
     openNewEventModal: () => handleOpenModal(new Date(), "09:00", "10:00"),
@@ -98,7 +111,13 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
 
   const getDateForIndex = (index: number) => {
-      const d = new Date(); 
+      const d = new Date(currentDate); // Base off currentDate instead of always Today to allow Jumping
+      // Reset logic: The InfiniteSwiper usually assumes index 0 is "currentDate".
+      // So simple adding index works if we update currentDate only on explicit jumps.
+      // Wait, InfiniteSwiper is 0-centered. 
+      // If we jump to a date, we should probably reset index to 0.
+      
+      // Better logic: `currentDate` is the anchor. 
       if (viewMode === 'month') {
           d.setMonth(d.getMonth() + index);
       } else {
@@ -106,15 +125,16 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
           if (viewMode === '1day') diff = index; 
           else if (viewMode === '3day') diff = index * 3; 
           else if (viewMode === 'mobile-week') diff = index * 7; 
-          
           d.setDate(d.getDate() + diff);
       }
       return d;
   };
 
   const handleSwipeChange = (newIndex: number) => {
+      // We don't update currentIndex state here to avoid re-renders loop if not needed
+      // But we track it for next/prev buttons if they depend on it
+      // Actually, standard InfiniteSwiper logic:
       setCurrentIndex(newIndex);
-      setCurrentDate(getDateForIndex(newIndex));
   };
 
   const handleOpenModal = (date: Date, start: string, end: string, event: CalendarEvent | null = null) => {
@@ -125,6 +145,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       if(isMobile) {
           setSheetEvent(null);
           setSheetDraft({ date, startHour: hour, endHour: hour + 1 });
+          setActiveSheetMode("create");
           setIsSheetExpanded(false); setIsSheetOpen(true);
       } else {
           handleOpenModal(date, `${hour}:00`, `${hour+1}:00`);
@@ -132,22 +153,37 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
 
   const handleEventTap = (event: CalendarEvent) => {
-      setSheetEvent(event); setSheetDraft(null); setIsSheetExpanded(false); setIsSheetOpen(true);
+      setSheetEvent(event); 
+      setSheetDraft(null); 
+      setActiveSheetMode("quick"); // Open Quick View first
+      setIsSheetExpanded(false); 
+      setIsSheetOpen(true);
+  };
+
+  // Switch from Quick View to Edit Mode
+  const handleEditFromQuickView = () => {
+      setActiveSheetMode("edit");
+      setIsSheetExpanded(true); // Auto expand for editing
   };
   
-  const nextDate = () => handleSwipeChange(currentIndex + 1);
-  const prevDate = () => handleSwipeChange(currentIndex - 1);
+  // Date Picker Handler
+  const handleDateJump = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.valueAsDate) {
+          setCurrentDate(e.target.valueAsDate);
+          setCurrentIndex(0); // Reset swiper to center on new date
+      }
+  };
+
+  const nextDate = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 1); return d; });
+  const prevDate = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 1); return d; });
   const goToToday = () => { setCurrentIndex(0); setCurrentDate(new Date()); };
   
   const handleEventClick = (event: CalendarEvent) => { setHoveredEvent(event); };
   const canEditSheet = (sheetEvent && (sheetEvent.proposer_id === userId || ["manager", "superadmin"].includes(userRole))) || (!sheetEvent);
 
   const handleMobileMonthDayClick = (date: Date) => {
-      const today = new Date();
-      const diffTime = date.getTime() - today.getTime();
-      const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
       setViewMode('1day');
-      setCurrentIndex(diffDays);
+      setCurrentIndex(0);
       setCurrentDate(date);
   };
 
@@ -155,16 +191,19 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       const formatterMonth = new Intl.DateTimeFormat("fa-IR", { month: "long" });
       const formatterYear = new Intl.DateTimeFormat("fa-IR", { year: "numeric" });
       
-      let start = new Date(currentDate);
-      let end = new Date(currentDate);
+      // Calculate display date based on current index relative to anchor
+      const displayDate = getDateForIndex(currentIndex);
+      
+      let start = new Date(displayDate);
+      let end = new Date(displayDate);
 
       if (viewMode === '3day') {
-          start.setDate(currentDate.getDate() - 1);
-          end.setDate(currentDate.getDate() + 1);
+          start.setDate(displayDate.getDate() - 1);
+          end.setDate(displayDate.getDate() + 1);
       } else if (viewMode === 'week' || viewMode === 'mobile-week') {
-          const day = currentDate.getDay(); 
+          const day = displayDate.getDay(); 
           const diffToSat = (day + 1) % 7; 
-          start.setDate(currentDate.getDate() - diffToSat); 
+          start.setDate(displayDate.getDate() - diffToSat); 
           end = new Date(start);
           end.setDate(start.getDate() + 6); 
       }
@@ -198,10 +237,26 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
             {!isMobile && <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />}
             
             <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
-              <button onClick={nextDate} className="p-2 text-gray-300"><ChevronRight size={18} /></button>
+              <button onClick={nextDate} className="p-2 text-gray-300 hover:text-white"><ChevronRight size={18} /></button>
               <button onClick={goToToday} className="px-3 py-1 text-xs font-bold text-white">امروز</button>
-              <button onClick={prevDate} className="p-2 text-gray-300"><ChevronLeft size={18} /></button>
+              <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
             </div>
+            
+            {/* Jump to Date (Mobile) */}
+            {isMobile && (
+                <div className="relative">
+                    <button onClick={() => dateInputRef.current?.showPicker()} className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5">
+                        <CalendarIcon size={18} />
+                    </button>
+                    <input 
+                        ref={dateInputRef} 
+                        type="date" 
+                        className="absolute inset-0 opacity-0 w-full h-full"
+                        onChange={handleDateJump}
+                    />
+                </div>
+            )}
+            
             {isMobile && <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button>}
           </div>
           
@@ -222,52 +277,68 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
         {/* MAIN CONTENT */}
         <div className="flex-1 overflow-hidden relative w-full h-full">
-            {!isMobile && viewMode === 'week' && <DesktopWeekView currentDate={currentDate} events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} onEventClick={handleEventClick} onEventLongPress={()=>{}} onSlotClick={handleSlotClick} onEventHover={(e, ev) => setHoveredEvent(ev)} onEventLeave={() => setHoveredEvent(null)} draftEvent={null} />}
-            {!isMobile && viewMode === 'month' && <DesktopMonthView currentDate={currentDate} events={events} holidays={holidays} departments={departments} onEventClick={handleEventClick} onEventLongPress={()=>{}} onSlotClick={handleSlotClick} />}
-            
-            {/* Mobile Infinite Ribbon */}
-            {isMobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week' || viewMode === 'month') && (
-                <InfiniteSwiper 
-                    currentIndex={currentIndex} 
-                    onChange={handleSwipeChange}
-                    renderItem={(offset) => {
-                        const panelIndex = currentIndex + offset;
-                        const panelDate = getDateForIndex(panelIndex);
-                        
-                        if (viewMode === 'month') {
-                            return (
-                                <MobileMonthGrid 
-                                    key={panelIndex}
-                                    startDate={panelDate}
-                                    events={events}
-                                    holidays={holidays}
-                                    departments={departments}
-                                    onDateClick={handleMobileMonthDayClick}
-                                />
-                            );
-                        }
+            {/* Show Skeleton if Loading on Mobile */}
+            {isMobile && loading && events.length === 0 ? (
+                <SkeletonGrid daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} />
+            ) : (
+                <>
+                    {!isMobile && viewMode === 'week' && <DesktopWeekView currentDate={currentDate} events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} onEventClick={handleEventClick} onEventLongPress={()=>{}} onSlotClick={handleSlotClick} onEventHover={(e, ev) => setHoveredEvent(ev)} onEventLeave={() => setHoveredEvent(null)} draftEvent={null} />}
+                    {!isMobile && viewMode === 'month' && <DesktopMonthView currentDate={currentDate} events={events} holidays={holidays} departments={departments} onEventClick={handleEventClick} onEventLongPress={()=>{}} onSlotClick={handleSlotClick} />}
+                    
+                    {/* Mobile Infinite Ribbon */}
+                    {isMobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week' || viewMode === 'month') && (
+                        <InfiniteSwiper 
+                            currentIndex={currentIndex} 
+                            onChange={handleSwipeChange}
+                            renderItem={(offset) => {
+                                const panelIndex = currentIndex + offset;
+                                const panelDate = getDateForIndex(panelIndex);
+                                
+                                if (viewMode === 'month') {
+                                    return (
+                                        <MobileMonthGrid 
+                                            key={panelIndex}
+                                            startDate={panelDate}
+                                            events={events}
+                                            holidays={holidays}
+                                            departments={departments}
+                                            onDateClick={handleMobileMonthDayClick}
+                                        />
+                                    );
+                                }
 
-                        return (
-                            <MobileGrid 
-                                key={panelIndex}
-                                daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} 
-                                startDate={panelDate} 
-                                events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} 
-                                onEventTap={handleEventTap} 
-                                onSlotClick={handleSlotClick} 
-                                draftEvent={offset === 0 && isSheetOpen ? sheetDraft : null} 
-                                onEventHold={handleEventTap}
-                            />
-                        );
-                    }}
-                />
+                                return (
+                                    <MobileGrid 
+                                        key={panelIndex}
+                                        daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} 
+                                        startDate={panelDate} 
+                                        events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} 
+                                        onEventTap={handleEventTap} 
+                                        onSlotClick={handleSlotClick} 
+                                        draftEvent={offset === 0 && isSheetOpen && activeSheetMode === 'create' ? sheetDraft : null} 
+                                        onEventHold={() => {}}
+                                    />
+                                );
+                            }}
+                        />
+                    )}
+                    
+                    {viewMode === 'agenda' && <AgendaView events={events} departments={departments} onEventClick={handleEventTap} />}
+                </>
             )}
-            
-            {viewMode === 'agenda' && <AgendaView events={events} departments={departments} onEventClick={handleEventTap} />}
         </div>
 
-        <ExpandableBottomSheet isOpen={isSheetOpen} onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} mode={canEditSheet ? "edit" : "view"} isExpanded={isSheetExpanded} onExpandChange={setIsSheetExpanded}>
-            <MobileEventSheet event={sheetEvent} draftSlot={sheetDraft} isExpanded={isSheetExpanded} canEdit={canEditSheet} onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} onRefresh={fetchData} />
+        <ExpandableBottomSheet isOpen={isSheetOpen} onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} mode={activeSheetMode === "quick" ? "view" : "edit"} isExpanded={isSheetExpanded} onExpandChange={setIsSheetExpanded}>
+            {activeSheetMode === "quick" && sheetEvent ? (
+                <QuickViewSheet 
+                    event={sheetEvent} 
+                    departments={departments} 
+                    onEdit={handleEditFromQuickView} 
+                    onClose={() => setIsSheetOpen(false)} 
+                />
+            ) : (
+                <MobileEventSheet event={sheetEvent} draftSlot={sheetDraft} isExpanded={isSheetExpanded} canEdit={canEditSheet} onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} onRefresh={fetchData} />
+            )}
         </ExpandableBottomSheet>
 
         <EventModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }} onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd} eventToEdit={selectedEvent} currentUserId={userId} />
