@@ -202,7 +202,7 @@ export default function MobileGrid({
                                         onTouchStart={(e) => handleTouchStart(e, original)} 
                                         onTouchMove={(e) => handleTouchMove(e)} 
                                         onTouchEnd={(e) => handleTouchEnd(e, original)}
-                                        className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform rounded text-[10px]"
+                                        className="absolute px-1.5 py-1 flex flex-col w-full overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform rounded text-[10px]"
                                         style={{ 
                                             top: `${topPx}px`, 
                                             height: `max(20px, ${heightPx}px)`, 
