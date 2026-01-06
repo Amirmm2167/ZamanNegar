@@ -135,38 +135,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       setSheetEvent(event); setSheetDraft(null); setIsSheetExpanded(false); setIsSheetOpen(true);
   };
   
-  // --- Drag & Drop Handler ---
-  const handleEventDrop = async (event: CalendarEvent, newStartDate: Date) => {
-      const oldStart = new Date(event.start_time);
-      const oldEnd = new Date(event.end_time);
-      const durationMs = oldEnd.getTime() - oldStart.getTime();
-      
-      const newEndDate = new Date(newStartDate.getTime() + durationMs);
-
-      // Optimistic Update
-      const oldEvents = [...events];
-      setEvents(prev => prev.map(e => e.id === event.id ? { ...e, start_time: newStartDate.toISOString(), end_time: newEndDate.toISOString() } : e));
-
-      try {
-          // FIX: Changed api.put to api.patch
-          // FIX: Changed recurrence to recurrence_rule
-          await api.patch(`/events/${event.id}`, {
-              title: event.title,
-              start_time: newStartDate.toISOString(),
-              end_time: newEndDate.toISOString(),
-              description: event.description,
-              department_id: event.department_id,
-              is_all_day: event.is_all_day,
-              recurrence_rule: event.recurrence_rule 
-          });
-      } catch (err) {
-          console.error("Failed to move event", err);
-          // Revert on Failure
-          setEvents(oldEvents);
-          // It's good practice to show a toast here, but alert works for now
-      }
-  };
-
   const nextDate = () => handleSwipeChange(currentIndex + 1);
   const prevDate = () => handleSwipeChange(currentIndex - 1);
   const goToToday = () => { setCurrentIndex(0); setCurrentDate(new Date()); };
@@ -288,9 +256,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                                 onEventTap={handleEventTap} 
                                 onSlotClick={handleSlotClick} 
                                 draftEvent={offset === 0 && isSheetOpen ? sheetDraft : null} 
-                                onEventDrop={handleEventDrop} 
-                                onEventHold={()=>{}}
-                                onEventDragStart={()=>{}}
+                                onEventHold={handleEventTap}
                             />
                         );
                     }}

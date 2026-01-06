@@ -6,7 +6,7 @@ import { toPersianDigits, getPersianWeekday } from "@/lib/jalali";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
-import { motion, PanInfo } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface MobileGridProps {
   daysToShow: 1 | 3 | 7;
@@ -17,8 +17,6 @@ interface MobileGridProps {
   hiddenDeptIds: number[];
   onEventTap: (e: CalendarEvent) => void;
   onEventHold: (e: CalendarEvent) => void;
-  onEventDrop: (event: CalendarEvent, newStartDate: Date) => void; 
-  onEventDragStart: (e: CalendarEvent) => void;
   onSlotClick: (date: Date, hour: number) => void;
   draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
@@ -32,13 +30,10 @@ export default function MobileGrid({
   hiddenDeptIds,
   onEventTap,
   onEventHold,
-  onEventDrop,
-  onEventDragStart,
   onSlotClick,
   draftEvent
 }: MobileGridProps) {
   const [now, setNow] = useState<Date | null>(null);
-  const [draggingId, setDraggingId] = useState<number | null>(null);
 
   useEffect(() => {
     setNow(new Date());
@@ -72,20 +67,48 @@ export default function MobileGrid({
       console.error("Error generating dates", e);
   }
 
-  // --- Drag & Drop Logic ---
-  const handleDragEnd = (e: MouseEvent | TouchEvent | PointerEvent, info: PanInfo, originalEvent: CalendarEvent, dayDate: Date) => {
-      setDraggingId(null);
+  // --- Gesture Logic (Tap vs Hold) ---
+  const holdTimer = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPos = useRef<{x: number, y: number} | null>(null);
+  const isHolding = useRef(false);
+  const hasMoved = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent, event: CalendarEvent) => {
+      e.stopPropagation(); 
+      touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      isHolding.current = false;
+      hasMoved.current = false;
       
-      const yOffset = info.offset.y;
-      const movedMinutes = Math.round(yOffset / 15) * 15; 
-      
-      if (movedMinutes !== 0) {
-          const oldStart = new Date(originalEvent.start_time);
-          const newStart = new Date(oldStart.getTime() + movedMinutes * 60000);
-          
-          if (navigator.vibrate) navigator.vibrate(20);
-          onEventDrop(originalEvent, newStart);
+      holdTimer.current = setTimeout(() => {
+          isHolding.current = true;
+          if (navigator.vibrate) navigator.vibrate(50);
+      }, 500);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+      if (!touchStartPos.current) return;
+      const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
+      const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
+
+      if (dx > 10 || dy > 10) {
+          hasMoved.current = true;
+          if (holdTimer.current) clearTimeout(holdTimer.current);
       }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent, event: CalendarEvent) => {
+      e.stopPropagation();
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+
+      if (isHolding.current && !hasMoved.current) {
+          onEventHold(event);
+      } else if (!isHolding.current && !hasMoved.current) {
+          onEventTap(event);
+      }
+      
+      touchStartPos.current = null;
+      isHolding.current = false;
+      hasMoved.current = false;
   };
 
   const getEventStyle = (event: CalendarEvent) => {
@@ -94,20 +117,15 @@ export default function MobileGrid({
     const isPast = new Date(event.end_time) < new Date();
     
     return {
-        baseColor,
-        isPast,
         style: {
             borderRight: `3px solid ${baseColor}`,
-            boxShadow: draggingId === event.id 
-                ? '0 10px 20px rgba(0,0,0,0.5)' 
-                : '0 1px 3px rgba(0,0,0,0.3)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
             backgroundColor: event.status === 'pending' 
                 ? `${baseColor}20` 
                 : `${baseColor}${isPast ? '60' : '90'}`,
             color: event.status === 'pending' ? baseColor : "#fff",
             border: event.status === 'pending' ? `1px dashed ${baseColor}` : undefined,
             filter: isPast ? 'grayscale(30%)' : undefined,
-            zIndex: draggingId === event.id ? 100 : 10,
         }
     };
   };
@@ -180,24 +198,10 @@ export default function MobileGrid({
                                 return (
                                     <motion.div 
                                         key={ev.id} 
-                                        drag="y"
-                                        dragConstraints={{ top: -topPx, bottom: 1440 - (topPx + heightPx) }}
-                                        dragElastic={0.05}
-                                        dragMomentum={false} 
-                                        onDragStart={() => {
-                                            setDraggingId(original.id);
-                                            onEventDragStart(original);
-                                            if(navigator.vibrate) navigator.vibrate(50);
-                                        }}
-                                        onDragEnd={(e, info) => handleDragEnd(e, info, original, day)}
-                                        onTap={(e, info) => {
-                                            if (info.point.x === 0 && info.point.y === 0) {
-                                                 onEventTap(original);
-                                            }
-                                        }}
-                                        // FIX: Expand width to 100% and reset Right to 0 when dragged
-                                        whileDrag={{ scale: 1.05, width: "100%", right: 0, zIndex: 100 }}
-                                        className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-grab active:cursor-grabbing rounded text-[10px]"
+                                        onTouchStart={(e) => handleTouchStart(e, original)} 
+                                        onTouchMove={(e) => handleTouchMove(e)} 
+                                        onTouchEnd={(e) => handleTouchEnd(e, original)}
+                                        className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform rounded text-[10px]"
                                         style={{ 
                                             top: `${topPx}px`, 
                                             height: `max(20px, ${heightPx}px)`, 
