@@ -36,7 +36,6 @@ export default function MobileGrid({
 }: MobileGridProps) {
   const [now, setNow] = useState<Date | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const hasScrolled = useRef(false);
 
   useEffect(() => {
     setNow(new Date());
@@ -44,39 +43,43 @@ export default function MobileGrid({
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-scroll to "Now" on first load
+  // FIX: Scroll to "Now" (or 08:00 default) whenever the date changes
   useEffect(() => {
-    if (!hasScrolled.current && scrollContainerRef.current) {
+    if (scrollContainerRef.current) {
         const currentHour = new Date().getHours();
-        // Scroll to 2 hours before current time, or 0 if early morning
-        const targetHour = Math.max(0, currentHour - 2); 
-        // Approx 60px per hour height (based on usual CSS) - adjust if needed
+        // Scroll to 2 hours before now, or 08:00 AM if looking at a future date without current time context
+        const isToday = new Date().toDateString() === startDate.toDateString();
+        const targetHour = isToday ? Math.max(0, currentHour - 2) : 8; 
+        
         const scrollPos = targetHour * 60; 
         
         scrollContainerRef.current.scrollTo({
             top: scrollPos,
             behavior: "smooth"
         });
-        hasScrolled.current = true;
     }
-  }, []);
+  }, [startDate]); // Add startDate as dependency
 
   // --- Day Logic ---
   const days: Date[] = [];
-  if (daysToShow === 1) {
-      days.push(new Date(startDate));
-  } else if (daysToShow === 3) {
-      for (let i = -1; i <= 1; i++) {
-          const d = new Date(startDate);
-          d.setDate(d.getDate() + i);
-          days.push(d);
+  try {
+      if (daysToShow === 1) {
+          days.push(new Date(startDate));
+      } else if (daysToShow === 3) {
+          for (let i = -1; i <= 1; i++) {
+              const d = new Date(startDate);
+              d.setDate(d.getDate() + i);
+              days.push(d);
+          }
+      } else if (daysToShow === 7) {
+          for (let i = 0; i < 7; i++) {
+              const d = new Date(startDate);
+              d.setDate(d.getDate() + i);
+              days.push(d);
+          }
       }
-  } else if (daysToShow === 7) {
-      for (let i = 0; i < 7; i++) {
-          const d = new Date(startDate);
-          d.setDate(d.getDate() + i);
-          days.push(d);
-      }
+  } catch (e) {
+      console.error("Error generating dates", e);
   }
 
   // --- Gesture Logic ---
@@ -131,15 +134,13 @@ export default function MobileGrid({
   };
 
   const getEventStyle = (event: CalendarEvent) => {
-    const dept = departments.find(d => d.id === event.department_id);
+    const dept = departments?.find(d => d.id === event.department_id);
     const baseColor = dept ? dept.color : "#6b7280"; 
     
-    // Check if event is in the past
     const isPast = new Date(event.end_time) < new Date();
     
     const style: any = { 
         borderRight: `3px solid ${baseColor}`,
-        // Add a white/black border to separate overlapping events visually
         boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
         outline: '1px solid rgba(0,0,0,0.2)'
     };
@@ -149,12 +150,12 @@ export default function MobileGrid({
         style.border = `1px dashed ${baseColor}`;
         style.color = baseColor;
     } else {
-        style.backgroundColor = `${baseColor}${isPast ? '60' : '90'}`; // Lower opacity for past
+        style.backgroundColor = `${baseColor}${isPast ? '60' : '90'}`; 
         style.color = "#fff";
     }
 
     if (isPast) {
-        style.filter = 'grayscale(30%)'; // Desaturate past events slightly
+        style.filter = 'grayscale(30%)'; 
     }
 
     return style;
@@ -168,7 +169,7 @@ export default function MobileGrid({
             {days.map((day, i) => {
                 const isToday = now && day.toDateString() === now.toDateString();
                 const dateStr = day.toISOString().split('T')[0];
-                const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
+                const holiday = holidays?.find(h => h.holiday_date.split('T')[0] === dateStr);
                 const dayNum = new Intl.DateTimeFormat("fa-IR", { day: "numeric" }).format(day);
                 
                 return (
@@ -181,9 +182,9 @@ export default function MobileGrid({
             })}
         </div>
 
-        {/* BODY (Scrollable) */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar" ref={scrollContainerRef}>
-            <div className="flex flex-row-reverse relative min-h-[1440px]"> {/* Fixed height for 24h * 60px/h */}
+        {/* BODY */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" ref={scrollContainerRef}>
+            <div className="flex flex-row-reverse relative min-h-[1440px]">
                 
                 {/* Time Column */}
                 <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
@@ -196,10 +197,11 @@ export default function MobileGrid({
 
                 {/* Grid Columns */}
                 {days.map((day, i) => {
-                    const dayEvents = events.filter(e => {
+                    const dayEvents = events?.filter(e => {
                         const eStart = new Date(e.start_time);
                         return !e.is_all_day && eStart.toDateString() === day.toDateString() && (!e.department_id || !hiddenDeptIds.includes(e.department_id));
-                    });
+                    }) || [];
+                    
                     const visualEvents = calculateEventLayout(dayEvents);
 
                     return (
@@ -220,7 +222,6 @@ export default function MobileGrid({
                                 const end = new Date(original.end_time);
                                 const endMin = end.getHours() * 60 + end.getMinutes();
                                 
-                                // Map minutes to pixels (60px per hour => 1px per minute)
                                 const topPx = startMin; 
                                 const heightPx = endMin - startMin;
 
@@ -254,7 +255,6 @@ export default function MobileGrid({
                             {now && day.toDateString() === now.toDateString() && (
                                 <div className="absolute left-0 right-0 h-0.5 bg-red-500 z-20 pointer-events-none" 
                                      style={{ top: `${now.getHours() * 60 + now.getMinutes()}px` }}>
-                                     {/* Pulsing Dot */}
                                      <div className="absolute right-[-5px] -top-[4.5px] w-2.5 h-2.5 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]">
                                         <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
                                      </div>
