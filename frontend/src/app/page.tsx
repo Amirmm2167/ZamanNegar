@@ -10,7 +10,7 @@ import DepartmentModal from "@/components/DepartmentModal";
 import UserModal from "@/components/UserModal";
 import HolidayModal from "@/components/HolidayModal";
 import IssueModal from "@/components/IssueModal";
-import SkeletonGrid from "@/components/views/mobile/SkeletonGrid"; // NEW
+import SkeletonGrid from "@/components/views/mobile/SkeletonGrid"; 
 import { ViewMode } from "@/components/views/shared/ViewSwitcher";
 import clsx from "clsx";
 
