@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, BellOff, LogOut, Download, User, RefreshCw, Menu, X, Calendar, Smartphone, Grid, List, Users, Briefcase, Flag, AlertTriangle, ChevronLeft } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion"; // Added animation lib
+import { motion, AnimatePresence } from "framer-motion"; 
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
 import DepartmentModal from "@/components/DepartmentModal";
@@ -106,8 +106,18 @@ export default function Dashboard() {
 
   // Animation Variants
   const sidebarVariants = {
-    closed: { x: "100%", transition: { type: "spring", stiffness: 300, damping: 30 } },
-    open: { x: 0, transition: { type: "spring", stiffness: 300, damping: 30 } }
+    closed: { 
+        x: "120%", 
+        opacity: 0,
+        scale: 0.95,
+        transition: { type: "spring", stiffness: 400, damping: 40 } 
+    },
+    open: { 
+        x: 0, 
+        opacity: 1,
+        scale: 1,
+        transition: { type: "spring", stiffness: 300, damping: 30 } 
+    }
   };
 
   const overlayVariants = {
@@ -117,37 +127,46 @@ export default function Dashboard() {
 
   const itemVariants = {
     closed: { opacity: 0, x: 20 },
-    open: (i: number) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05 } })
+    open: (i: number) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05 + 0.1 } })
   };
 
   return (
     <div className="h-screen bg-transparent flex flex-col overflow-hidden text-gray-200 relative z-10">
       {/* --- GLOBAL APP HEADER --- */}
       <header className="flex items-center justify-between px-6 py-3 bg-black/60 backdrop-blur-md border-b border-white/10 shrink-0 z-50 h-16">
+        
+        {/* RIGHT SIDE (RTL Start) */}
         <div className="flex items-center gap-4">
+          {/* Mobile Sandwich Menu Button - Moved here to be on the Right */}
+          <div className="sm:hidden">
+            <button 
+                onClick={() => setIsMobileMenuOpen(true)} 
+                className="p-2 text-white bg-white/10 rounded-xl border border-white/10 active:scale-90 transition-transform hover:bg-white/20"
+            >
+                <Menu size={24} />
+            </button>
+          </div>
+
           <h1 className="text-xl font-bold text-white tracking-tight">زمان‌نگار</h1>
-          
+        </div>
+        
+        {/* LEFT SIDE (RTL End) */}
+        <div className="flex items-center gap-4">
+          {/* Refresh Button */}
           <button onClick={handleHardRefresh} className="p-2 rounded-full hover:bg-white/10 transition-colors text-gray-400 hover:text-white" title="بروزرسانی">
             <RefreshCw size={20} className={isRefreshing ? "animate-spin" : ""} />
           </button>
-        </div>
-        
-        {/* Desktop User Menu */}
-        <div className="hidden sm:flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
-            <User size={16} className="text-gray-400" />
-            <span className="text-sm text-gray-200">{username}</span>
-          </div>
-          <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors">
-            <LogOut size={20} />
-          </button>
-        </div>
 
-        {/* Mobile Sandwich Menu Button */}
-        <div className="sm:hidden">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-white bg-white/10 rounded-xl border border-white/10 active:scale-95 transition-transform">
-                <Menu size={24} />
+          {/* Desktop User Menu */}
+          <div className="hidden sm:flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+              <User size={16} className="text-gray-400" />
+              <span className="text-sm text-gray-200">{username}</span>
+            </div>
+            <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors">
+              <LogOut size={20} />
             </button>
+          </div>
         </div>
       </header>
 
@@ -166,7 +185,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* --- MOBILE SANDWICH MENU (DRAWER) --- */}
+      {/* --- MOBILE SANDWICH MENU (Floating Panel) --- */}
       <AnimatePresence>
       {isMobileMenuOpen && (
           <>
@@ -177,26 +196,34 @@ export default function Dashboard() {
                 onClick={() => setIsMobileMenuOpen(false)}
             />
               
-            {/* Drawer */}
+            {/* Floating Drawer Panel */}
             <motion.div 
                 initial="closed" animate="open" exit="closed" variants={sidebarVariants}
-                className="fixed top-0 bottom-0 right-0 z-[6001] w-[85%] max-w-sm bg-[#121212]/95 backdrop-blur-xl shadow-2xl border-l border-white/10 flex flex-col"
+                className={clsx(
+                    "fixed z-[6001] flex flex-col overflow-hidden",
+                    "top-3 bottom-3 right-3 w-[85%] max-w-[320px]", // Floating dimensions
+                    "bg-[#0a0a0a]/90 backdrop-blur-2xl", // Heavy blur + dark tint
+                    "rounded-[32px] border border-white/10 shadow-2xl" // Curved borders + border
+                )}
             >
                 {/* Header */}
-                <div className="p-6 flex justify-between items-center bg-gradient-to-b from-white/10 to-transparent border-b border-white/5">
-                    <div>
+                <div className="p-6 flex justify-between items-center relative">
+                    {/* Decorative Gradient Blob */}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] rounded-full pointer-events-none" />
+                    
+                    <div className="relative z-10">
                         <h2 className="text-xl font-black text-white tracking-tight">منوی کاربری</h2>
                         <p className="text-xs text-gray-400 mt-1">مدیریت و تنظیمات تقویم</p>
                     </div>
                     <button 
                         onClick={() => setIsMobileMenuOpen(false)} 
-                        className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors border border-white/5"
+                        className="relative z-10 p-2 bg-white/5 hover:bg-white/15 rounded-full text-gray-400 hover:text-white transition-colors border border-white/5 active:scale-90"
                     >
                         <X size={20} />
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-5 space-y-8">
+                <div className="flex-1 overflow-y-auto p-5 space-y-8 relative z-10 custom-scrollbar">
                     
                     {/* Section 1: Views */}
                     <div className="space-y-3">
@@ -258,13 +285,13 @@ export default function Dashboard() {
                 </div>
                 
                 {/* Footer: User Info */}
-                <div className="p-5 border-t border-white/10 bg-black/40 backdrop-blur-md">
-                    <div className="flex items-center gap-4 p-3 rounded-2xl bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-white/10 shadow-lg">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xl shadow-inner">
+                <div className="p-5 border-t border-white/10 bg-black/20 backdrop-blur-md relative z-10">
+                    <div className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/10 shadow-lg">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xl shadow-inner shrink-0">
                             {username.charAt(0)}
                         </div>
-                        <div className="flex-1">
-                            <p className="font-bold text-white text-sm">{username}</p>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-bold text-white text-sm truncate">{username}</p>
                             <div className="flex items-center gap-2 mt-1">
                                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
                                 <span className="text-[10px] text-gray-400">آنلاین</span>
