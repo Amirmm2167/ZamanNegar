@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "react";
-// ... imports
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Plus, Maximize2, Calendar as CalendarIcon } from "lucide-react";
+import { ChevronRight, ChevronLeft, Plus, Calendar as CalendarIcon } from "lucide-react";
 import clsx from "clsx";
 import EventModal from "./EventModal";
 import EventTooltip from "./EventTooltip";
@@ -61,9 +60,8 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [modalEnd, setModalEnd] = useState("10:00");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [isLandscape, setIsLandscape] = useState(false);
   
-  // NEW: DatePicker Modal State
+  // DatePicker Modal State
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   
   useImperativeHandle(ref, () => ({
@@ -156,12 +154,11 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       setIsSheetExpanded(true);
   };
   
-  // Updated Date Picker Handler
   const handleDateJump = (dateStr: string) => {
       if (dateStr) {
           setCurrentDate(new Date(dateStr));
           setCurrentIndex(0); 
-          setIsDatePickerOpen(false); // Close modal after selection
+          setIsDatePickerOpen(false); 
       }
   };
 
@@ -218,9 +215,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
   return (
     <>
-      {isMobile && <button onClick={() => setIsLandscape(!isLandscape)} className="fixed bottom-24 right-4 z-[5000] p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20"><Maximize2 size={20} /></button>}
-
-      <GlassPane intensity="medium" className={clsx("flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10", isLandscape && "fixed inset-0 z-[5000] w-[100vh] h-[100vw] origin-top-right rotate-90 translate-x-[100%]")}>
+      <GlassPane intensity="medium" className={clsx("flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10")}>
         {/* HEADER */}
         <div className="flex flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0 h-14 sm:h-auto">
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
