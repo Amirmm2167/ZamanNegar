@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "react";
-import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
 import { ChevronRight, ChevronLeft, Plus, Calendar as CalendarIcon } from "lucide-react";
@@ -32,36 +32,53 @@ export interface CalendarGridHandle {
 }
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
+  const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<ViewMode>("1day"); 
   const [isMobile, setIsMobile] = useState(false);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
   
-  const [loading, setLoading] = useState(true); 
-  
+  // --- REACT QUERY DATA FETCHING ---
+  const { data: events = [], isLoading: eventsLoading } = useQuery<CalendarEvent[]>({
+    queryKey: ['events'],
+    queryFn: () => api.get("/events/").then(res => res.data),
+  });
+
+  const { data: holidays = [] } = useQuery<Holiday[]>({
+    queryKey: ['holidays'],
+    queryFn: () => api.get("/holidays/").then(res => res.data),
+  });
+
+  const { data: departments = [] } = useQuery<Department[]>({
+    queryKey: ['departments'],
+    queryFn: () => api.get("/departments/").then(res => res.data),
+  });
+
+  const { data: userData } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => api.get("/auth/me").then(res => res.data).catch(() => ({ id: 0, role: 'viewer' })),
+  });
+
+  const userId = userData?.id || 0;
+  const userRole = userData?.role || "viewer";
+  const loading = eventsLoading;
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentIndex, setCurrentIndex] = useState(0); 
   
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
-  
   const [activeSheetMode, setActiveSheetMode] = useState<"quick" | "edit" | "create">("quick");
   
   const [sheetEvent, setSheetEvent] = useState<CalendarEvent | null>(null);
   const [sheetDraft, setSheetDraft] = useState<{ date: Date; startHour: number; endHour: number } | null>(null);
   const [hiddenDeptIds, setHiddenDeptIds] = useState<number[]>([]); 
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
-  const [username, setUsername] = useState("");
-  const [userId, setUserId] = useState<number>(0);
-  const [userRole, setUserRole] = useState("");
+  
   const [modalInitialDate, setModalInitialDate] = useState(new Date());
   const [modalStart, setModalStart] = useState("09:00");
   const [modalEnd, setModalEnd] = useState("10:00");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  
-  // DatePicker Modal State
+  const [isLandscape, setIsLandscape] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   
   useImperativeHandle(ref, () => ({
@@ -81,32 +98,38 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     };
     handleResize();
     window.addEventListener('resize', handleResize);
-    setUsername(localStorage.getItem("username") || "کاربر");
-    setUserRole(localStorage.getItem("role") || "viewer");
-    fetchData();
     return () => window.removeEventListener('resize', handleResize);
   }, [viewMode]);
 
-  const fetchData = async () => {
-      try {
-        if(events.length === 0) setLoading(true);
-        const [eventsRes, holidaysRes, deptsRes, meRes] = await Promise.all([
-            api.get<CalendarEvent[]>("/events/"),
-            api.get<Holiday[]>("/holidays/"),
-            api.get<Department[]>("/departments/"),
-            api.get("/auth/me").catch(() => ({ data: { id: 0 } }))
-        ]);
-        setEvents(eventsRes.data);
-        setHolidays(holidaysRes.data);
-        setDepartments(deptsRes.data);
-        setUserId(meRes.data.id);
-      } catch (err) {
-        console.error(err);
-        if(events.length === 0) setEvents([]); 
-      } finally {
-        setLoading(false);
+  // --- MUTATION FOR DRAG & DROP ---
+  const updateEventMutation = useMutation({
+    mutationFn: (updatedEvent: any) => api.patch(`/events/${updatedEvent.id}`, updatedEvent),
+    onMutate: async (updatedEvent) => {
+      // Cancel refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: ['events'] });
+      
+      // Snapshot previous value
+      const previousEvents = queryClient.getQueryData<CalendarEvent[]>(['events']);
+      
+      // Optimistically update
+      queryClient.setQueryData<CalendarEvent[]>(['events'], (old) => 
+        old?.map(e => e.id === updatedEvent.id ? { ...e, ...updatedEvent } : e) || []
+      );
+      
+      return { previousEvents };
+    },
+    onError: (err, newTodo, context) => {
+      // Rollback on error
+      if (context?.previousEvents) {
+        queryClient.setQueryData(['events'], context.previousEvents);
       }
-  };
+      alert("خطا در تغییر زمان رویداد");
+    },
+    onSettled: () => {
+      // Refetch after success or error to ensure sync
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
 
   const getDateForIndex = (index: number) => {
       const d = new Date(currentDate); 
@@ -175,12 +198,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       setCurrentDate(date);
   };
 
+  const handleRefresh = () => {
+      queryClient.invalidateQueries();
+  };
+
   const getHeaderDateLabel = () => {
       const formatterMonth = new Intl.DateTimeFormat("fa-IR", { month: "long" });
       const formatterYear = new Intl.DateTimeFormat("fa-IR", { year: "numeric" });
       
       const displayDate = getDateForIndex(currentIndex);
-      
       let start = new Date(displayDate);
       let end = new Date(displayDate);
 
@@ -201,10 +227,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       const y2 = formatterYear.format(end);
 
       let monthLabel = m1;
-      if (m1 !== m2) {
-          monthLabel = `${m1}-${m2}`;
-      }
-
+      if (m1 !== m2) monthLabel = `${m1}-${m2}`;
       let yearLabel = y1;
       if (y1 !== y2) yearLabel = `${y1}-${y2}`;
 
@@ -227,7 +250,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
             </div>
             
-            {/* Jump to Date (Mobile Button) */}
             {isMobile && (
                 <button 
                     onClick={() => setIsDatePickerOpen(true)}
@@ -257,7 +279,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
         {/* MAIN CONTENT */}
         <div className="flex-1 overflow-hidden relative w-full h-full">
-            {/* Show Skeleton if Loading on Mobile */}
             {isMobile && loading && events.length === 0 ? (
                 <SkeletonGrid daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} />
             ) : (
@@ -265,7 +286,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                     {!isMobile && viewMode === 'week' && <DesktopWeekView currentDate={currentDate} events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} onEventClick={handleEventClick} onEventLongPress={()=>{}} onSlotClick={handleSlotClick} onEventHover={(e, ev) => setHoveredEvent(ev)} onEventLeave={() => setHoveredEvent(null)} draftEvent={null} />}
                     {!isMobile && viewMode === 'month' && <DesktopMonthView currentDate={currentDate} events={events} holidays={holidays} departments={departments} onEventClick={handleEventClick} onEventLongPress={()=>{}} onSlotClick={handleSlotClick} />}
                     
-                    {/* Mobile Infinite Ribbon */}
                     {isMobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week' || viewMode === 'month') && (
                         <InfiniteSwiper 
                             currentIndex={currentIndex} 
@@ -297,6 +317,8 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                                         onSlotClick={handleSlotClick} 
                                         draftEvent={offset === 0 && isSheetOpen && activeSheetMode === 'create' ? sheetDraft : null} 
                                         onEventHold={() => {}}
+                                        // Pass the new mutation logic if we re-enable drag later
+                                        // onEventDrop={(e, d) => updateEventMutation.mutate({...e, start_time: d.toISOString(), ...})}
                                     />
                                 );
                             }}
@@ -317,11 +339,10 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                     onClose={() => setIsSheetOpen(false)} 
                 />
             ) : (
-                <MobileEventSheet event={sheetEvent} draftSlot={sheetDraft} isExpanded={isSheetExpanded} canEdit={canEditSheet} onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} onRefresh={fetchData} />
+                <MobileEventSheet event={sheetEvent} draftSlot={sheetDraft} isExpanded={isSheetExpanded} canEdit={canEditSheet} onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} onRefresh={handleRefresh} />
             )}
         </ExpandableBottomSheet>
         
-        {/* Date Picker Modal */}
         {isDatePickerOpen && (
             <DatePicker 
                 value={currentDate.toISOString().split('T')[0]} 
@@ -330,7 +351,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
             />
         )}
 
-        <EventModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }} onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd} eventToEdit={selectedEvent} currentUserId={userId} />
+        <EventModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }} onSuccess={handleRefresh} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd} eventToEdit={selectedEvent} currentUserId={userId} />
         {hoveredEvent && <EventTooltip event={hoveredEvent} departments={departments} onClose={() => setHoveredEvent(null)} onMouseEnter={()=>{}} onMouseLeave={() => setHoveredEvent(null)} />}
       </GlassPane>
     </>
