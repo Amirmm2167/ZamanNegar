@@ -48,23 +48,21 @@ export default function MobileGrid({
       if (daysToShow === 1) {
           days.push(new Date(startDate));
       } else if (daysToShow === 3) {
-          // 3 Day View: Center (Today) in middle, Prev on Right, Next on Left
-          // With flex-row-reverse: Index 0 is Right, Index 2 is Left
-          // So we push [Prev, Today, Next]
+          // 3 Day View: [Prev, Today, Next]
+          // In RTL Flex: Index 0 (Prev) is Right, Index 2 (Next) is Left.
           for (let i = -1; i <= 1; i++) {
               const d = new Date(startDate);
               d.setDate(d.getDate() + i);
               days.push(d);
           }
       } else if (daysToShow === 7) {
-          // 7 Day View: Snap to Saturday (Start of Week in Iran)
+          // 7 Day View: [Sat, Sun, ..., Fri]
+          // In RTL Flex: Sat (Right) -> Fri (Left)
           const dayOfWeek = startDate.getDay(); // Sun=0, Sat=6
-          const diff = (dayOfWeek + 1) % 7; // Sat->0, Sun->1...
+          const diff = (dayOfWeek + 1) % 7; 
           const startOfWeek = new Date(startDate);
           startOfWeek.setDate(startOfWeek.getDate() - diff);
 
-          // Generate [Sat, Sun, ..., Fri]
-          // With flex-row-reverse: Sat (Index 0) is Right, Fri (Index 6) is Left
           for (let i = 0; i < 7; i++) {
               const d = new Date(startOfWeek);
               d.setDate(d.getDate() + i);
@@ -129,7 +127,6 @@ export default function MobileGrid({
   const getEventStyle = (event: CalendarEvent) => {
     const dept = departments?.find(d => d.id === event.department_id);
     const baseColor = dept ? dept.color : "#6b7280"; 
-    
     const isPast = new Date(event.end_time) < new Date();
     
     const style: any = { 
@@ -157,7 +154,8 @@ export default function MobileGrid({
   return (
     <div className="flex flex-col h-full w-full bg-[#121212] select-none relative">
         {/* HEADER */}
-        <div className="flex flex-row-reverse border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
+        {/* Removed flex-row-reverse: RTL handles direction naturally */}
+        <div className="flex flex-row border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
             <div className="w-10 border-l border-white/10 bg-black/20"></div>
             {days.map((day, i) => {
                 const isToday = now && day.toDateString() === now.toDateString();
@@ -177,7 +175,8 @@ export default function MobileGrid({
 
         {/* BODY */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y">
-            <div className="flex flex-row-reverse relative h-[1440px]">
+            {/* Removed flex-row-reverse */}
+            <div className="flex flex-row relative h-[1440px]">
                 
                 {/* Time Column */}
                 <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
@@ -199,7 +198,7 @@ export default function MobileGrid({
 
                     return (
                         <div key={i} className="flex-1 relative border-r border-white/10 h-full">
-                            {/* Slots Background */}
+                            {/* Slots */}
                             <div className="absolute inset-0 flex flex-col z-0">
                                 {Array.from({ length: 24 }).map((_, h) => (
                                     <div key={h} className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors shrink-0" onClick={() => onSlotClick(day, h)}></div>
