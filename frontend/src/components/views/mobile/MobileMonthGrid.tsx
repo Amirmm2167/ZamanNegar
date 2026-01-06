@@ -5,7 +5,7 @@ import { toPersianDigits, getPersianWeekday, getStartOfJalaliMonth, isSameJalali
 import clsx from "clsx";
 
 interface MobileMonthGridProps {
-  startDate: Date; // The anchor date (usually somewhere in the current month)
+  startDate: Date; 
   events: CalendarEvent[];
   holidays: any[];
   departments: Department[];
@@ -22,21 +22,15 @@ export default function MobileMonthGrid({
   const today = new Date();
 
   // 1. Determine the Jalali Month Grid
-  // Get the 1st day of the Jalali month
   const startOfMonth = getStartOfJalaliMonth(startDate);
   
-  // Find the start of the week (Saturday) for that 1st day to begin the grid
+  // Find start of week (Saturday)
   const startOfGrid = new Date(startOfMonth);
-  // In Jalali/Iran, week starts on Saturday (Day 6 in JS getDay()?? No, JS getDay: Sun=0, Sat=6)
-  // We need to map: Sat=0, Sun=1 ... Fri=6
-  // JS: Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6
-  // Target: Sat(0), Sun(1)...
-  const dayOfWeek = startOfGrid.getDay(); // 6 is Sat, 0 is Sun
-  const daysToSubtract = (dayOfWeek + 1) % 7; // If Sat(6) -> 0. If Sun(0) -> 1.
-  
+  const dayOfWeek = startOfGrid.getDay(); // Sat=6, Sun=0
+  const daysToSubtract = (dayOfWeek + 1) % 7; 
   startOfGrid.setDate(startOfGrid.getDate() - daysToSubtract);
 
-  // Generate 42 days (6 weeks)
+  // Generate 42 days
   const gridDays = Array.from({ length: 42 }).map((_, i) => {
     const d = new Date(startOfGrid);
     d.setDate(d.getDate() + i);
@@ -45,7 +39,6 @@ export default function MobileMonthGrid({
 
   const getDayEvents = (date: Date) => {
     return events.filter(e => {
-        // Simple check: starts on this day (or spans it, but for dots we usually check start)
         const eStart = new Date(e.start_time);
         return isSameJalaliDay(eStart, date);
     });
@@ -54,7 +47,7 @@ export default function MobileMonthGrid({
   return (
     <div className="flex flex-col h-full w-full bg-[#121212] select-none p-2">
         {/* Days Header */}
-        <div className="flex flex-row-reverse mb-2">
+        <div className="flex flex-row mb-2" dir="rtl">
             {["ش", "ی", "د", "س", "چ", "پ", "ج"].map((day, i) => (
                 <div key={i} className="flex-1 text-center text-xs text-gray-500 font-bold py-2">
                     {day}
