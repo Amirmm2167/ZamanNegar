@@ -6,7 +6,7 @@ import { toPersianDigits, getPersianWeekday } from "@/lib/jalali";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
-import { motion, PanInfo } from "framer-motion"; // Import motion
+import { motion, PanInfo } from "framer-motion";
 
 interface MobileGridProps {
   daysToShow: 1 | 3 | 7;
@@ -17,8 +17,8 @@ interface MobileGridProps {
   hiddenDeptIds: number[];
   onEventTap: (e: CalendarEvent) => void;
   onEventHold: (e: CalendarEvent) => void;
-  // New Prop for Dropping
   onEventDrop: (event: CalendarEvent, newStartDate: Date) => void; 
+  onEventDragStart: (e: CalendarEvent) => void;
   onSlotClick: (date: Date, hour: number) => void;
   draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
@@ -33,12 +33,11 @@ export default function MobileGrid({
   onEventTap,
   onEventHold,
   onEventDrop,
+  onEventDragStart,
   onSlotClick,
   draftEvent
 }: MobileGridProps) {
   const [now, setNow] = useState<Date | null>(null);
-  
-  // Track which event is currently being dragged (by ID) to unlock it
   const [draggingId, setDraggingId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -77,26 +76,13 @@ export default function MobileGrid({
   const handleDragEnd = (e: MouseEvent | TouchEvent | PointerEvent, info: PanInfo, originalEvent: CalendarEvent, dayDate: Date) => {
       setDraggingId(null);
       
-      // 1. Calculate the pixel shift
       const yOffset = info.offset.y;
-      
-      // 2. Convert pixels to minutes (1px = 1min based on our 60px/hr grid)
-      // Note: We need to be careful. The element is moving relative to its original TOP.
-      // 60px = 60 min.
-      // 15 min snap = 15px.
-      
-      const movedMinutes = Math.round(yOffset / 15) * 15; // Snap to nearest 15m
+      const movedMinutes = Math.round(yOffset / 15) * 15; 
       
       if (movedMinutes !== 0) {
-          // 3. Calculate new Start Time
           const oldStart = new Date(originalEvent.start_time);
-          
-          // We must ensure we are modifying the date relative to the column (dayDate) 
-          // But usually we just shift the time.
           const newStart = new Date(oldStart.getTime() + movedMinutes * 60000);
           
-          // Check bounds (00:00 to 23:59)?? 
-          // For now, let's just trigger the callback
           if (navigator.vibrate) navigator.vibrate(20);
           onEventDrop(originalEvent, newStart);
       }
@@ -113,7 +99,7 @@ export default function MobileGrid({
         style: {
             borderRight: `3px solid ${baseColor}`,
             boxShadow: draggingId === event.id 
-                ? '0 10px 20px rgba(0,0,0,0.5)' // Big shadow when dragging
+                ? '0 10px 20px rgba(0,0,0,0.5)' 
                 : '0 1px 3px rgba(0,0,0,0.3)',
             backgroundColor: event.status === 'pending' 
                 ? `${baseColor}20` 
@@ -121,7 +107,7 @@ export default function MobileGrid({
             color: event.status === 'pending' ? baseColor : "#fff",
             border: event.status === 'pending' ? `1px dashed ${baseColor}` : undefined,
             filter: isPast ? 'grayscale(30%)' : undefined,
-            zIndex: draggingId === event.id ? 100 : 10, // Pop to top when dragging
+            zIndex: draggingId === event.id ? 100 : 10,
         }
     };
   };
@@ -194,25 +180,23 @@ export default function MobileGrid({
                                 return (
                                     <motion.div 
                                         key={ev.id} 
-                                        // Drag Configuration
                                         drag="y"
-                                        dragConstraints={{ top: -topPx, bottom: 1440 - (topPx + heightPx) }} // Keep inside grid
+                                        dragConstraints={{ top: -topPx, bottom: 1440 - (topPx + heightPx) }}
                                         dragElastic={0.05}
-                                        dragMomentum={false} // No throwing, pure control
+                                        dragMomentum={false} 
                                         onDragStart={() => {
                                             setDraggingId(original.id);
+                                            onEventDragStart(original);
                                             if(navigator.vibrate) navigator.vibrate(50);
                                         }}
                                         onDragEnd={(e, info) => handleDragEnd(e, info, original, day)}
-                                        // Tap Handler (only if not dragged)
                                         onTap={(e, info) => {
                                             if (info.point.x === 0 && info.point.y === 0) {
-                                                 // framer motion tap detection logic is usually cleaner
                                                  onEventTap(original);
                                             }
                                         }}
-                                        // Visuals
-                                        whileDrag={{ scale: 1.05 }}
+                                        // FIX: Expand width to 100% and reset Right to 0 when dragged
+                                        whileDrag={{ scale: 1.05, width: "100%", right: 0, zIndex: 100 }}
                                         className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-grab active:cursor-grabbing rounded text-[10px]"
                                         style={{ 
                                             top: `${topPx}px`, 
