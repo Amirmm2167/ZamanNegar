@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Field, Relationship #type:ignore
 from enum import Enum
 
-# 1. Company: The top-level tenant
+# 1. Company
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True)
@@ -12,6 +12,7 @@ class Company(SQLModel, table=True):
     departments: List["Department"] = Relationship(back_populates="company")
     users: List["User"] = Relationship(back_populates="company")
 
+# 2. Department
 class Department(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
@@ -21,6 +22,7 @@ class Department(SQLModel, table=True):
     company: Optional[Company] = Relationship(back_populates="departments")
     users: List["User"] = Relationship(back_populates="department")
 
+# 3. User
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
@@ -33,6 +35,7 @@ class User(SQLModel, table=True):
     company: Optional[Company] = Relationship(back_populates="users")
     department: Optional[Department] = Relationship(back_populates="users")
 
+# 4. Event
 class Event(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
@@ -85,7 +88,7 @@ class Issue(SQLModel, table=True):
 
 class TagType(str, Enum):
     GOAL = "goal"
-    AUDIENCE = "audience"
+    AUDIENCE = "audience" 
     ORGANIZER = "organizer"
 
 class Tag(SQLModel, table=True):
@@ -99,7 +102,7 @@ class Tag(SQLModel, table=True):
 # --- NEW: Analytics Model ---
 class AnalyticsLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    event_type: str = Field(index=True) # e.g., 'LOGIN', 'CREATE_EVENT', 'VIEW_CHANGE'
-    details: Optional[str] = None       # e.g., 'mobile-week', 'failed'
+    event_type: str = Field(index=True) # e.g., 'LOGIN', 'ERROR', 'PWA_INSTALL'
+    details: Optional[str] = None       # JSON string or text details
     user_id: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
