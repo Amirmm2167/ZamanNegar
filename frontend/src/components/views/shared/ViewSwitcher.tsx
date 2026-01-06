@@ -26,10 +26,10 @@ export default function ViewSwitcher({ currentView, onChange, isMobile }: ViewSw
     { id: "1day", label: "روزانه", icon: Smartphone },
     { id: "3day", label: "۳ روزه", icon: Calendar },
     { id: "mobile-week", label: "هفتگی", icon: Grid },
+    { id: "month", label: "ماهانه", icon: Calendar }, // Added Month
     { id: "agenda", label: "برنامه", icon: List },
   ];
 
-  // Force valid view if switching context
   const views = isMobile ? mobileViews : desktopViews;
   const activeView = views.find((v) => v.id === currentView) || views[0];
 
