@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "react";
-// ... imports
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
@@ -30,7 +29,6 @@ export interface CalendarGridHandle {
 }
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
-  // ... state ...
   const [viewMode, setViewMode] = useState<ViewMode>("1day"); 
   const [isMobile, setIsMobile] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -60,7 +58,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     setView: (view: ViewMode) => setViewMode(view)
   }));
 
-  // ... useEffects and fetchData ... 
   useEffect(() => {
     const handleResize = () => {
         const mobile = window.innerWidth < 768;
@@ -109,6 +106,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
           if (viewMode === '1day') diff = index; 
           else if (viewMode === '3day') diff = index * 3; 
           else if (viewMode === 'mobile-week') diff = index * 7; 
+          
           d.setDate(d.getDate() + diff);
       }
       return d;
@@ -137,37 +135,35 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       setSheetEvent(event); setSheetDraft(null); setIsSheetExpanded(false); setIsSheetOpen(true);
   };
   
-  // --- NEW: Drag & Drop Handler ---
+  // --- Drag & Drop Handler ---
   const handleEventDrop = async (event: CalendarEvent, newStartDate: Date) => {
-      // 1. Calculate duration to keep it consistent
       const oldStart = new Date(event.start_time);
       const oldEnd = new Date(event.end_time);
       const durationMs = oldEnd.getTime() - oldStart.getTime();
       
       const newEndDate = new Date(newStartDate.getTime() + durationMs);
 
-      // 2. Optimistic Update
+      // Optimistic Update
       const oldEvents = [...events];
       setEvents(prev => prev.map(e => e.id === event.id ? { ...e, start_time: newStartDate.toISOString(), end_time: newEndDate.toISOString() } : e));
 
       try {
-          // 3. API Call
-          await api.put(`/events/${event.id}`, {
+          // FIX: Changed api.put to api.patch
+          // FIX: Changed recurrence to recurrence_rule
+          await api.patch(`/events/${event.id}`, {
               title: event.title,
               start_time: newStartDate.toISOString(),
               end_time: newEndDate.toISOString(),
               description: event.description,
               department_id: event.department_id,
               is_all_day: event.is_all_day,
-              recurrence: event.recurrence_rule
-              // Note: Add other fields if required by your backend model
+              recurrence_rule: event.recurrence_rule 
           });
-          // Success? Do nothing, state is already updated.
       } catch (err) {
           console.error("Failed to move event", err);
-          // 4. Revert on Failure
+          // Revert on Failure
           setEvents(oldEvents);
-          alert("خطا در تغییر زمان رویداد");
+          // It's good practice to show a toast here, but alert works for now
       }
   };
 
@@ -292,8 +288,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                                 onEventTap={handleEventTap} 
                                 onSlotClick={handleSlotClick} 
                                 draftEvent={offset === 0 && isSheetOpen ? sheetDraft : null} 
-                                onEventHold={() => {}} // Deprecated by drag
-                                onEventDrop={handleEventDrop} // Passed here!
+                                onEventDrop={handleEventDrop} 
+                                onEventHold={()=>{}}
+                                onEventDragStart={()=>{}}
                             />
                         );
                     }}
