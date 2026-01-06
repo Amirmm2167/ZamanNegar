@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BellOff, LogOut, Download, User, RefreshCw, Menu, X, Calendar, Smartphone, Grid, List, Users, Briefcase, Flag, AlertTriangle, ChevronLeft } from "lucide-react";
+import { Bell, BellOff, LogOut, Download, User, Users, RefreshCw, Menu, X, Calendar, Smartphone, Grid, Briefcase, Flag, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"; 
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
@@ -10,6 +10,7 @@ import DepartmentModal from "@/components/DepartmentModal";
 import UserModal from "@/components/UserModal";
 import HolidayModal from "@/components/HolidayModal";
 import IssueModal from "@/components/IssueModal";
+import SkeletonGrid from "@/components/views/mobile/SkeletonGrid"; // NEW
 import { ViewMode } from "@/components/views/shared/ViewSwitcher";
 import clsx from "clsx";
 
@@ -96,10 +97,19 @@ export default function Dashboard() {
     setIsMobileMenuOpen(false);
   };
 
+  // Loading State -> Show Skeleton
   if (!isAuthenticated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-black text-white">
-        <span className="text-lg">در حال بارگذاری...</span>
+      <div className="h-screen bg-black flex flex-col">
+         {/* Fake Header for smooth transition */}
+         <div className="h-16 border-b border-white/10 bg-black/60 backdrop-blur-md flex items-center justify-between px-6">
+             <div className="w-8 h-8 bg-white/10 rounded-xl animate-pulse"/>
+             <div className="w-24 h-6 bg-white/10 rounded animate-pulse"/>
+         </div>
+         {/* Skeleton Grid */}
+         <div className="flex-1 overflow-hidden">
+             <SkeletonGrid daysToShow={3} />
+         </div>
       </div>
     );
   }
@@ -137,7 +147,6 @@ export default function Dashboard() {
         
         {/* RIGHT SIDE (RTL Start) */}
         <div className="flex items-center gap-4">
-          {/* Mobile Sandwich Menu Button - Moved here to be on the Right */}
           <div className="sm:hidden">
             <button 
                 onClick={() => setIsMobileMenuOpen(true)} 
@@ -152,12 +161,10 @@ export default function Dashboard() {
         
         {/* LEFT SIDE (RTL End) */}
         <div className="flex items-center gap-4">
-          {/* Refresh Button */}
           <button onClick={handleHardRefresh} className="p-2 rounded-full hover:bg-white/10 transition-colors text-gray-400 hover:text-white" title="بروزرسانی">
             <RefreshCw size={20} className={isRefreshing ? "animate-spin" : ""} />
           </button>
 
-          {/* Desktop User Menu */}
           <div className="hidden sm:flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
               <User size={16} className="text-gray-400" />
@@ -174,7 +181,6 @@ export default function Dashboard() {
         <CalendarGrid ref={calendarRef} />
       </main>
 
-      {/* Desktop Only FAB Menu */}
       <div className="hidden md:block">
         <FabMenu
             onOpenDepartments={() => setIsDeptModalOpen(true)}
@@ -185,30 +191,25 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* --- MOBILE SANDWICH MENU (Floating Panel) --- */}
       <AnimatePresence>
       {isMobileMenuOpen && (
           <>
-            {/* Backdrop */}
             <motion.div 
                 initial="closed" animate="open" exit="closed" variants={overlayVariants}
                 className="fixed inset-0 z-[6000] bg-black/60 backdrop-blur-sm" 
                 onClick={() => setIsMobileMenuOpen(false)}
             />
               
-            {/* Floating Drawer Panel */}
             <motion.div 
                 initial="closed" animate="open" exit="closed" variants={sidebarVariants}
                 className={clsx(
                     "fixed z-[6001] flex flex-col overflow-hidden",
-                    "top-3 bottom-3 right-3 w-[85%] max-w-[320px]", // Floating dimensions
-                    "bg-[#0a0a0a]/90 backdrop-blur-2xl", // Heavy blur + dark tint
-                    "rounded-[32px] border border-white/10 shadow-2xl" // Curved borders + border
+                    "top-3 bottom-3 right-3 w-[85%] max-w-[320px]", 
+                    "bg-[#0a0a0a]/90 backdrop-blur-2xl", 
+                    "rounded-[32px] border border-white/10 shadow-2xl" 
                 )}
             >
-                {/* Header */}
                 <div className="p-6 flex justify-between items-center relative">
-                    {/* Decorative Gradient Blob */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] rounded-full pointer-events-none" />
                     
                     <div className="relative z-10">
@@ -225,7 +226,6 @@ export default function Dashboard() {
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-8 relative z-10 custom-scrollbar">
                     
-                    {/* Section 1: Views */}
                     <div className="space-y-3">
                         <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">نمای تقویم</h3>
                         <div className="grid grid-cols-1 gap-2">
@@ -250,13 +250,11 @@ export default function Dashboard() {
                                         </div>
                                         <span className="font-medium text-gray-200 group-hover:text-white transition-colors">{item.label}</span>
                                     </div>
-                                    <ChevronLeft size={16} className="text-gray-600 group-hover:text-gray-400" />
                                 </motion.button>
                             ))}
                         </div>
                     </div>
 
-                    {/* Section 2: Manager Actions */}
                     <div className="space-y-3">
                         <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">مدیریت سیستم</h3>
                         <div className="grid grid-cols-1 gap-2">
@@ -268,7 +266,7 @@ export default function Dashboard() {
                             ].map((item, i) => (
                                 <motion.button
                                     key={i}
-                                    custom={i + 4} // Stagger delay
+                                    custom={i + 4} 
                                     variants={itemVariants}
                                     initial="closed"
                                     animate="open"
@@ -284,7 +282,6 @@ export default function Dashboard() {
 
                 </div>
                 
-                {/* Footer: User Info */}
                 <div className="p-5 border-t border-white/10 bg-black/20 backdrop-blur-md relative z-10">
                     <div className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/10 shadow-lg">
                         <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xl shadow-inner shrink-0">
@@ -307,7 +304,6 @@ export default function Dashboard() {
       )}
       </AnimatePresence>
 
-      {/* Modals */}
       <DepartmentModal isOpen={isDeptModalOpen} onClose={() => setIsDeptModalOpen(false)} />
       <UserModal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} />
       <HolidayModal isOpen={isHolidayModalOpen} onClose={() => setIsHolidayModalOpen(false)} onUpdate={() => {}} />
