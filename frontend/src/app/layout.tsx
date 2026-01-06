@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import ModernBackground from "@/components/ui/ModernBackground";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import Providers from "@/components/Providers"; // NEW
 
 const pinar = localFont({
   src: [
@@ -37,7 +38,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         
         {/* 2. Content */}
         <div className="relative z-10 h-full">
-          {children}
+          <Providers>
+            {children}
+          </Providers>
         </div>
       </body>
     </html>
