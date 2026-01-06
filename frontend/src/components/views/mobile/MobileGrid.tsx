@@ -191,6 +191,7 @@ export default function MobileGrid({
                                 const end = new Date(original.end_time);
                                 const endMin = end.getHours() * 60 + end.getMinutes();
                                 
+                                // FIX: Use pixels instead of percentage
                                 const topPx = startMin; 
                                 const heightPx = endMin - startMin;
                                 const styleInfo = getEventStyle(original);
