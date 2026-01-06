@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, func
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime, timedelta
 from database import get_session
 from models import AnalyticsLog, User
@@ -9,7 +9,6 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-# DTO for receiving logs
 class LogCreate(BaseModel):
     event_type: str
     details: Optional[str] = None
@@ -18,7 +17,7 @@ class LogCreate(BaseModel):
 def log_event(
     log_data: LogCreate,
     session: Session = Depends(get_session),
-    # User is optional (we might log pre-login attempts)
+    # Optional auth: we want to log errors even if user isn't logged in
     current_user: Optional[User] = Depends(get_current_user) 
 ):
     user_id = current_user.id if current_user else None
@@ -44,8 +43,7 @@ def get_analytics_stats(
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
     # 1. Daily Active Users (DAU)
-    # Group by date, count distinct users
-    # Note: SQLite date functions differ from Postgres. This is a generic approach.
+    # Note: SQLite 'date' function syntax. 
     dau_query = select(
         func.date(AnalyticsLog.created_at).label("date"),
         func.count(func.distinct(AnalyticsLog.user_id))
