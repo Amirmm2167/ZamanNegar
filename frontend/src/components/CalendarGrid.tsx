@@ -22,7 +22,7 @@ import MobileMonthGrid from "./views/mobile/MobileMonthGrid";
 import AgendaView from "./views/shared/AgendaView";
 import ViewSwitcher, { ViewMode } from "./views/shared/ViewSwitcher";
 import { toPersianDigits } from "@/lib/jalali";
-import DatePicker from "./DatePicker"; // Import your robust Persian DatePicker
+import DatePicker from "./DatePicker"; 
 
 interface Holiday { id: number; occasion: string; holiday_date: string; }
 
@@ -153,10 +153,11 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
   
   // Custom Date Picker Handler
-  const handleDateJump = (date: Date) => {
-      if (date) {
-          setCurrentDate(date);
-          setCurrentIndex(0); // Reset swiper to allow fresh navigation
+  // Note: DatePicker returns a date string "YYYY-MM-DD"
+  const handleDateJump = (dateStr: string) => {
+      if (dateStr) {
+          setCurrentDate(new Date(dateStr));
+          setCurrentIndex(0); 
       }
   };
 
@@ -227,18 +228,17 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
             </div>
             
-            {/* Jump to Date (Mobile) - UPDATED */}
+            {/* Jump to Date (Mobile) */}
             {isMobile && (
-                <div className="relative">
-                    <button className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5 pointer-events-none">
+                <div className="relative group">
+                    <button className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5 pointer-events-none group-active:scale-95 transition-transform">
                         <CalendarIcon size={18} />
                     </button>
-                    {/* Replaced native input with your robust DatePicker */}
                     <div className="absolute inset-0 opacity-0 cursor-pointer overflow-hidden">
                         <DatePicker 
-                            value={currentDate} 
+                            value={currentDate.toISOString().split('T')[0]} 
                             onChange={handleDateJump}
-                            // Assuming your DatePicker accepts a wrapper style to fill space
+                            onClose={() => {}} // Dummy closer
                         />
                     </div>
                 </div>
