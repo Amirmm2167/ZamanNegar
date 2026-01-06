@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
+import { motion, PanInfo, useAnimation, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
 import { ChevronUp, Minus } from "lucide-react";
 
@@ -8,7 +9,7 @@ interface ExpandableBottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
   children: React.ReactNode;
-  mode: "view" | "edit"; // Determines the helper text
+  mode: "view" | "edit";
   isExpanded: boolean;
   onExpandChange: (expanded: boolean) => void;
 }
@@ -21,102 +22,109 @@ export default function ExpandableBottomSheet({
   isExpanded,
   onExpandChange
 }: ExpandableBottomSheetProps) {
-  const [visible, setVisible] = useState(false);
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const startY = useRef<number>(0);
-  const currentY = useRef<number>(0);
+  const controls = useAnimation();
+  const [isDragging, setIsDragging] = useState(false);
+
+  // We use Y translation to control visibility:
+  // 0% = Fully Expanded (Fullscreen)
+  // 65% = Collapsed (Summary View - showing bottom 35%)
+  // 100% = Closed (Off screen)
+  const variants = {
+    expanded: { y: "0%", transition: { type: "spring", damping: 25, stiffness: 200 } },
+    collapsed: { y: "65%", transition: { type: "spring", damping: 25, stiffness: 200 } },
+    hidden: { y: "100%", transition: { type: "spring", damping: 25, stiffness: 200 } },
+  };
 
   useEffect(() => {
     if (isOpen) {
-      setVisible(true);
       document.body.style.overflow = "hidden";
+      controls.start(isExpanded ? "expanded" : "collapsed");
     } else {
-      const timer = setTimeout(() => setVisible(false), 300);
       document.body.style.overflow = "";
-      return () => clearTimeout(timer);
+      controls.start("hidden");
     }
-  }, [isOpen]);
+  }, [isOpen, isExpanded, controls]);
 
-  // --- Gesture Logic ---
-  const handleTouchStart = (e: React.TouchEvent) => {
-    startY.current = e.touches[0].clientY;
-    currentY.current = e.touches[0].clientY;
-  };
+  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    setIsDragging(false);
+    const { offset, velocity } = info;
+    const threshold = 100;
+    const velocityThreshold = 200;
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    currentY.current = e.touches[0].clientY;
-    const delta = startY.current - currentY.current;
-    
-    // Simple resistance logic could go here, 
-    // but we'll rely on TouchEnd for the trigger to keep it performant
-  };
-
-  const handleTouchEnd = () => {
-    const delta = startY.current - currentY.current;
-    const threshold = 50;
-
-    if (delta > threshold && !isExpanded) {
-      // Swiped UP -> Expand
-      onExpandChange(true);
-    } else if (delta < -threshold && isExpanded) {
-      // Swiped DOWN from full -> Collapse
-      onExpandChange(false);
-    } else if (delta < -threshold && !isExpanded) {
-      // Swiped DOWN from summary -> Close
-      onClose();
+    // 1. Dragging UP (Negative Y)
+    if (offset.y < -threshold || velocity.y < -velocityThreshold) {
+      if (!isExpanded) {
+        onExpandChange(true); // Snap to Full
+      }
+    } 
+    // 2. Dragging DOWN (Positive Y)
+    else if (offset.y > threshold || velocity.y > velocityThreshold) {
+      if (isExpanded) {
+        onExpandChange(false); // Snap to Summary
+      } else {
+        onClose(); // Close completely
+      }
+    }
+    // 3. Not enough movement - snap back to current state
+    else {
+      controls.start(isExpanded ? "expanded" : "collapsed");
     }
   };
-
-  if (!visible && !isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex justify-center items-end pointer-events-none">
-      {/* Backdrop */}
-      <div 
-        className={clsx(
-          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 pointer-events-auto",
-          isOpen ? "opacity-100" : "opacity-0"
-        )}
-        onClick={onClose}
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm"
+          />
 
-      {/* Sheet */}
-      <div 
-        ref={sheetRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className={clsx(
-          "w-full bg-[#1e1e1e] border-t border-white/10 rounded-t-2xl shadow-2xl transition-all duration-300 ease-out pointer-events-auto flex flex-col overflow-hidden",
-          isOpen ? "translate-y-0" : "translate-y-full",
-          // Height Logic: Summary (~35%) vs Fullscreen (100%)
-          isExpanded ? "h-[100dvh]" : "h-[35dvh]"
-        )}
-      >
-        {/* Handle & Helper Text */}
-        <div className="w-full flex flex-col items-center pt-3 pb-2 bg-white/5 border-b border-white/5 shrink-0 cursor-grab active:cursor-grabbing">
-          <div className="w-12 h-1.5 bg-white/20 rounded-full mb-2" />
-          
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-medium text-blue-400 animate-pulse">
-            {!isExpanded ? (
-                <>
-                    <ChevronUp size={12} />
-                    <span>برای {mode === "edit" ? "ویرایش" : "مشاهده"} بالا بکشید</span>
-                </>
-            ) : (
-                <div className="flex items-center gap-1 text-gray-500">
-                    <Minus size={12} />
-                    <span>پایین بکشید تا کوچک شود</span>
-                </div>
+          {/* Sheet */}
+          <motion.div
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }} // We handle movement via logic, constraints just add resistance
+            dragElastic={0.2} // Rubber banding effect
+            onDragStart={() => setIsDragging(true)}
+            onDragEnd={handleDragEnd}
+            variants={variants}
+            initial="hidden"
+            animate={controls}
+            exit="hidden"
+            className={clsx(
+              "fixed bottom-0 left-0 right-0 z-[10000] h-[100dvh] bg-[#1e1e1e] rounded-t-2xl shadow-2xl flex flex-col overflow-hidden border-t border-white/10"
             )}
-          </div>
-        </div>
+          >
+            {/* Handle & Visual Cue */}
+            <div className="w-full flex flex-col items-center pt-3 pb-2 bg-white/5 border-b border-white/5 shrink-0 cursor-grab active:cursor-grabbing">
+              <div className="w-12 h-1.5 bg-white/20 rounded-full mb-2" />
+              
+              <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-medium text-blue-400 animate-pulse">
+                {!isExpanded ? (
+                    <>
+                        <ChevronUp size={12} />
+                        <span>برای {mode === "edit" ? "ویرایش" : "مشاهده"} بالا بکشید</span>
+                    </>
+                ) : (
+                    <div className="flex items-center gap-1 text-gray-500">
+                        <Minus size={12} />
+                        <span>پایین بکشید تا کوچک شود</span>
+                    </div>
+                )}
+              </div>
+            </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#121212]">
-          {children}
-        </div>
-      </div>
-    </div>
+            {/* Content - Disable internal scroll while dragging the sheet to prevent conflict */}
+            <div className={clsx("flex-1 overflow-y-auto custom-scrollbar bg-[#121212]", isDragging && "overflow-hidden pointer-events-none")}>
+              {children}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
