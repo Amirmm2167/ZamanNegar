@@ -43,11 +43,10 @@ export default function MobileGrid({
     return () => clearInterval(interval);
   }, []);
 
-  // FIX: Scroll to "Now" (or 08:00 default) whenever the date changes
+  // Auto-scroll to "Now"
   useEffect(() => {
     if (scrollContainerRef.current) {
         const currentHour = new Date().getHours();
-        // Scroll to 2 hours before now, or 08:00 AM if looking at a future date without current time context
         const isToday = new Date().toDateString() === startDate.toDateString();
         const targetHour = isToday ? Math.max(0, currentHour - 2) : 8; 
         
@@ -58,7 +57,7 @@ export default function MobileGrid({
             behavior: "smooth"
         });
     }
-  }, [startDate]); // Add startDate as dependency
+  }, [startDate]);
 
   // --- Day Logic ---
   const days: Date[] = [];
@@ -184,12 +183,14 @@ export default function MobileGrid({
 
         {/* BODY */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" ref={scrollContainerRef}>
-            <div className="flex flex-row-reverse relative min-h-[1440px]">
+            {/* FIX: Changed min-h to h (fixed height) */}
+            <div className="flex flex-row-reverse relative h-[1440px]">
                 
                 {/* Time Column */}
                 <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
                     {Array.from({ length: 24 }).map((_, h) => (
-                        <div key={h} className="h-[60px] flex items-start justify-center border-b border-white/5 text-[10px] text-gray-500 font-mono relative pt-1">
+                        // FIX: Added shrink-0
+                        <div key={h} className="h-[60px] flex items-start justify-center border-b border-white/5 text-[10px] text-gray-500 font-mono relative pt-1 shrink-0">
                             <span className="absolute -top-2 bg-[#121212] px-1 rounded">{toPersianDigits(h)}</span>
                         </div>
                     ))}
@@ -209,7 +210,8 @@ export default function MobileGrid({
                             {/* Slots Background */}
                             <div className="absolute inset-0 flex flex-col z-0">
                                 {Array.from({ length: 24 }).map((_, h) => (
-                                    <div key={h} className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors" onClick={() => onSlotClick(day, h)}></div>
+                                    // FIX: Added shrink-0
+                                    <div key={h} className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors shrink-0" onClick={() => onSlotClick(day, h)}></div>
                                 ))}
                             </div>
 
