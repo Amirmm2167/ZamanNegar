@@ -35,7 +35,6 @@ export default function MobileGrid({
   draftEvent
 }: MobileGridProps) {
   const [now, setNow] = useState<Date | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setNow(new Date());
@@ -43,36 +42,31 @@ export default function MobileGrid({
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-scroll to "Now"
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-        const currentHour = new Date().getHours();
-        const isToday = new Date().toDateString() === startDate.toDateString();
-        const targetHour = isToday ? Math.max(0, currentHour - 2) : 8; 
-        
-        const scrollPos = targetHour * 60; 
-        
-        scrollContainerRef.current.scrollTo({
-            top: scrollPos,
-            behavior: "smooth"
-        });
-    }
-  }, [startDate]);
-
   // --- Day Logic ---
   const days: Date[] = [];
   try {
       if (daysToShow === 1) {
           days.push(new Date(startDate));
       } else if (daysToShow === 3) {
+          // 3 Day View: Center (Today) in middle, Prev on Right, Next on Left
+          // With flex-row-reverse: Index 0 is Right, Index 2 is Left
+          // So we push [Prev, Today, Next]
           for (let i = -1; i <= 1; i++) {
               const d = new Date(startDate);
               d.setDate(d.getDate() + i);
               days.push(d);
           }
       } else if (daysToShow === 7) {
+          // 7 Day View: Snap to Saturday (Start of Week in Iran)
+          const dayOfWeek = startDate.getDay(); // Sun=0, Sat=6
+          const diff = (dayOfWeek + 1) % 7; // Sat->0, Sun->1...
+          const startOfWeek = new Date(startDate);
+          startOfWeek.setDate(startOfWeek.getDate() - diff);
+
+          // Generate [Sat, Sun, ..., Fri]
+          // With flex-row-reverse: Sat (Index 0) is Right, Fri (Index 6) is Left
           for (let i = 0; i < 7; i++) {
-              const d = new Date(startDate);
+              const d = new Date(startOfWeek);
               d.setDate(d.getDate() + i);
               days.push(d);
           }
@@ -182,14 +176,12 @@ export default function MobileGrid({
         </div>
 
         {/* BODY */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" ref={scrollContainerRef}>
-            {/* FIX: Changed min-h to h (fixed height) */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y">
             <div className="flex flex-row-reverse relative h-[1440px]">
                 
                 {/* Time Column */}
                 <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
                     {Array.from({ length: 24 }).map((_, h) => (
-                        // FIX: Added shrink-0
                         <div key={h} className="h-[60px] flex items-start justify-center border-b border-white/5 text-[10px] text-gray-500 font-mono relative pt-1 shrink-0">
                             <span className="absolute -top-2 bg-[#121212] px-1 rounded">{toPersianDigits(h)}</span>
                         </div>
@@ -210,7 +202,6 @@ export default function MobileGrid({
                             {/* Slots Background */}
                             <div className="absolute inset-0 flex flex-col z-0">
                                 {Array.from({ length: 24 }).map((_, h) => (
-                                    // FIX: Added shrink-0
                                     <div key={h} className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors shrink-0" onClick={() => onSlotClick(day, h)}></div>
                                 ))}
                             </div>
