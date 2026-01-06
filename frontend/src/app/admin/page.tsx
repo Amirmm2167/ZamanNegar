@@ -6,6 +6,7 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminReports from "@/components/admin/AdminReports"; 
 import AdminHolidays from "@/components/admin/AdminHolidays"; 
 import AdminCompanies from "@/components/admin/AdminCompanies"; 
+import AdminAnalytics from "@/components/admin/AdminAnalytics"; // New Import
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -26,9 +27,7 @@ export default function AdminDashboard() {
   if (!isAuthenticated) return null;
 
   return (
-    // BG is transparent to see stars
     <div className="flex h-screen text-gray-200" dir="rtl">
-      {/* Sidebar Glass */}
       <AdminSidebar 
         activeTab={activeTab} 
         onChangeTab={setActiveTab} 
@@ -36,11 +35,11 @@ export default function AdminDashboard() {
       />
       
       <main className="flex-1 p-8 overflow-y-auto custom-scrollbar">
-        {/* Content Area */}
         <div className="max-w-7xl mx-auto">
             {activeTab === "reports" && <AdminReports />}
             {activeTab === "holidays" && <AdminHolidays />}
             {activeTab === "companies" && <AdminCompanies />}
+            {activeTab === "analytics" && <AdminAnalytics />} 
         </div>
       </main>
     </div>
