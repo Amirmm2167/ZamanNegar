@@ -13,8 +13,8 @@ import GlassPane from "@/components/ui/GlassPane";
 import InfiniteSwiper from "./ui/InfiniteSwiper";
 import ExpandableBottomSheet from "./ui/ExpandableBottomSheet";
 import MobileEventSheet from "./views/mobile/MobileEventSheet";
-import QuickViewSheet from "./views/mobile/QuickViewSheet"; // NEW
-import SkeletonGrid from "./views/mobile/SkeletonGrid"; // NEW
+import QuickViewSheet from "./views/mobile/QuickViewSheet"; 
+import SkeletonGrid from "./views/mobile/SkeletonGrid"; 
 import DesktopWeekView from "./views/desktop/WeekView";
 import DesktopMonthView from "./views/desktop/MonthView"; 
 import MobileGrid from "./views/mobile/MobileGrid"; 
@@ -22,6 +22,7 @@ import MobileMonthGrid from "./views/mobile/MobileMonthGrid";
 import AgendaView from "./views/shared/AgendaView";
 import ViewSwitcher, { ViewMode } from "./views/shared/ViewSwitcher";
 import { toPersianDigits } from "@/lib/jalali";
+import DatePicker from "./DatePicker"; // Import your robust Persian DatePicker
 
 interface Holiday { id: number; occasion: string; holiday_date: string; }
 
@@ -37,16 +38,14 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   
-  const [loading, setLoading] = useState(true); // Tracks initial load
+  const [loading, setLoading] = useState(true); 
   
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentIndex, setCurrentIndex] = useState(0); 
   
-  // Sheet States
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   
-  // Distinguish between QuickView (Read) and Edit Mode
   const [activeSheetMode, setActiveSheetMode] = useState<"quick" | "edit" | "create">("quick");
   
   const [sheetEvent, setSheetEvent] = useState<CalendarEvent | null>(null);
@@ -63,9 +62,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
   
-  // Date Picker Ref
-  const dateInputRef = useRef<HTMLInputElement>(null);
-
   useImperativeHandle(ref, () => ({
     openNewEventModal: () => handleOpenModal(new Date(), "09:00", "10:00"),
     setView: (view: ViewMode) => setViewMode(view)
@@ -111,13 +107,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
 
   const getDateForIndex = (index: number) => {
-      const d = new Date(currentDate); // Base off currentDate instead of always Today to allow Jumping
-      // Reset logic: The InfiniteSwiper usually assumes index 0 is "currentDate".
-      // So simple adding index works if we update currentDate only on explicit jumps.
-      // Wait, InfiniteSwiper is 0-centered. 
-      // If we jump to a date, we should probably reset index to 0.
-      
-      // Better logic: `currentDate` is the anchor. 
+      const d = new Date(currentDate); 
       if (viewMode === 'month') {
           d.setMonth(d.getMonth() + index);
       } else {
@@ -131,9 +121,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   };
 
   const handleSwipeChange = (newIndex: number) => {
-      // We don't update currentIndex state here to avoid re-renders loop if not needed
-      // But we track it for next/prev buttons if they depend on it
-      // Actually, standard InfiniteSwiper logic:
       setCurrentIndex(newIndex);
   };
 
@@ -155,22 +142,21 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const handleEventTap = (event: CalendarEvent) => {
       setSheetEvent(event); 
       setSheetDraft(null); 
-      setActiveSheetMode("quick"); // Open Quick View first
+      setActiveSheetMode("quick");
       setIsSheetExpanded(false); 
       setIsSheetOpen(true);
   };
 
-  // Switch from Quick View to Edit Mode
   const handleEditFromQuickView = () => {
       setActiveSheetMode("edit");
-      setIsSheetExpanded(true); // Auto expand for editing
+      setIsSheetExpanded(true);
   };
   
-  // Date Picker Handler
-  const handleDateJump = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.valueAsDate) {
-          setCurrentDate(e.target.valueAsDate);
-          setCurrentIndex(0); // Reset swiper to center on new date
+  // Custom Date Picker Handler
+  const handleDateJump = (date: Date) => {
+      if (date) {
+          setCurrentDate(date);
+          setCurrentIndex(0); // Reset swiper to allow fresh navigation
       }
   };
 
@@ -191,7 +177,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       const formatterMonth = new Intl.DateTimeFormat("fa-IR", { month: "long" });
       const formatterYear = new Intl.DateTimeFormat("fa-IR", { year: "numeric" });
       
-      // Calculate display date based on current index relative to anchor
       const displayDate = getDateForIndex(currentIndex);
       
       let start = new Date(displayDate);
@@ -242,18 +227,20 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
             </div>
             
-            {/* Jump to Date (Mobile) */}
+            {/* Jump to Date (Mobile) - UPDATED */}
             {isMobile && (
                 <div className="relative">
-                    <button onClick={() => dateInputRef.current?.showPicker()} className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5">
+                    <button className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5 pointer-events-none">
                         <CalendarIcon size={18} />
                     </button>
-                    <input 
-                        ref={dateInputRef} 
-                        type="date" 
-                        className="absolute inset-0 opacity-0 w-full h-full"
-                        onChange={handleDateJump}
-                    />
+                    {/* Replaced native input with your robust DatePicker */}
+                    <div className="absolute inset-0 opacity-0 cursor-pointer overflow-hidden">
+                        <DatePicker 
+                            value={currentDate} 
+                            onChange={handleDateJump}
+                            // Assuming your DatePicker accepts a wrapper style to fill space
+                        />
+                    </div>
                 </div>
             )}
             
