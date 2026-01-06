@@ -169,9 +169,14 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                         const panelDate = getDateForIndex(panelIndex);
                         return (
                             <MobileGrid 
+                                // FIX: Key is crucial for React to differentiate panels!
+                                key={panelIndex} 
                                 daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} 
                                 startDate={panelDate} 
-                                events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} 
+                                events={events} 
+                                holidays={holidays} 
+                                departments={departments} 
+                                hiddenDeptIds={hiddenDeptIds} 
                                 onEventTap={handleEventTap} 
                                 onSlotClick={handleSlotClick} 
                                 draftEvent={offset === 0 && isSheetOpen ? sheetDraft : null} 
