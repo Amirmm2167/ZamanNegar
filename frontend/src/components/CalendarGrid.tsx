@@ -19,13 +19,17 @@ import MobileGrid from "./views/mobile/MobileGrid";
 import MobileMonthGrid from "./views/mobile/MobileMonthGrid";
 import AgendaView from "./views/shared/AgendaView";
 import ViewSwitcher, { ViewMode } from "./views/shared/ViewSwitcher";
-import { toPersianDigits } from "@/lib/jalali"; // Import helper if available, or rely on Intl
+import { toPersianDigits } from "@/lib/jalali";
 
 interface Holiday { id: number; occasion: string; holiday_date: string; }
-export interface CalendarGridHandle { openNewEventModal: () => void; }
+
+// Updated Interface to include setView
+export interface CalendarGridHandle { 
+    openNewEventModal: () => void; 
+    setView: (view: ViewMode) => void;
+}
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
-  // ... (State setup remains mostly same, just updating the Render Logic for Header)
   const [viewMode, setViewMode] = useState<ViewMode>("1day"); 
   const [isMobile, setIsMobile] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -50,8 +54,10 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
 
+  // Expose methods to Parent
   useImperativeHandle(ref, () => ({
-    openNewEventModal: () => handleOpenModal(new Date(), "09:00", "10:00")
+    openNewEventModal: () => handleOpenModal(new Date(), "09:00", "10:00"),
+    setView: (view: ViewMode) => setViewMode(view)
   }));
 
   useEffect(() => {
@@ -155,20 +161,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       let start = new Date(currentDate);
       let end = new Date(currentDate);
 
-      // Determine Start/End based on view
       if (viewMode === '3day') {
-          // 3-Day View: Prev (-1), Current (0), Next (+1)
           start.setDate(currentDate.getDate() - 1);
           end.setDate(currentDate.getDate() + 1);
       } else if (viewMode === 'week' || viewMode === 'mobile-week') {
-          // Week View: Saturday to Friday
-          const day = currentDate.getDay(); // Sun=0, Sat=6
+          const day = currentDate.getDay(); 
           const diffToSat = (day + 1) % 7; 
-          start.setDate(currentDate.getDate() - diffToSat); // Snap to Saturday
+          start.setDate(currentDate.getDate() - diffToSat); 
           end = new Date(start);
-          end.setDate(start.getDate() + 6); // Snap to Friday
-      } else if (viewMode === 'month') {
-           // Month view is always just one Jalali month, so default is fine
+          end.setDate(start.getDate() + 6); 
       }
 
       const m1 = formatterMonth.format(start);
@@ -176,15 +177,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       const y1 = formatterYear.format(start);
       const y2 = formatterYear.format(end);
 
-      // Construct Label
       let monthLabel = m1;
       if (m1 !== m2) {
           monthLabel = `${m1}-${m2}`;
       }
 
       let yearLabel = y1;
-      // If needed, we could support cross-year ranges (e.g., 1403-1404), but typically just the primary year is fine visually. 
-      // User asked for "Year at their bottom", implying a single line.
       if (y1 !== y2) yearLabel = `${y1}-${y2}`;
 
       return { monthLabel, yearLabel };
@@ -198,20 +196,24 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
       <GlassPane intensity="medium" className={clsx("flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10", isLandscape && "fixed inset-0 z-[5000] w-[100vh] h-[100vw] origin-top-right rotate-90 translate-x-[100%]")}>
         {/* HEADER */}
-        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0">
+        <div className="flex flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0 h-14 sm:h-auto">
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
-            <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />
+            {/* Desktop View Switcher */}
+            {!isMobile && <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />}
+            
             <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
               <button onClick={nextDate} className="p-2 text-gray-300"><ChevronRight size={18} /></button>
               <button onClick={goToToday} className="px-3 py-1 text-xs font-bold text-white">امروز</button>
               <button onClick={prevDate} className="p-2 text-gray-300"><ChevronLeft size={18} /></button>
             </div>
+            {/* Primary Mobile 'Add Event' Button */}
             {isMobile && <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button>}
           </div>
           
-          <div className="flex flex-col items-center justify-center sm:hidden">
-             <span className="text-base font-bold text-gray-100">{monthLabel}</span>
-             <span className="text-[10px] text-gray-400 font-mono tracking-widest mt-[-2px]">{toPersianDigits ? toPersianDigits(yearLabel) : yearLabel}</span>
+          {/* Mobile Date Label - ONE LINE */}
+          <div className="flex items-center gap-2 sm:hidden absolute left-1/2 -translate-x-1/2 pointer-events-none">
+             <span className="text-sm font-bold text-gray-100">{monthLabel}</span>
+             <span className="text-xs text-gray-400 font-mono mt-0.5">{toPersianDigits ? toPersianDigits(yearLabel) : yearLabel}</span>
           </div>
 
           <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto justify-end">
