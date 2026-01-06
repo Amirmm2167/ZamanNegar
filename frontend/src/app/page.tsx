@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, BellOff, LogOut, Download, User, Users, RefreshCw, Menu, X, Calendar, Smartphone, Grid, Briefcase, Flag, AlertTriangle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion"; 
+import { motion, AnimatePresence, Variants } from "framer-motion"; 
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
 import DepartmentModal from "@/components/DepartmentModal";
@@ -114,8 +114,8 @@ export default function Dashboard() {
     );
   }
 
-  // Animation Variants
-  const sidebarVariants = {
+  // Animation Variants (Typed Correctly)
+  const sidebarVariants: Variants = {
     closed: { 
         x: "120%", 
         opacity: 0,
@@ -130,14 +130,18 @@ export default function Dashboard() {
     }
   };
 
-  const overlayVariants = {
+  const overlayVariants: Variants = {
     closed: { opacity: 0 },
     open: { opacity: 1 }
   };
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     closed: { opacity: 0, x: 20 },
-    open: (i: number) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05 + 0.1 } })
+    open: (i: number) => ({ 
+        opacity: 1, 
+        x: 0, 
+        transition: { delay: i * 0.05 + 0.1 } 
+    })
   };
 
   return (

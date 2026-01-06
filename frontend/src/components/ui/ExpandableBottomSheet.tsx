@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, PanInfo, useAnimation, AnimatePresence } from "framer-motion";
+import { motion, PanInfo, useAnimation, AnimatePresence, Variants } from "framer-motion"; // Added Variants
 import clsx from "clsx";
 import { ChevronUp, Minus } from "lucide-react";
 
@@ -29,7 +29,7 @@ export default function ExpandableBottomSheet({
   // 0% = Fully Expanded (Fullscreen)
   // 65% = Collapsed (Summary View - showing bottom 35%)
   // 100% = Closed (Off screen)
-  const variants = {
+  const variants: Variants = { // Explicitly typed as Variants
     expanded: { y: "0%", transition: { type: "spring", damping: 25, stiffness: 200 } },
     collapsed: { y: "65%", transition: { type: "spring", damping: 25, stiffness: 200 } },
     hidden: { y: "100%", transition: { type: "spring", damping: 25, stiffness: 200 } },
