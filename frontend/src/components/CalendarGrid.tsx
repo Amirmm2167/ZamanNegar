@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "react";
+// ... imports
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
@@ -61,6 +62,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
+  
+  // NEW: DatePicker Modal State
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   
   useImperativeHandle(ref, () => ({
     openNewEventModal: () => handleOpenModal(new Date(), "09:00", "10:00"),
@@ -152,12 +156,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       setIsSheetExpanded(true);
   };
   
-  // Custom Date Picker Handler
-  // Note: DatePicker returns a date string "YYYY-MM-DD"
+  // Updated Date Picker Handler
   const handleDateJump = (dateStr: string) => {
       if (dateStr) {
           setCurrentDate(new Date(dateStr));
           setCurrentIndex(0); 
+          setIsDatePickerOpen(false); // Close modal after selection
       }
   };
 
@@ -228,20 +232,14 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
             </div>
             
-            {/* Jump to Date (Mobile) */}
+            {/* Jump to Date (Mobile Button) */}
             {isMobile && (
-                <div className="relative group">
-                    <button className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5 pointer-events-none group-active:scale-95 transition-transform">
-                        <CalendarIcon size={18} />
-                    </button>
-                    <div className="absolute inset-0 opacity-0 cursor-pointer overflow-hidden">
-                        <DatePicker 
-                            value={currentDate.toISOString().split('T')[0]} 
-                            onChange={handleDateJump}
-                            onClose={() => {}} // Dummy closer
-                        />
-                    </div>
-                </div>
+                <button 
+                    onClick={() => setIsDatePickerOpen(true)}
+                    className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5 active:scale-95 transition-transform hover:bg-white/10"
+                >
+                    <CalendarIcon size={18} />
+                </button>
             )}
             
             {isMobile && <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button>}
@@ -327,6 +325,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                 <MobileEventSheet event={sheetEvent} draftSlot={sheetDraft} isExpanded={isSheetExpanded} canEdit={canEditSheet} onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} onRefresh={fetchData} />
             )}
         </ExpandableBottomSheet>
+        
+        {/* Date Picker Modal */}
+        {isDatePickerOpen && (
+            <DatePicker 
+                value={currentDate.toISOString().split('T')[0]} 
+                onChange={handleDateJump}
+                onClose={() => setIsDatePickerOpen(false)}
+            />
+        )}
 
         <EventModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelectedEvent(null); }} onSuccess={fetchData} initialDate={modalInitialDate} initialStartTime={modalStart} initialEndTime={modalEnd} eventToEdit={selectedEvent} currentUserId={userId} />
         {hoveredEvent && <EventTooltip event={hoveredEvent} departments={departments} onClose={() => setHoveredEvent(null)} onMouseEnter={()=>{}} onMouseLeave={() => setHoveredEvent(null)} />}
