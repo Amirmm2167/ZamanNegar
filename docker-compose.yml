@@ -9,6 +9,8 @@ services:
       - PGTZ=Asia/Tehran
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zaman_admin"]
       interval: 5s
@@ -18,30 +20,45 @@ services:
   backend:
     build: ./backend
     container_name: zaman_backend
-    restart: always
+    restart: on-failure
     env_file: .env
     environment:
       - TZ=Asia/Tehran
     depends_on:
       db:
         condition: service_healthy
+    # --- DEV CONFIGURATION ---
+    volumes:
+      - ./backend:/app           # Sync code changes immediately
+    # Override the Dockerfile command to ensure RELOAD is on
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
 
   frontend:
     build:
       context: ./frontend
+      # CRITICAL: Stop at the 'deps' stage. 
+      # We don't want to build a production app, we just want the node_modules.
+      target: deps
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: zaman_frontend
-    restart: always
+    restart: on-failure
     environment:
       - TZ=Asia/Tehran
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - backend
-    deploy:
-      resources:
-        limits:
-          cpus: '0.80'
-          memory: 1G
+    # --- DEV CONFIGURATION ---
+    volumes:
+      - ./frontend:/app          # Sync code changes immediately
+      - /app/node_modules        # Keep the container's installed modules
+      - /app/.next               # Keep the dev build cache
+    # Run the dev server instead of production server
+    command: npm run dev
+    ports:
+      - "3000:3000"
 
   nginx:
     image: nginx:alpine
