@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarEvent, Department } from "@/types";
-import { toPersianDigits, getPersianWeekday, getStartOfJalaliMonth, isSameJalaliDay } from "@/lib/jalali";
+import { getStartOfJalaliMonth, isSameJalaliDay } from "@/lib/jalali";
 import clsx from "clsx";
 
 interface MobileMonthGridProps {
@@ -24,13 +24,11 @@ export default function MobileMonthGrid({
   // 1. Determine the Jalali Month Grid
   const startOfMonth = getStartOfJalaliMonth(startDate);
   
-  // Find start of week (Saturday)
   const startOfGrid = new Date(startOfMonth);
   const dayOfWeek = startOfGrid.getDay(); // Sat=6, Sun=0
   const daysToSubtract = (dayOfWeek + 1) % 7; 
   startOfGrid.setDate(startOfGrid.getDate() - daysToSubtract);
 
-  // Generate 42 days
   const gridDays = Array.from({ length: 42 }).map((_, i) => {
     const d = new Date(startOfGrid);
     d.setDate(d.getDate() + i);
@@ -47,6 +45,7 @@ export default function MobileMonthGrid({
   return (
     <div className="flex flex-col h-full w-full bg-[#121212] select-none p-2">
         {/* Days Header */}
+        {/* Removed flex-row-reverse */}
         <div className="flex flex-row mb-2" dir="rtl">
             {["ش", "ی", "د", "س", "چ", "پ", "ج"].map((day, i) => (
                 <div key={i} className="flex-1 text-center text-xs text-gray-500 font-bold py-2">
@@ -81,7 +80,6 @@ export default function MobileMonthGrid({
                             {dayNum}
                         </span>
 
-                        {/* Event Dots */}
                         <div className="flex gap-0.5 mt-1 flex-wrap justify-center px-1">
                             {dayEvents.slice(0, 4).map(ev => {
                                 const dept = departments.find(d => d.id === ev.department_id);
