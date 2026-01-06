@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "re
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Loader2, AlertCircle, Plus, User, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Plus, Maximize2 } from "lucide-react";
 import clsx from "clsx";
 import EventModal from "./EventModal";
 import EventTooltip from "./EventTooltip";
@@ -16,6 +16,7 @@ import MobileEventSheet from "./views/mobile/MobileEventSheet";
 import DesktopWeekView from "./views/desktop/WeekView";
 import DesktopMonthView from "./views/desktop/MonthView"; 
 import MobileGrid from "./views/mobile/MobileGrid"; 
+import MobileMonthGrid from "./views/mobile/MobileMonthGrid"; // New Import
 import AgendaView from "./views/shared/AgendaView";
 import ViewSwitcher, { ViewMode } from "./views/shared/ViewSwitcher";
 
@@ -30,7 +31,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentIndex, setCurrentIndex] = useState(0); 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -39,7 +39,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [sheetDraft, setSheetDraft] = useState<{ date: Date; startHour: number; endHour: number } | null>(null);
   const [hiddenDeptIds, setHiddenDeptIds] = useState<number[]>([]); 
   const [hoveredEvent, setHoveredEvent] = useState<CalendarEvent | null>(null);
-  const tooltipTimeout = useRef<NodeJS.Timeout | null>(null);
   const [username, setUsername] = useState("");
   const [userId, setUserId] = useState<number>(0);
   const [userRole, setUserRole] = useState("");
@@ -58,8 +57,13 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     const handleResize = () => {
         const mobile = window.innerWidth < 768;
         setIsMobile(mobile);
-        if (mobile && (viewMode === 'week' || viewMode === 'month')) setViewMode('1day');
-        else if (!mobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week')) setViewMode('week');
+        // Logic: switch to appropriate default if current view is invalid for device
+        if (mobile) {
+            if (viewMode === 'week') setViewMode('1day'); // Desktop week -> 1day
+            // Keep month view if selected on mobile
+        } else {
+            if (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week') setViewMode('week');
+        }
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -67,7 +71,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     setUserRole(localStorage.getItem("role") || "viewer");
     fetchData();
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [viewMode]); // Added viewMode to dep to re-evaluate on resize correctly
 
   const fetchData = async () => {
       try {
@@ -90,14 +94,22 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       }
   };
 
-  // --- Infinite Logic ---
+  // --- Infinite Logic with Partial Sliding ---
   const getDateForIndex = (index: number) => {
       const d = new Date(); // Anchor is Today
-      let diff = 0;
-      if (viewMode === '1day') diff = index;
-      else if (viewMode === '3day') diff = index; // 1-Day step for 3-Day view as requested
-      else if (viewMode === 'mobile-week') diff = index * 7;
-      d.setDate(d.getDate() + diff);
+      
+      if (viewMode === 'month') {
+          // Month View: Jump by 1 Month
+          d.setMonth(d.getMonth() + index);
+      } else {
+          // Day-based Views
+          let diff = 0;
+          if (viewMode === '1day') diff = index; // 1 Day
+          else if (viewMode === '3day') diff = index * 3; // 3 Days (Partial Sliding)
+          else if (viewMode === 'mobile-week') diff = index * 7; // 7 Days
+          
+          d.setDate(d.getDate() + diff);
+      }
       return d;
   };
 
@@ -131,6 +143,21 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const handleEventClick = (event: CalendarEvent) => { setHoveredEvent(event); };
   const canEditSheet = (sheetEvent && (sheetEvent.proposer_id === userId || ["manager", "superadmin"].includes(userRole))) || (!sheetEvent);
 
+  // Helper for Month View Click
+  const handleMobileMonthDayClick = (date: Date) => {
+      // Logic: Switch to 1-Day view for that date
+      // We need to calculate what index that date corresponds to in 1-day view
+      const today = new Date();
+      // Difference in days
+      const diffTime = date.getTime() - today.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
+      
+      // Update Mode and Index
+      setViewMode('1day');
+      setCurrentIndex(diffDays);
+      setCurrentDate(date);
+  };
+
   return (
     <>
       {isMobile && <button onClick={() => setIsLandscape(!isLandscape)} className="fixed bottom-24 right-4 z-[5000] p-3 bg-blue-600 text-white rounded-full shadow-2xl border border-white/20"><Maximize2 size={20} /></button>}
@@ -160,23 +187,33 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
             {!isMobile && viewMode === 'month' && <DesktopMonthView currentDate={currentDate} events={events} holidays={holidays} departments={departments} onEventClick={handleEventClick} onEventLongPress={()=>{}} onSlotClick={handleSlotClick} />}
             
             {/* Mobile Infinite Ribbon */}
-            {isMobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week') && (
+            {isMobile && (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week' || viewMode === 'month') && (
                 <InfiniteSwiper 
                     currentIndex={currentIndex} 
                     onChange={handleSwipeChange}
                     renderItem={(offset) => {
                         const panelIndex = currentIndex + offset;
                         const panelDate = getDateForIndex(panelIndex);
+                        
+                        if (viewMode === 'month') {
+                            return (
+                                <MobileMonthGrid 
+                                    key={panelIndex}
+                                    startDate={panelDate}
+                                    events={events}
+                                    holidays={holidays}
+                                    departments={departments}
+                                    onDateClick={handleMobileMonthDayClick}
+                                />
+                            );
+                        }
+
                         return (
                             <MobileGrid 
-                                // FIX: Key is crucial for React to differentiate panels!
-                                key={panelIndex} 
+                                key={panelIndex}
                                 daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} 
                                 startDate={panelDate} 
-                                events={events} 
-                                holidays={holidays} 
-                                departments={departments} 
-                                hiddenDeptIds={hiddenDeptIds} 
+                                events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} 
                                 onEventTap={handleEventTap} 
                                 onSlotClick={handleSlotClick} 
                                 draftEvent={offset === 0 && isSheetOpen ? sheetDraft : null} 
