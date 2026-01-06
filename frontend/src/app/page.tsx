@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BellOff, LogOut, Download, User, RefreshCw, Menu, X, Calendar, Smartphone, Grid, List, Users, Briefcase, Flag, AlertTriangle } from "lucide-react";
+import { Bell, BellOff, LogOut, Download, User, RefreshCw, Menu, X, Calendar, Smartphone, Grid, List, Users, Briefcase, Flag, AlertTriangle, ChevronLeft } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion"; // Added animation lib
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
 import DepartmentModal from "@/components/DepartmentModal";
@@ -103,6 +104,22 @@ export default function Dashboard() {
     );
   }
 
+  // Animation Variants
+  const sidebarVariants = {
+    closed: { x: "100%", transition: { type: "spring", stiffness: 300, damping: 30 } },
+    open: { x: 0, transition: { type: "spring", stiffness: 300, damping: 30 } }
+  };
+
+  const overlayVariants = {
+    closed: { opacity: 0 },
+    open: { opacity: 1 }
+  };
+
+  const itemVariants = {
+    closed: { opacity: 0, x: 20 },
+    open: (i: number) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05 } })
+  };
+
   return (
     <div className="h-screen bg-transparent flex flex-col overflow-hidden text-gray-200 relative z-10">
       {/* --- GLOBAL APP HEADER --- */}
@@ -128,7 +145,7 @@ export default function Dashboard() {
 
         {/* Mobile Sandwich Menu Button */}
         <div className="sm:hidden">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-white bg-white/10 rounded-xl border border-white/10">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-white bg-white/10 rounded-xl border border-white/10 active:scale-95 transition-transform">
                 <Menu size={24} />
             </button>
         </div>
@@ -150,75 +167,118 @@ export default function Dashboard() {
       </div>
 
       {/* --- MOBILE SANDWICH MENU (DRAWER) --- */}
+      <AnimatePresence>
       {isMobileMenuOpen && (
-          <div className="fixed inset-0 z-[6000] flex justify-end">
-              {/* Backdrop */}
-              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+          <>
+            {/* Backdrop */}
+            <motion.div 
+                initial="closed" animate="open" exit="closed" variants={overlayVariants}
+                className="fixed inset-0 z-[6000] bg-black/60 backdrop-blur-sm" 
+                onClick={() => setIsMobileMenuOpen(false)}
+            />
               
-              {/* Drawer */}
-              <div className="w-[80%] max-w-sm h-full bg-[#1e1e1e] shadow-2xl relative flex flex-col animate-in slide-in-from-left duration-200 border-r border-white/10">
-                  <div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/5">
-                      <h2 className="text-lg font-bold text-white">منوی دسترسی</h2>
-                      <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-white/5 rounded-full text-gray-400">
-                          <X size={20} />
-                      </button>
-                  </div>
+            {/* Drawer */}
+            <motion.div 
+                initial="closed" animate="open" exit="closed" variants={sidebarVariants}
+                className="fixed top-0 bottom-0 right-0 z-[6001] w-[85%] max-w-sm bg-[#121212]/95 backdrop-blur-xl shadow-2xl border-l border-white/10 flex flex-col"
+            >
+                {/* Header */}
+                <div className="p-6 flex justify-between items-center bg-gradient-to-b from-white/10 to-transparent border-b border-white/5">
+                    <div>
+                        <h2 className="text-xl font-black text-white tracking-tight">منوی کاربری</h2>
+                        <p className="text-xs text-gray-400 mt-1">مدیریت و تنظیمات تقویم</p>
+                    </div>
+                    <button 
+                        onClick={() => setIsMobileMenuOpen(false)} 
+                        className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors border border-white/5"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
 
-                  <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                      
-                      {/* Section 1: Views */}
-                      <div className="space-y-2">
-                          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">نمای تقویم</h3>
-                          <button onClick={() => handleViewChange('1day')} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <Smartphone size={20} className="text-blue-400" /> <span>روزانه</span>
-                          </button>
-                          <button onClick={() => handleViewChange('3day')} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <Calendar size={20} className="text-purple-400" /> <span>۳ روزه</span>
-                          </button>
-                          <button onClick={() => handleViewChange('mobile-week')} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <Grid size={20} className="text-emerald-400" /> <span>هفتگی</span>
-                          </button>
-                          <button onClick={() => handleViewChange('month')} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <Calendar size={20} className="text-orange-400" /> <span>ماهانه</span>
-                          </button>
-                      </div>
+                <div className="flex-1 overflow-y-auto p-5 space-y-8">
+                    
+                    {/* Section 1: Views */}
+                    <div className="space-y-3">
+                        <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">نمای تقویم</h3>
+                        <div className="grid grid-cols-1 gap-2">
+                            {[
+                                { id: '1day', label: 'روزانه', icon: Smartphone, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                                { id: '3day', label: '۳ روزه', icon: Calendar, color: 'text-purple-400', bg: 'bg-purple-500/10' },
+                                { id: 'mobile-week', label: 'هفتگی', icon: Grid, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+                                { id: 'month', label: 'ماهانه', icon: Calendar, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+                            ].map((item, i) => (
+                                <motion.button
+                                    key={item.id}
+                                    custom={i}
+                                    variants={itemVariants}
+                                    initial="closed"
+                                    animate="open"
+                                    onClick={() => handleViewChange(item.id as ViewMode)}
+                                    className="flex items-center justify-between w-full p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all active:scale-[0.98] group"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={clsx("p-2 rounded-xl", item.bg, item.color)}>
+                                            <item.icon size={18} />
+                                        </div>
+                                        <span className="font-medium text-gray-200 group-hover:text-white transition-colors">{item.label}</span>
+                                    </div>
+                                    <ChevronLeft size={16} className="text-gray-600 group-hover:text-gray-400" />
+                                </motion.button>
+                            ))}
+                        </div>
+                    </div>
 
-                      {/* Section 2: Manager Actions */}
-                      <div className="space-y-2">
-                          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">مدیریت (FAB)</h3>
-                          <button onClick={() => { setIsDeptModalOpen(true); setIsMobileMenuOpen(false); }} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <Briefcase size={20} className="text-pink-400" /> <span>دپارتمان‌ها</span>
-                          </button>
-                          <button onClick={() => { setIsUserModalOpen(true); setIsMobileMenuOpen(false); }} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <Users size={20} className="text-cyan-400" /> <span>کاربران</span>
-                          </button>
-                          <button onClick={() => { setIsHolidayModalOpen(true); setIsMobileMenuOpen(false); }} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <Flag size={20} className="text-red-400" /> <span>تعطیلات</span>
-                          </button>
-                          <button onClick={() => { setIsIssueModalOpen(true); setIsMobileMenuOpen(false); }} className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200">
-                              <AlertTriangle size={20} className="text-yellow-400" /> <span>گزارش مشکل</span>
-                          </button>
-                      </div>
+                    {/* Section 2: Manager Actions */}
+                    <div className="space-y-3">
+                        <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">مدیریت سیستم</h3>
+                        <div className="grid grid-cols-1 gap-2">
+                            {[
+                                { label: 'دپارتمان‌ها', icon: Briefcase, action: () => setIsDeptModalOpen(true), color: 'text-pink-400' },
+                                { label: 'کاربران', icon: Users, action: () => setIsUserModalOpen(true), color: 'text-cyan-400' },
+                                { label: 'تعطیلات', icon: Flag, action: () => setIsHolidayModalOpen(true), color: 'text-red-400' },
+                                { label: 'گزارش مشکل', icon: AlertTriangle, action: () => setIsIssueModalOpen(true), color: 'text-yellow-400' },
+                            ].map((item, i) => (
+                                <motion.button
+                                    key={i}
+                                    custom={i + 4} // Stagger delay
+                                    variants={itemVariants}
+                                    initial="closed"
+                                    animate="open"
+                                    onClick={() => { item.action(); setIsMobileMenuOpen(false); }}
+                                    className="flex items-center gap-4 w-full p-3 rounded-xl hover:bg-white/5 transition-colors text-gray-300 hover:text-white"
+                                >
+                                    <item.icon size={18} className={item.color} />
+                                    <span className="text-sm">{item.label}</span>
+                                </motion.button>
+                            ))}
+                        </div>
+                    </div>
 
-                  </div>
-                  
-                  {/* Footer: User Info */}
-                  <div className="p-4 border-t border-white/10 bg-black/20">
-                      <div className="flex items-center gap-3 mb-4">
-                          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-lg">
-                              {username.charAt(0)}
-                          </div>
-                          <div>
-                              <p className="font-bold text-white">{username}</p>
-                              <button onClick={handleLogout} className="text-xs text-red-400 flex items-center gap-1 mt-1">
-                                  <LogOut size={12} /> خروج از حساب
-                              </button>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          </div>
+                </div>
+                
+                {/* Footer: User Info */}
+                <div className="p-5 border-t border-white/10 bg-black/40 backdrop-blur-md">
+                    <div className="flex items-center gap-4 p-3 rounded-2xl bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-white/10 shadow-lg">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xl shadow-inner">
+                            {username.charAt(0)}
+                        </div>
+                        <div className="flex-1">
+                            <p className="font-bold text-white text-sm">{username}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span className="text-[10px] text-gray-400">آنلاین</span>
+                            </div>
+                        </div>
+                        <button onClick={handleLogout} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                            <LogOut size={18} />
+                        </button>
+                    </div>
+                </div>
+            </motion.div>
+          </>
       )}
+      </AnimatePresence>
 
       {/* Modals */}
       <DepartmentModal isOpen={isDeptModalOpen} onClose={() => setIsDeptModalOpen(false)} />
