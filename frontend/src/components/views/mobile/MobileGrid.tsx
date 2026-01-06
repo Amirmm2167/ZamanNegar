@@ -6,6 +6,7 @@ import { toPersianDigits, getPersianWeekday } from "@/lib/jalali";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
+import { motion, PanInfo } from "framer-motion"; // Import motion
 
 interface MobileGridProps {
   daysToShow: 1 | 3 | 7;
@@ -16,7 +17,8 @@ interface MobileGridProps {
   hiddenDeptIds: number[];
   onEventTap: (e: CalendarEvent) => void;
   onEventHold: (e: CalendarEvent) => void;
-  onEventDragStart: (e: CalendarEvent) => void;
+  // New Prop for Dropping
+  onEventDrop: (event: CalendarEvent, newStartDate: Date) => void; 
   onSlotClick: (date: Date, hour: number) => void;
   draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
@@ -30,11 +32,14 @@ export default function MobileGrid({
   hiddenDeptIds,
   onEventTap,
   onEventHold,
-  onEventDragStart,
+  onEventDrop,
   onSlotClick,
   draftEvent
 }: MobileGridProps) {
   const [now, setNow] = useState<Date | null>(null);
+  
+  // Track which event is currently being dragged (by ID) to unlock it
+  const [draggingId, setDraggingId] = useState<number | null>(null);
 
   useEffect(() => {
     setNow(new Date());
@@ -48,21 +53,16 @@ export default function MobileGrid({
       if (daysToShow === 1) {
           days.push(new Date(startDate));
       } else if (daysToShow === 3) {
-          // 3 Day View: [Prev, Today, Next]
-          // In RTL Flex: Index 0 (Prev) is Right, Index 2 (Next) is Left.
           for (let i = -1; i <= 1; i++) {
               const d = new Date(startDate);
               d.setDate(d.getDate() + i);
               days.push(d);
           }
       } else if (daysToShow === 7) {
-          // 7 Day View: [Sat, Sun, ..., Fri]
-          // In RTL Flex: Sat (Right) -> Fri (Left)
-          const dayOfWeek = startDate.getDay(); // Sun=0, Sat=6
+          const dayOfWeek = startDate.getDay(); 
           const diff = (dayOfWeek + 1) % 7; 
           const startOfWeek = new Date(startDate);
           startOfWeek.setDate(startOfWeek.getDate() - diff);
-
           for (let i = 0; i < 7; i++) {
               const d = new Date(startOfWeek);
               d.setDate(d.getDate() + i);
@@ -73,55 +73,33 @@ export default function MobileGrid({
       console.error("Error generating dates", e);
   }
 
-  // --- Gesture Logic ---
-  const holdTimer = useRef<NodeJS.Timeout | null>(null);
-  const touchStartPos = useRef<{x: number, y: number} | null>(null);
-  const isHolding = useRef(false);
-  const hasMoved = useRef(false);
-
-  const handleTouchStart = (e: React.TouchEvent, event: CalendarEvent) => {
-      e.stopPropagation(); 
-      touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      isHolding.current = false;
-      hasMoved.current = false;
+  // --- Drag & Drop Logic ---
+  const handleDragEnd = (e: MouseEvent | TouchEvent | PointerEvent, info: PanInfo, originalEvent: CalendarEvent, dayDate: Date) => {
+      setDraggingId(null);
       
-      holdTimer.current = setTimeout(() => {
-          isHolding.current = true;
-          if (navigator.vibrate) navigator.vibrate(50);
-      }, 500);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent, event: CalendarEvent) => {
-      if (!touchStartPos.current) return;
-      const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
-      const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
-
-      if (dx > 10 || dy > 10) {
-          hasMoved.current = true;
-          if (isHolding.current) {
-              if (holdTimer.current) clearTimeout(holdTimer.current);
-              onEventDragStart(event);
-              touchStartPos.current = null;
-              isHolding.current = false;
-          } else {
-              if (holdTimer.current) clearTimeout(holdTimer.current);
-          }
-      }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent, event: CalendarEvent) => {
-      e.stopPropagation();
-      if (holdTimer.current) clearTimeout(holdTimer.current);
-
-      if (isHolding.current && !hasMoved.current) {
-          onEventHold(event);
-      } else if (!isHolding.current && !hasMoved.current) {
-          onEventTap(event);
-      }
+      // 1. Calculate the pixel shift
+      const yOffset = info.offset.y;
       
-      touchStartPos.current = null;
-      isHolding.current = false;
-      hasMoved.current = false;
+      // 2. Convert pixels to minutes (1px = 1min based on our 60px/hr grid)
+      // Note: We need to be careful. The element is moving relative to its original TOP.
+      // 60px = 60 min.
+      // 15 min snap = 15px.
+      
+      const movedMinutes = Math.round(yOffset / 15) * 15; // Snap to nearest 15m
+      
+      if (movedMinutes !== 0) {
+          // 3. Calculate new Start Time
+          const oldStart = new Date(originalEvent.start_time);
+          
+          // We must ensure we are modifying the date relative to the column (dayDate) 
+          // But usually we just shift the time.
+          const newStart = new Date(oldStart.getTime() + movedMinutes * 60000);
+          
+          // Check bounds (00:00 to 23:59)?? 
+          // For now, let's just trigger the callback
+          if (navigator.vibrate) navigator.vibrate(20);
+          onEventDrop(originalEvent, newStart);
+      }
   };
 
   const getEventStyle = (event: CalendarEvent) => {
@@ -129,32 +107,28 @@ export default function MobileGrid({
     const baseColor = dept ? dept.color : "#6b7280"; 
     const isPast = new Date(event.end_time) < new Date();
     
-    const style: any = { 
-        borderRight: `3px solid ${baseColor}`,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-        outline: '1px solid rgba(0,0,0,0.2)'
+    return {
+        baseColor,
+        isPast,
+        style: {
+            borderRight: `3px solid ${baseColor}`,
+            boxShadow: draggingId === event.id 
+                ? '0 10px 20px rgba(0,0,0,0.5)' // Big shadow when dragging
+                : '0 1px 3px rgba(0,0,0,0.3)',
+            backgroundColor: event.status === 'pending' 
+                ? `${baseColor}20` 
+                : `${baseColor}${isPast ? '60' : '90'}`,
+            color: event.status === 'pending' ? baseColor : "#fff",
+            border: event.status === 'pending' ? `1px dashed ${baseColor}` : undefined,
+            filter: isPast ? 'grayscale(30%)' : undefined,
+            zIndex: draggingId === event.id ? 100 : 10, // Pop to top when dragging
+        }
     };
-
-    if (event.status === 'pending') {
-        style.backgroundColor = `${baseColor}20`;
-        style.border = `1px dashed ${baseColor}`;
-        style.color = baseColor;
-    } else {
-        style.backgroundColor = `${baseColor}${isPast ? '60' : '90'}`; 
-        style.color = "#fff";
-    }
-
-    if (isPast) {
-        style.filter = 'grayscale(30%)'; 
-    }
-
-    return style;
   };
 
   return (
     <div className="flex flex-col h-full w-full bg-[#121212] select-none relative">
         {/* HEADER */}
-        {/* Removed flex-row-reverse: RTL handles direction naturally */}
         <div className="flex flex-row border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
             <div className="w-10 border-l border-white/10 bg-black/20"></div>
             {days.map((day, i) => {
@@ -175,7 +149,6 @@ export default function MobileGrid({
 
         {/* BODY */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y">
-            {/* Removed flex-row-reverse */}
             <div className="flex flex-row relative h-[1440px]">
                 
                 {/* Time Column */}
@@ -216,19 +189,44 @@ export default function MobileGrid({
                                 
                                 const topPx = startMin; 
                                 const heightPx = endMin - startMin;
+                                const styleInfo = getEventStyle(original);
 
                                 return (
-                                    <div key={ev.id} onTouchStart={(e) => handleTouchStart(e, original)} onTouchMove={(e) => handleTouchMove(e, original)} onTouchEnd={(e) => handleTouchEnd(e, original)}
-                                        className="absolute z-10 px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-pointer rounded text-[10px] active:scale-[0.98] transition-transform"
+                                    <motion.div 
+                                        key={ev.id} 
+                                        // Drag Configuration
+                                        drag="y"
+                                        dragConstraints={{ top: -topPx, bottom: 1440 - (topPx + heightPx) }} // Keep inside grid
+                                        dragElastic={0.05}
+                                        dragMomentum={false} // No throwing, pure control
+                                        onDragStart={() => {
+                                            setDraggingId(original.id);
+                                            if(navigator.vibrate) navigator.vibrate(50);
+                                        }}
+                                        onDragEnd={(e, info) => handleDragEnd(e, info, original, day)}
+                                        // Tap Handler (only if not dragged)
+                                        onTap={(e, info) => {
+                                            if (info.point.x === 0 && info.point.y === 0) {
+                                                 // framer motion tap detection logic is usually cleaner
+                                                 onEventTap(original);
+                                            }
+                                        }}
+                                        // Visuals
+                                        whileDrag={{ scale: 1.05 }}
+                                        className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-grab active:cursor-grabbing rounded text-[10px]"
                                         style={{ 
                                             top: `${topPx}px`, 
                                             height: `max(20px, ${heightPx}px)`, 
                                             right: `${ev.right}%`, 
                                             width: `${ev.width}%`, 
-                                            ...getEventStyle(original) 
-                                        }}>
-                                        <span className="font-bold leading-tight truncate">{original.title}</span>
-                                    </div>
+                                            ...styleInfo.style 
+                                        }}
+                                    >
+                                        <span className="font-bold leading-tight truncate pointer-events-none">{original.title}</span>
+                                        <span className="text-[9px] opacity-80 pointer-events-none">
+                                            {toPersianDigits(`${start.getHours()}:${String(start.getMinutes()).padStart(2,'0')}`)}
+                                        </span>
+                                    </motion.div>
                                 );
                             })}
                             
