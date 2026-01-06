@@ -1,7 +1,7 @@
-const CACHE_NAME = 'zaman-negar-v1';
-const DYNAMIC_CACHE = 'zaman-negar-dynamic-v1';
+const CACHE_NAME = 'zaman-negar-shell-v2';
 
-const STATIC_ASSETS = [
+// Assets to pre-cache immediately
+const APP_SHELL = [
   '/',
   '/login',
   '/manifest.json',
@@ -11,28 +11,23 @@ const STATIC_ASSETS = [
   '/window.svg'
 ];
 
-// 1. Install Event
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Use map to safely add assets; logs failures but doesn't crash the whole install
-      return Promise.allSettled(
-        STATIC_ASSETS.map(asset => 
-          cache.add(asset).catch(err => console.warn(`Failed to cache ${asset}:`, err))
-        )
-      );
+      // console.log('[SW] Pre-caching App Shell');
+      return cache.addAll(APP_SHELL).catch(err => console.warn('Pre-cache failed:', err));
     })
   );
 });
 
-// 2. Activate Event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME && key !== DYNAMIC_CACHE) {
+          if (key !== CACHE_NAME) {
+            // console.log('[SW] removing old cache', key);
             return caches.delete(key);
           }
         })
@@ -42,82 +37,77 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// 3. Fetch Event
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // A. API Requests
-  if (url.pathname.startsWith('/api/') || url.href.includes('localhost:8000')) {
+  // 1. IGNORE API REQUESTS (Let React Query + LocalStorage handle data)
+  // This prevents SW from returning stale JSON data
+  if (url.pathname.startsWith('/api/') || url.href.includes(':8000')) {
+    return;
+  }
+
+  // 2. HTML Navigation (Network First -> Fallback to Cache)
+  // We always want the latest version of the page logic if possible
+  if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          if (response.status === 200) {
-            const responseClone = response.clone();
-            caches.open(DYNAMIC_CACHE).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
-          return response;
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, response.clone());
+            return response;
+          });
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => {
+          return caches.match(event.request)
+            .then(res => res || caches.match('/')); // Fallback to root if specific page fails
+        })
     );
     return;
   }
 
-  // B. Static Assets
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-      return fetch(event.request).then((response) => {
-        if (response.status === 200 && (url.pathname.startsWith('/_next') || url.pathname.match(/\.(png|jpg|jpeg|svg|css|js)$/))) {
-             const responseClone = response.clone();
+  // 3. Static Assets (Stale-While-Revalidate)
+  // Serve cached version immediately, but update cache in background
+  if (url.pathname.match(/\.(png|jpg|jpeg|svg|css|js|woff2)$/) || url.pathname.startsWith('/_next')) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
              caches.open(CACHE_NAME).then((cache) => {
-               cache.put(event.request, responseClone);
+               cache.put(event.request, networkResponse.clone());
              });
-        }
-        return response;
-      });
+          }
+          return networkResponse;
+        });
+        return cachedResponse || fetchPromise;
+      })
+    );
+    return;
+  }
+});
+
+// Push Notifications (Keep existing logic)
+self.addEventListener('push', (event) => {
+  const data = event.data ? event.data.json() : { title: 'زمان‌نگار', body: 'اعلان جدید' };
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icons/logo.png',
+      badge: '/icons/icon.png',
+      dir: 'rtl',
+      data: { url: data.url || '/' }
     })
   );
 });
 
-// 4. Push Notification Event
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'زمان‌نگار', body: 'اعلان جدید' };
-  
-  const options = {
-    body: data.body,
-    icon: '/icons/logo.png',
-    badge: '/icons/icon.png',
-    vibrate: [100, 50, 100],
-    data: { url: data.url || '/' },
-    dir: 'rtl',
-    lang: 'fa'
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
-});
-
-// 5. Notification Click Action (FIXED)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
-
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Check if there is already a window for this app open
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i];
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
-        }
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url === urlToOpen && 'focus' in client) return client.focus();
       }
-      // If not, open a new one
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen);
-      }
+      if (self.clients.openWindow) return self.clients.openWindow(urlToOpen);
     })
   );
 });
