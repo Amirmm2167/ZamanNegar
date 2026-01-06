@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef } from "react";
+// ... imports
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
@@ -23,13 +24,13 @@ import { toPersianDigits } from "@/lib/jalali";
 
 interface Holiday { id: number; occasion: string; holiday_date: string; }
 
-// Updated Interface to include setView
 export interface CalendarGridHandle { 
     openNewEventModal: () => void; 
     setView: (view: ViewMode) => void;
 }
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
+  // ... state ...
   const [viewMode, setViewMode] = useState<ViewMode>("1day"); 
   const [isMobile, setIsMobile] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -54,12 +55,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
 
-  // Expose methods to Parent
   useImperativeHandle(ref, () => ({
     openNewEventModal: () => handleOpenModal(new Date(), "09:00", "10:00"),
     setView: (view: ViewMode) => setViewMode(view)
   }));
 
+  // ... useEffects and fetchData ... 
   useEffect(() => {
     const handleResize = () => {
         const mobile = window.innerWidth < 768;
@@ -108,7 +109,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
           if (viewMode === '1day') diff = index; 
           else if (viewMode === '3day') diff = index * 3; 
           else if (viewMode === 'mobile-week') diff = index * 7; 
-          
           d.setDate(d.getDate() + diff);
       }
       return d;
@@ -136,6 +136,40 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const handleEventTap = (event: CalendarEvent) => {
       setSheetEvent(event); setSheetDraft(null); setIsSheetExpanded(false); setIsSheetOpen(true);
   };
+  
+  // --- NEW: Drag & Drop Handler ---
+  const handleEventDrop = async (event: CalendarEvent, newStartDate: Date) => {
+      // 1. Calculate duration to keep it consistent
+      const oldStart = new Date(event.start_time);
+      const oldEnd = new Date(event.end_time);
+      const durationMs = oldEnd.getTime() - oldStart.getTime();
+      
+      const newEndDate = new Date(newStartDate.getTime() + durationMs);
+
+      // 2. Optimistic Update
+      const oldEvents = [...events];
+      setEvents(prev => prev.map(e => e.id === event.id ? { ...e, start_time: newStartDate.toISOString(), end_time: newEndDate.toISOString() } : e));
+
+      try {
+          // 3. API Call
+          await api.put(`/events/${event.id}`, {
+              title: event.title,
+              start_time: newStartDate.toISOString(),
+              end_time: newEndDate.toISOString(),
+              description: event.description,
+              department_id: event.department_id,
+              is_all_day: event.is_all_day,
+              recurrence: event.recurrence_rule
+              // Note: Add other fields if required by your backend model
+          });
+          // Success? Do nothing, state is already updated.
+      } catch (err) {
+          console.error("Failed to move event", err);
+          // 4. Revert on Failure
+          setEvents(oldEvents);
+          alert("خطا در تغییر زمان رویداد");
+      }
+  };
 
   const nextDate = () => handleSwipeChange(currentIndex + 1);
   const prevDate = () => handleSwipeChange(currentIndex - 1);
@@ -153,7 +187,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
       setCurrentDate(date);
   };
 
-  // --- Date Label Logic ---
   const getHeaderDateLabel = () => {
       const formatterMonth = new Intl.DateTimeFormat("fa-IR", { month: "long" });
       const formatterYear = new Intl.DateTimeFormat("fa-IR", { year: "numeric" });
@@ -198,7 +231,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
         {/* HEADER */}
         <div className="flex flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0 h-14 sm:h-auto">
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
-            {/* Desktop View Switcher */}
             {!isMobile && <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />}
             
             <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
@@ -206,11 +238,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
               <button onClick={goToToday} className="px-3 py-1 text-xs font-bold text-white">امروز</button>
               <button onClick={prevDate} className="p-2 text-gray-300"><ChevronLeft size={18} /></button>
             </div>
-            {/* Primary Mobile 'Add Event' Button */}
             {isMobile && <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button>}
           </div>
           
-          {/* Mobile Date Label - ONE LINE */}
           <div className="flex items-center gap-2 sm:hidden absolute left-1/2 -translate-x-1/2 pointer-events-none">
              <span className="text-sm font-bold text-gray-100">{monthLabel}</span>
              <span className="text-xs text-gray-400 font-mono mt-0.5">{toPersianDigits ? toPersianDigits(yearLabel) : yearLabel}</span>
@@ -262,8 +292,8 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                                 onEventTap={handleEventTap} 
                                 onSlotClick={handleSlotClick} 
                                 draftEvent={offset === 0 && isSheetOpen ? sheetDraft : null} 
-                                onEventHold={handleEventTap}
-                                onEventDragStart={()=>{}} 
+                                onEventHold={() => {}} // Deprecated by drag
+                                onEventDrop={handleEventDrop} // Passed here!
                             />
                         );
                     }}
