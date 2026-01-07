@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation"; // Import usePathname
 import { useLayoutStore } from "@/stores/layoutStore";
 import FloatingIsland from "./FloatingIsland";
 import ContextRail from "./ContextRail";
 import ModernBackground from "@/components/ui/ModernBackground";
-// Import the new modals
 import EventModal from "@/components/EventModal";
 import IssueModal from "@/components/IssueModal";
 
@@ -14,9 +14,13 @@ interface AppShellProps {
 }
 
 export default function AppShell({ children }: AppShellProps) {
-  const { setIsMobile, isMobile, selectedEventId } = useLayoutStore();
+  const { setIsMobile, isMobile } = useLayoutStore();
+  const pathname = usePathname(); // Get current route
   const [isMounted, setIsMounted] = useState(false);
   const [role, setRole] = useState("viewer");
+
+  // Route Logic: Hide shell elements on auth pages
+  const isAuthPage = pathname === "/login" || pathname === "/register";
 
   // Modal States
   const [showEventModal, setShowEventModal] = useState(false);
@@ -34,18 +38,8 @@ export default function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("resize", checkMobile);
   }, [setIsMobile]);
 
-  // Handlers
-  const handleSaveEvent = (data: any) => {
-    console.log("Saving Event:", data);
-    // Here you would call your API mutation
-    setShowEventModal(false);
-  };
-
-  const handleSubmitIssue = (title: string, desc: string) => {
-    console.log("Reporting Issue:", title, desc);
-    // Here you would call your API mutation
-    setShowIssueModal(false);
-  };
+  const handleSaveEvent = () => setShowEventModal(false);
+  const handleSubmitIssue = () => setShowIssueModal(false);
 
   if (!isMounted) return null;
 
@@ -57,20 +51,22 @@ export default function AppShell({ children }: AppShellProps) {
          <ModernBackground />
       </div>
 
-      {/* 2. Desktop Context Rail */}
-      {!isMobile && <ContextRail />}
+      {/* 2. Desktop Context Rail (Overlay Mode - No Layout Shift) */}
+      {/* Only show if NOT mobile and NOT auth page */}
+      {!isMobile && !isAuthPage && <ContextRail role={role} />}
 
       {/* 3. Main Content Area */}
       <main className={`
         relative z-10 flex-1 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-        ${!isMobile && selectedEventId ? 'mr-[400px]' : ''} /* RTL: Push from right (start) or left (end)? Usually ContextRail is on Left in RTL if it's "Start" */
-        ${isMobile ? 'pb-28' : ''}
+        /* Removed 'mr-[400px]' logic to prevent shrinking. The rail will overlap. */
+        ${isMobile && !isAuthPage ? 'pb-28' : ''} 
       `}>
         {children}
       </main>
 
-      {/* 4. Mobile Navigation (The Brain connects to the Hands) */}
-      {isMobile && (
+      {/* 4. Mobile Navigation */}
+      {/* Hide on Auth Pages */}
+      {isMobile && !isAuthPage && (
         <FloatingIsland 
            role={role} 
            onOpenIssue={() => setShowIssueModal(true)}
@@ -78,11 +74,12 @@ export default function AppShell({ children }: AppShellProps) {
         />
       )}
 
-      {/* 5. Global Modals (Rendered at Shell Level) */}
+      {/* 5. Global Modals */}
       <EventModal 
         isOpen={showEventModal} 
         onClose={() => setShowEventModal(false)}
-        onSave={handleSaveEvent}
+        onSuccess={handleSaveEvent}
+        currentUserId={0}
       />
 
       <IssueModal 

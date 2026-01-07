@@ -11,17 +11,25 @@ import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
 import { toPersianDigits } from "@/lib/utils";
 import { useState } from "react";
-import EventModal from "@/components/EventModal"; // We use this for full editing
+import EventModal from "@/components/EventModal";
 
-export default function ContextRail() {
+interface ContextRailProps {
+  role: string;
+}
+
+export default function ContextRail({ role }: ContextRailProps) {
   const { selectedEventId, setSelectedEventId } = useLayoutStore();
   const queryClient = useQueryClient();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // 1. Fetch Event Data (From Cache or API)
+  // Determine permissions
+  const isViewer = role === "viewer";
+  const isManager = ["manager", "superadmin"].includes(role);
+
+  // Fetch Event Data
   const { data: events } = useQuery<CalendarEvent[]>({
     queryKey: ['events'],
-    enabled: false // Use cached data only
+    enabled: false 
   });
   
   const { data: departments } = useQuery<Department[]>({ 
@@ -29,11 +37,9 @@ export default function ContextRail() {
       enabled: false 
   });
   
-  // Find the specific event
   const event = events?.find(e => e.id === selectedEventId);
   const department = departments?.find(d => d.id === event?.department_id);
 
-  // 2. Mutations
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/events/${id}`),
     onSuccess: () => {
@@ -48,10 +54,7 @@ export default function ContextRail() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['events'] })
   });
 
-  if (!selectedEventId) return null;
-
-  // Loading State (if event not found in cache yet)
-  if (!event) return null; 
+  if (!selectedEventId || !event) return null;
 
   const handleDelete = () => {
     if (confirm("آیا از حذف این رویداد اطمینان دارید؟")) {
@@ -65,7 +68,6 @@ export default function ContextRail() {
     if (reason) updateStatusMutation.mutate({ id: event.id, status: 'rejected', reason });
   };
 
-  // Helper to format dates
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' });
   };
@@ -82,7 +84,8 @@ export default function ContextRail() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: "-100%", opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed top-0 left-0 h-full w-[400px] z-[40] bg-[#09090b]/95 backdrop-blur-2xl border-r border-white/10 shadow-[20px_0_50px_rgba(0,0,0,0.5)] flex flex-col"
+            // Fixed position, z-index 50 to be above grid
+            className="fixed top-0 left-0 h-full w-[400px] z-[50] bg-[#09090b]/95 backdrop-blur-2xl border-r border-white/10 shadow-[20px_0_50px_rgba(0,0,0,0.5)] flex flex-col"
           >
             {/* Header Image / Color Strip */}
             <div className="h-32 relative shrink-0">
@@ -149,41 +152,46 @@ export default function ContextRail() {
                   </div>
                </div>
 
-               {/* Description */}
-               {event.description && (
-                 <div className="space-y-2">
-                    <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                        <Type size={14} /> توضیحات
-                    </h3>
-                    <p className="text-sm text-gray-300 leading-relaxed bg-black/20 p-3 rounded-xl border border-white/5">
-                       {event.description}
-                    </p>
-                 </div>
+               {/* Role-Based Content: Hide Description & Tags for Viewers */}
+               {!isViewer && (
+                 <>
+                   {/* Description */}
+                   {event.description && (
+                     <div className="space-y-2">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                            <Type size={14} /> توضیحات
+                        </h3>
+                        <p className="text-sm text-gray-300 leading-relaxed bg-black/20 p-3 rounded-xl border border-white/5">
+                           {event.description}
+                        </p>
+                     </div>
+                   )}
+
+                   {/* Metadata Grid */}
+                   <div className="grid grid-cols-1 gap-3">
+                      {event.goal && (
+                        <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                           <div className="text-xs text-yellow-500/80 mb-1 flex items-center gap-1"><Flag size={12}/> هدف</div>
+                           <div className="text-sm text-gray-300">{event.goal}</div>
+                        </div>
+                      )}
+                      {(event as any).target_audience && (
+                        <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                           <div className="text-xs text-blue-500/80 mb-1 flex items-center gap-1"><Target size={12}/> مخاطبین</div>
+                           <div className="text-sm text-gray-300">{(event as any).target_audience}</div>
+                        </div>
+                      )}
+                      {(event as any).organizer && (
+                        <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                           <div className="text-xs text-emerald-500/80 mb-1 flex items-center gap-1"><User size={12}/> برگزار کننده</div>
+                           <div className="text-sm text-gray-300">{(event as any).organizer}</div>
+                        </div>
+                      )}
+                   </div>
+                 </>
                )}
 
-               {/* Metadata Grid */}
-               <div className="grid grid-cols-1 gap-3">
-                  {event.goal && (
-                    <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                       <div className="text-xs text-yellow-500/80 mb-1 flex items-center gap-1"><Flag size={12}/> هدف</div>
-                       <div className="text-sm text-gray-300">{event.goal}</div>
-                    </div>
-                  )}
-                  {(event as any).target_audience && (
-                    <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                       <div className="text-xs text-blue-500/80 mb-1 flex items-center gap-1"><Target size={12}/> مخاطبین</div>
-                       <div className="text-sm text-gray-300">{(event as any).target_audience}</div>
-                    </div>
-                  )}
-                  {(event as any).organizer && (
-                    <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                       <div className="text-xs text-emerald-500/80 mb-1 flex items-center gap-1"><User size={12}/> برگزار کننده</div>
-                       <div className="text-sm text-gray-300">{(event as any).organizer}</div>
-                    </div>
-                  )}
-               </div>
-
-               {/* Rejection Reason */}
+               {/* Rejection Reason (Always Visible if Rejected) */}
                {event.status === 'rejected' && event.rejection_reason && (
                    <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
                       <strong className="block mb-1 text-red-400">علت رد شدن:</strong>
@@ -196,7 +204,7 @@ export default function ContextRail() {
             <div className="p-5 border-t border-white/10 bg-[#09090b] shrink-0 flex flex-col gap-3">
                
                {/* Quick Actions for Managers */}
-               {event.status === 'pending' && (
+               {isManager && event.status === 'pending' && (
                   <div className="flex gap-2">
                      <button onClick={handleApprove} className="flex-1 py-2.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-600/30 rounded-xl text-sm font-bold transition-all">
                         تایید رویداد
@@ -207,27 +215,30 @@ export default function ContextRail() {
                   </div>
                )}
 
-               <div className="flex gap-2">
-                  <button 
-                    onClick={() => setIsEditModalOpen(true)}
-                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all flex justify-center items-center gap-2"
-                  >
-                     <Edit size={16} /> ویرایش
-                  </button>
-                  <button 
-                    onClick={handleDelete}
-                    className="px-4 py-3 bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/20 rounded-xl transition-all"
-                  >
-                     <Trash2 size={18} />
-                  </button>
-               </div>
+               {/* Edit/Delete - Only if NOT viewer */}
+               {!isViewer && (
+                 <div className="flex gap-2">
+                    <button 
+                      onClick={() => setIsEditModalOpen(true)}
+                      className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all flex justify-center items-center gap-2"
+                    >
+                       <Edit size={16} /> ویرایش
+                    </button>
+                    <button 
+                      onClick={handleDelete}
+                      className="px-4 py-3 bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/20 rounded-xl transition-all"
+                    >
+                       <Trash2 size={18} />
+                    </button>
+                 </div>
+               )}
             </div>
 
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Hidden Edit Modal - Triggered by Rail */}
+      {/* Hidden Edit Modal */}
       <EventModal 
          isOpen={isEditModalOpen}
          onClose={() => setIsEditModalOpen(false)}
@@ -236,7 +247,7 @@ export default function ContextRail() {
             setIsEditModalOpen(false);
          }}
          eventToEdit={event}
-         currentUserId={0} // Ideally fetch this from store/auth
+         currentUserId={0} 
       />
     </>
   );
