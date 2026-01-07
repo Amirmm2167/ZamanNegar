@@ -1,26 +1,35 @@
-import clsx from "clsx";
+"use client";
 
-interface GlassPaneProps {
+import clsx from "clsx";
+import { HTMLAttributes } from "react";
+
+interface GlassPaneProps extends HTMLAttributes<HTMLDivElement> {
+  intensity?: "low" | "medium" | "high";
   children: React.ReactNode;
-  className?: string;
-  // 👇 Added "login" to the allowed types here
-  intensity?: "low" | "medium" | "high" | "login";
 }
 
-export default function GlassPane({ children, className, intensity = "medium" }: GlassPaneProps) {
-  const baseStyles = "transition-all duration-200";
+export default function GlassPane({ 
+  intensity = "medium", 
+  className, 
+  children,
+  ...props 
+}: GlassPaneProps) {
   
   const intensityStyles = {
-    low: "bg-black/30 backdrop-blur-sm",
-    medium: "bg-[#0f1115]/60 backdrop-blur-md border border-white/10 shadow-2xl",
-    high: "bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/10",
-    // 👇 Added the specific style for the login box
-    login: "bg-[#0a0c10]/80 backdrop-blur-xl border border-white/10 shadow-2xl",
+    low: "bg-[#18181b]/40 backdrop-blur-lg border-white/5",
+    medium: "bg-[#18181b]/60 backdrop-blur-xl backdrop-saturate-150 border-white/5 shadow-xl", // The 2026 Standard
+    high: "bg-[#18181b]/80 backdrop-blur-2xl backdrop-saturate-200 border-white/10 shadow-2xl",
   };
 
   return (
-    // We use a safe access check just in case, though TS now guarantees it exists
-    <div className={clsx(baseStyles, intensityStyles[intensity] || intensityStyles.medium, className)}>
+    <div 
+      className={clsx(
+        "border rounded-3xl transition-all duration-300",
+        intensityStyles[intensity],
+        className
+      )}
+      {...props}
+    >
       {children}
     </div>
   );
