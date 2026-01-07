@@ -1,44 +1,53 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
   --background: #000000;
   --foreground: #ededed;
+  --font-pinar: "Pinar", system-ui, sans-serif;
+}
+
+@theme {
+  --font-pinar: "Pinar", system-ui, sans-serif;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-pinar), system-ui, sans-serif;
+  font-family: var(--font-pinar);
   /* 2026 Standard: Tabular numbers for all data */
-  font-feature-settings: "tnum"; 
+  font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Scrollbar (Sleek & Dark) */
+/* Custom Scrollbar */
 @layer utilities {
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
   }
+}
 
-  /* Utility for the "2026 Glass" look */
-  .neo-glass {
-    @apply bg-[#18181b]/60 backdrop-blur-xl backdrop-saturate-150 border border-white/5 shadow-2xl;
-  }
+/* Neo-Glass Utility 
+   Using standard CSS to prevent @apply build errors with filters in v4 
+*/
+.neo-glass {
+  background-color: rgba(24, 24, 27, 0.6); /* bg-[#18181b]/60 */
+  backdrop-filter: blur(24px) saturate(150%); /* backdrop-blur-xl backdrop-saturate-150 */
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.05); /* border-white/5 */
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); /* shadow-2xl */
 }
