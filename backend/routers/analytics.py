@@ -158,27 +158,32 @@ def get_user_profiling(
     }
 
 # --- ARCHIVING ---
-
 @router.post("/archive")
-def run_archive_job(
-    days: int = 30,
+def run_manual_snapshot(
+    days: int = 0, # Ignored for snapshot engine, it processes "now"
     current_user: User = Depends(get_current_user)
 ):
-    """Triggers the Archivist to clean DB"""
+    """Triggers the Snapshot Engine manually"""
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    result = archiver.archive_logs(days_older_than=days)
-    return result
+    # We use the smart engine now, not the old archiver
+    snapshot_engine.take_hourly_snapshot()
+    return {"status": "success", "message": "Snapshot created"}
 
-@router.get("/archives")
-def get_archives_list(
+@router.get("/snapshots")
+def get_snapshot_history(
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
-        
-    return archiver.list_archives()
+    return snapshot_engine.get_snapshots()
+
+# REMOVE the old /archives endpoint if it conflicts, or update it to list snapshot files
+@router.get("/archives")
+def get_archives_list(current_user: User = Depends(get_current_user)):
+    # Alias to snapshots for backward compatibility
+    return snapshot_engine.get_snapshots()
 
 @router.get("/users/profiling")
 def get_user_profiling(
@@ -217,13 +222,3 @@ def get_user_profiling(
         }
         for r in results
     ]
-    
-@router.get("/snapshots")
-def get_snapshot_history(
-    current_user: User = Depends(get_current_user)
-):
-    """Returns list of hourly summaries"""
-    if current_user.role != "superadmin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-        
-    return snapshot_engine.get_snapshots()
