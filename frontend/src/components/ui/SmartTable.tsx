@@ -13,7 +13,7 @@ export interface Column<T> {
     label: string;
     render?: (item: T) => React.ReactNode; 
     sortable?: boolean;
-    filterable?: boolean; // NEW: Enable filtering for specific columns
+    filterable?: boolean;
     width?: string;
 }
 
@@ -41,12 +41,12 @@ export default function SmartTable<T extends { id?: string | number }>({
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
     const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
     
-    // --- NEW: FILTER STATE ---
+    // FILTER STATE
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
-
-    // Close filter dropdown on click outside
     const filterRef = useRef<HTMLDivElement>(null);
+
+    // Close filter on outside click
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
@@ -57,20 +57,20 @@ export default function SmartTable<T extends { id?: string | number }>({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // --- LOGIC: DATA PROCESSING ---
+    // --- DATA PROCESSING ---
     const processedData = useMemo(() => {
         if (!Array.isArray(data)) return [];
 
         let result = [...data];
 
-        // 1. Column Filters (Exact Match)
+        // 1. Column Filters
         Object.entries(activeFilters).forEach(([key, value]) => {
             if (value) {
                 result = result.filter(item => String((item as any)[key]) === value);
             }
         });
 
-        // 2. Global Fuzzy Search (Recursive)
+        // 2. Fuzzy Search
         if (searchTerm) {
             const lowerTerm = searchTerm.toLowerCase();
             const deepSearch = (obj: any): boolean => {
@@ -86,18 +86,16 @@ export default function SmartTable<T extends { id?: string | number }>({
             result = result.filter(item => deepSearch(item));
         }
 
-        // 3. Sorting
+        // 3. Sort
         if (sortConfig) {
             result.sort((a, b) => {
-                const key = sortConfig.key;
-                const aVal = (a as any)[key];
-                const bVal = (b as any)[key];
+                const aVal = (a as any)[sortConfig.key];
+                const bVal = (b as any)[sortConfig.key];
                 
-                // Handle nulls
                 if (aVal === bVal) return 0;
                 if (aVal === null || aVal === undefined) return 1;
                 if (bVal === null || bVal === undefined) return -1;
-
+                
                 if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -107,7 +105,7 @@ export default function SmartTable<T extends { id?: string | number }>({
         return result;
     }, [data, searchTerm, sortConfig, activeFilters]);
 
-    // --- ACTIONS ---
+    // ... (Keep existing toggleSelect, toggleSelectAll, toggleExpand, handleSort logic)
     const toggleSelect = (index: number) => {
         const newSet = new Set(selectedIndices);
         if (newSet.has(index)) newSet.delete(index);
@@ -145,11 +143,17 @@ export default function SmartTable<T extends { id?: string | number }>({
         alert(`${itemsToExport.length} items copied!`);
     };
 
-    // --- EXTRACT FILTER OPTIONS ---
+    // Helper to extract unique values for filter dropdown
     const getFilterOptions = (key: string) => {
+        if (!Array.isArray(data)) return [];
         const values = new Set(data.map(item => String((item as any)[key])));
-        return Array.from(values).slice(0, 10); // Limit to top 10 unique values
+        return Array.from(values).slice(0, 10);
     };
+
+    // Safety check for empty data render
+    if (!Array.isArray(data)) {
+        return <div className="p-4 text-center text-red-500">Error: Invalid Data Source</div>;
+    }
 
     return (
         <motion.div 
@@ -167,12 +171,12 @@ export default function SmartTable<T extends { id?: string | number }>({
                     )}
                     <h3 className="font-bold text-gray-200 hidden sm:block whitespace-nowrap">{title}</h3>
                     
-                    {/* Search Bar */}
+                    {/* Search */}
                     <div className="relative flex-1 max-w-md w-full group">
                         <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400 transition-colors" size={14} />
                         <input 
                             type="text" 
-                            placeholder={`جستجو در ${processedData.length} رکورد...`}
+                            placeholder={`Search...`}
                             className="w-full bg-black/20 border border-white/10 rounded-xl pr-9 pl-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500/50 focus:bg-black/40 transition-all placeholder:text-gray-600"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -183,8 +187,8 @@ export default function SmartTable<T extends { id?: string | number }>({
                     </div>
                 </div>
 
+                {/* Filters */}
                 <div className="flex items-center gap-2 self-end sm:self-auto relative" ref={filterRef}>
-                    {/* Filter Button & Dropdown */}
                     <button 
                         onClick={() => setIsFilterOpen(!isFilterOpen)}
                         className={clsx(
@@ -193,7 +197,6 @@ export default function SmartTable<T extends { id?: string | number }>({
                                 ? "bg-blue-500/20 text-blue-400 border-blue-500/50" 
                                 : "hover:bg-white/10 text-gray-400 border-transparent"
                         )}
-                        title="Filters"
                     >
                         <Filter size={16}/>
                     </button>
@@ -207,9 +210,9 @@ export default function SmartTable<T extends { id?: string | number }>({
                                 className="absolute top-full right-0 mt-2 w-64 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl p-4 z-50 origin-top-right"
                             >
                                 <div className="flex justify-between items-center mb-3">
-                                    <h4 className="text-xs font-bold text-white">فیلترها</h4>
+                                    <h4 className="text-xs font-bold text-white">Filters</h4>
                                     {Object.keys(activeFilters).length > 0 && (
-                                        <button onClick={() => setActiveFilters({})} className="text-[10px] text-red-400 hover:underline">پاک کردن همه</button>
+                                        <button onClick={() => setActiveFilters({})} className="text-[10px] text-red-400 hover:underline">Clear All</button>
                                     )}
                                 </div>
                                 <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar">
@@ -227,7 +230,7 @@ export default function SmartTable<T extends { id?: string | number }>({
                                                     setActiveFilters(newFilters);
                                                 }}
                                             >
-                                                <option value="">همه</option>
+                                                <option value="">All</option>
                                                 {getFilterOptions(String(col.key)).map(opt => (
                                                     <option key={opt} value={opt}>{opt}</option>
                                                 ))}
@@ -235,19 +238,12 @@ export default function SmartTable<T extends { id?: string | number }>({
                                         </div>
                                     ))}
                                     {columns.filter(c => c.filterable).length === 0 && (
-                                        <p className="text-[10px] text-gray-600">ستون قابل فیلتری تعریف نشده است.</p>
+                                        <p className="text-[10px] text-gray-600">No filterable columns.</p>
                                     )}
                                 </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
-
-                    {selectedIndices.size > 0 && (
-                        <div className="flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-500/20">
-                            <span className="text-xs text-blue-400 font-bold ml-2 border-l border-blue-500/20 pl-2">{selectedIndices.size}</span>
-                            <button onClick={() => handleExport('copy')} className="hover:text-white text-blue-300"><Copy size={14}/></button>
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -257,7 +253,6 @@ export default function SmartTable<T extends { id?: string | number }>({
                     {selectedIndices.size > 0 && selectedIndices.size === processedData.length ? <CheckSquare size={16} className="text-blue-400"/> : <Square size={16} />}
                 </button>
                 {expandedRowRender && <div className="w-8"></div>}
-                
                 {columns.map((col, i) => (
                     <div 
                         key={i} 
@@ -284,37 +279,23 @@ export default function SmartTable<T extends { id?: string | number }>({
                                 )}
                                 onClick={() => onRowClick ? onRowClick(item) : toggleSelect(i)}
                             >
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); toggleSelect(i); }} 
-                                    className="w-8 flex items-center justify-center text-gray-600 group-hover:text-gray-400 transition-colors"
-                                >
+                                <button onClick={(e) => { e.stopPropagation(); toggleSelect(i); }} className="w-8 flex items-center justify-center text-gray-600 group-hover:text-gray-400">
                                     {selectedIndices.has(i) ? <CheckSquare size={16} className="text-blue-400"/> : <Square size={16} />}
                                 </button>
-
                                 {expandedRowRender && (
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); toggleExpand(i); }} 
-                                        className="w-8 flex items-center justify-center text-gray-500 hover:text-white"
-                                    >
+                                    <button onClick={(e) => { e.stopPropagation(); toggleExpand(i); }} className="w-8 flex items-center justify-center text-gray-500 hover:text-white">
                                         {expandedIndices.has(i) ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
                                     </button>
                                 )}
-                                
                                 {columns.map((col, cIndex) => (
                                     <div key={cIndex} className={clsx("text-xs text-gray-300 truncate px-1", col.width || "flex-1")}>
                                         {col.render ? col.render(item) : String((item as any)[col.key] || "-")}
                                     </div>
                                 ))}
                             </motion.div>
-
                             <AnimatePresence>
                                 {expandedIndices.has(i) && expandedRowRender && (
-                                    <motion.div 
-                                        initial={{ height: 0, opacity: 0 }} 
-                                        animate={{ height: "auto", opacity: 1 }} 
-                                        exit={{ height: 0, opacity: 0 }}
-                                        className="overflow-hidden bg-black/40 border-b border-white/5 shadow-inner"
-                                    >
+                                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden bg-black/40 border-b border-white/5 shadow-inner">
                                         {expandedRowRender(item)}
                                     </motion.div>
                                 )}
@@ -322,24 +303,15 @@ export default function SmartTable<T extends { id?: string | number }>({
                         </div>
                     ))}
                 </AnimatePresence>
-                
                 {processedData.length === 0 && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 gap-3">
-                        <div className="p-4 bg-white/5 rounded-full">
-                            <Search size={32} className="opacity-40" />
-                        </div>
-                        <span className="text-sm font-medium">داده‌ای یافت نشد</span>
-                        <button onClick={() => { setSearchTerm(""); setActiveFilters({}); }} className="text-xs text-blue-400 hover:underline">
-                            پاک کردن فیلترها
-                        </button>
+                     <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 gap-3">
+                        <div className="p-4 bg-white/5 rounded-full"><Search size={32} className="opacity-40" /></div>
+                        <span className="text-sm font-medium">No Data Found</span>
                     </div>
                 )}
             </div>
-            
-            {/* FOOTER */}
-            <div className="bg-black/20 border-t border-white/10 p-2 px-4 flex justify-between items-center text-[10px] text-gray-500 shrink-0 select-none">
-                <span>نمایش {processedData.length} از {data.length} رکورد</span>
-                <span className="font-mono">{sortConfig ? `Sorted by: ${sortConfig.key} (${sortConfig.direction})` : "Unsorted"}</span>
+             <div className="bg-black/20 border-t border-white/10 p-2 px-4 flex justify-between items-center text-[10px] text-gray-500 shrink-0">
+                <span>Showing {processedData.length} / {data.length} rows</span>
             </div>
         </motion.div>
     );
