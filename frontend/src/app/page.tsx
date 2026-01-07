@@ -185,6 +185,7 @@ export default function Dashboard() {
         <CalendarGrid ref={calendarRef} />
       </main>
 
+      {/* Desktop Only FAB Menu */}
       <div className="hidden md:block">
         <FabMenu
             onOpenDepartments={() => setIsDeptModalOpen(true)}
@@ -193,6 +194,16 @@ export default function Dashboard() {
             onOpenIssues={() => setIsIssueModalOpen(true)}
             onOpenEventModal={() => calendarRef.current?.openNewEventModal()}
         />
+      </div>
+
+      {/* --- NEW: Mobile Feedback Button (Restored Tunnel) --- */}
+      <div className="md:hidden fixed bottom-6 left-6 z-[50]">
+        <button 
+            onClick={() => setIsIssueModalOpen(true)}
+            className="w-14 h-14 bg-yellow-500 text-black rounded-full shadow-lg shadow-yellow-500/20 flex items-center justify-center active:scale-90 transition-transform border-2 border-yellow-400"
+        >
+            <AlertTriangle size={24} strokeWidth={2.5} />
+        </button>
       </div>
 
       <AnimatePresence>

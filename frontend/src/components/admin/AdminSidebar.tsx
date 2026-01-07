@@ -13,9 +13,9 @@ export default function AdminSidebar({ activeTab, onChangeTab, onLogout }: Admin
   const menuItems = [
     { id: "companies", label: "سازمان‌ها", icon: Building },
     { id: "holidays", label: "تعطیلات", icon: Calendar },
-    { id: "reports", label: "گزارشات", icon: FileText },
-    { id: "issues", label: "بازخوردها", icon: MessageSquare }, // NEW
-    { id: "analytics", label: "آمار و سلامت", icon: Activity }, 
+{ id: "reports", label: "خروجی‌ها (PDF)", icon: FileText },
+    { id: "issues", label: "گزارشات کاربران", icon: MessageSquare }, // Renamed from "بازخوردها"
+    { id: "analytics", label: "آمار و سلامت", icon: Activity },
   ];
 
   return (
