@@ -177,20 +177,16 @@ def get_user_profiling(
 def run_manual_snapshot(
     current_user: User = Depends(get_current_user)
 ):
-    """Triggers the Snapshot Engine manually"""
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Call the engine and check result
     result = snapshot_engine.take_hourly_snapshot()
     
-    if result and result.get("status") == "success":
-        return result
-    elif result and result.get("status") == "skipped":
-        return {"status": "warning", "message": "No new data to snapshot."}
-    else:
-        # If result is None or error
-        raise HTTPException(status_code=500, detail="Snapshot failed. Check server logs.")
+    if result["status"] == "error":
+        # Return 500 but with the specific message so frontend knows WHY
+        raise HTTPException(status_code=500, detail=result["message"])
+        
+    return result
 
 @router.get("/snapshots")
 def get_snapshot_history(

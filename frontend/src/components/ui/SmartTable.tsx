@@ -286,20 +286,24 @@ export default function SmartTable<T extends { id?: string | number }>({
             </div>
 
             {/* HEADER */}
-            <div className="flex items-center bg-black/40 border-b border-white/5 px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-bold shrink-0 select-none z-10">
+            <div className="flex items-center bg-black/40 border-b border-white/5 px-4 py-3 text-[11px] text-gray-400 uppercase tracking-wider font-bold shrink-0 select-none z-10">
                 <button onClick={toggleSelectAll} className="w-8 flex items-center justify-center hover:text-white transition-colors">
                     {selectedIndices.size > 0 && selectedIndices.size === processedData.length ? <CheckSquare size={16} className="text-blue-400"/> : <Square size={16} />}
                 </button>
+                
                 {expandedRowRender && <div className="w-8"></div>}
                 
                 {columns.map((col, i) => (
                     <div 
                         key={i} 
-                        className={clsx("flex items-center gap-1 cursor-pointer hover:text-white transition-colors", col.width || "flex-1")}
+                        className={clsx(
+                            "flex items-center gap-1 cursor-pointer hover:text-white transition-colors text-right dir-rtl", // Added text-right
+                            col.width || "flex-1"
+                        )}
                         onClick={() => col.sortable !== false ? handleSort(col.key as string) : undefined}
                     >
                         {col.label}
-                        {sortConfig?.key === col.key && <ArrowUpDown size={10} className="text-blue-400" />}
+                        {sortConfig?.key === col.key && <ArrowUpDown size={12} className="text-blue-400" />}
                     </div>
                 ))}
             </div>

@@ -1,119 +1,99 @@
 import os
 import json
 import gzip
-import time
-from datetime import datetime, timedelta
-from sqlmodel import Session, select, func, delete
+import tempfile
+from datetime import datetime
+from sqlmodel import Session, select, delete
 from database import engine
 from models import AnalyticsLog
 
-# Absolute path for robustness
-SNAPSHOT_DIR = os.path.join(os.getcwd(), "archives", "snapshots")
-
 class SnapshotEngine:
     def __init__(self):
+        # Try main directory first, fallback to /tmp if permission denied
+        self.storage_path = os.path.join(os.getcwd(), "archives", "snapshots")
+        self.enabled = False
+        
         try:
-            if not os.path.exists(SNAPSHOT_DIR):
-                os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+            if not os.path.exists(self.storage_path):
+                os.makedirs(self.storage_path, exist_ok=True)
+            # Test write permission
+            test_file = os.path.join(self.storage_path, ".test")
+            with open(test_file, 'w') as f: f.write("test")
+            os.remove(test_file)
             self.enabled = True
-        except OSError as e:
-            print(f"WARNING: SnapshotEngine disabled. Permission denied: {e}")
-            self.enabled = False
+        except OSError:
+            print(f"WARNING: Main archive dir readonly. Switching to /tmp...")
+            try:
+                self.storage_path = os.path.join(tempfile.gettempdir(), "zaman_archives")
+                os.makedirs(self.storage_path, exist_ok=True)
+                self.enabled = True
+                print(f"SUCCESS: Using fallback storage at {self.storage_path}")
+            except OSError as e:
+                print(f"CRITICAL: SnapshotEngine disabled. No writable paths. {e}")
 
     def take_hourly_snapshot(self):
-        """
-        Runs the Analysis -> Summarize -> Archive -> Clean cycle.
-        Returns a dict with operation status.
-        """
         if not self.enabled:
-            print("   -> Snapshot Engine is disabled.")
-            return {"status": "error", "message": "Engine disabled due to permission issues"}
+            return {"status": "error", "message": "Storage system unavailable"}
 
-        print(f"[{datetime.now()}] 📸 Starting Hourly Snapshot...")
-        
         cutoff_date = datetime.utcnow()
 
         with Session(engine) as session:
-            # 1. Fetch Data
             logs = session.exec(select(AnalyticsLog)).all()
             
             if not logs:
-                print("   -> No logs to snapshot. Skipping.")
-                return {"status": "skipped", "message": "No logs found"}
+                return {"status": "skipped", "message": "No logs to snapshot"}
 
-            # 2. Calculate Stats
-            total_logs = len(logs)
-            error_count = sum(1 for l in logs if l.event_type == 'ERROR')
-            unique_users = len(set(l.user_id for l in logs if l.user_id))
-            
-            actions = {}
+            # Stats
+            total = len(logs)
+            errors = sum(1 for l in logs if l.event_type == 'ERROR')
+            users = len(set(l.user_id for l in logs if l.user_id))
+            breakdown = {}
             for l in logs:
-                actions[l.event_type] = actions.get(l.event_type, 0) + 1
+                breakdown[l.event_type] = breakdown.get(l.event_type, 0) + 1
 
-            # 3. Create Summary Object
-            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename_raw = f"snapshot_{timestamp}.json.gz"
+            filename_meta = f"summary_{timestamp}.json"
+
+            # Prepare Summary
             summary = {
-                "timestamp": timestamp_str,
-                "range_end": str(cutoff_date),
-                "stats": {
-                    "total": total_logs,
-                    "errors": error_count,
-                    "users": unique_users
-                },
-                "breakdown": actions,
-                "raw_file": f"snapshot_{timestamp_str}.json.gz"
+                "timestamp": timestamp,
+                "stats": { "total": total, "errors": errors, "users": users },
+                "breakdown": breakdown,
+                "raw_file": filename_raw
             }
 
-            # 4. Save Summary JSON
-            summary_path = os.path.join(SNAPSHOT_DIR, f"summary_{timestamp_str}.json")
             try:
-                with open(summary_path, 'w', encoding='utf-8') as f:
-                    json.dump(summary, f, indent=2)
-            except Exception as e:
-                print(f"   -> Failed to write summary: {e}")
-                return {"status": "error", "message": f"Summary write failed: {e}"}
+                # Save Raw
+                path_raw = os.path.join(self.storage_path, filename_raw)
+                data = [l.model_dump(mode='json') for l in logs]
+                with gzip.open(path_raw, 'wt', encoding='UTF-8') as f:
+                    json.dump(data, f)
 
-            # 5. Save Raw Logs
-            raw_path = os.path.join(SNAPSHOT_DIR, summary['raw_file'])
-            try:
-                data_to_save = [log.model_dump(mode='json') for log in logs]
-                with gzip.open(raw_path, 'wt', encoding='UTF-8') as f:
-                    json.dump(data_to_save, f)
-            except Exception as e:
-                print(f"   -> Failed to write raw backup: {e}")
-                return {"status": "error", "message": f"Raw write failed: {e}"}
+                # Save Meta
+                path_meta = os.path.join(self.storage_path, filename_meta)
+                with open(path_meta, 'w') as f:
+                    json.dump(summary, f)
 
-            # 6. Clean Database
-            try:
+                # Clean DB
                 session.exec(delete(AnalyticsLog))
                 session.commit()
-                print(f"   -> Snapshot Complete! Archived {total_logs} records.")
-                return {
-                    "status": "success", 
-                    "count": total_logs, 
-                    "file": summary['raw_file']
-                }
+                
+                return {"status": "success", "count": total, "path": path_meta}
+                
             except Exception as e:
-                print(f"   -> Failed to clean DB: {e}")
-                return {"status": "error", "message": f"DB Cleanup failed: {e}"}
+                print(f"Snapshot Failed: {e}")
+                return {"status": "error", "message": str(e)}
 
     def get_snapshots(self):
-        """List all available summaries for the frontend"""
-        if not self.enabled: return []
+        if not self.enabled or not os.path.exists(self.storage_path):
+            return []
         
-        summaries = []
-        if not os.path.exists(SNAPSHOT_DIR):
-             return []
-
-        for f in os.listdir(SNAPSHOT_DIR):
+        results = []
+        for f in os.listdir(self.storage_path):
             if f.startswith("summary_") and f.endswith(".json"):
-                path = os.path.join(SNAPSHOT_DIR, f)
                 try:
-                    with open(path, 'r') as file:
-                        data = json.load(file)
-                        summaries.append(data)
-                except:
-                    continue
-        
-        return sorted(summaries, key=lambda x: x['timestamp'], reverse=True)
+                    with open(os.path.join(self.storage_path, f)) as file:
+                        results.append(json.load(file))
+                except: continue
+        return sorted(results, key=lambda x: x['timestamp'], reverse=True)
