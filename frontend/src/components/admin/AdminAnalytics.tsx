@@ -29,18 +29,16 @@ const JsonTree = ({ data }: { data: any }) => {
 export default function AdminAnalytics() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'overview' | 'intelligence' | 'terminal' | 'timemachine'>('overview');
-  
-  // Sub-tabs state
   const [intelSubTab, setIntelSubTab] = useState<'users' | 'system'>('users');
 
   // --- QUERIES ---
   const { data: stats } = useQuery({ queryKey: ['admin-stats'], queryFn: () => api.get("/analytics/stats?days=7").then(res => res.data) });
   const { data: system } = useQuery({ queryKey: ['admin-system'], queryFn: () => api.get("/analytics/system").then(res => res.data) });
-  const { data: profiling = [] } = useQuery({ queryKey: ['admin-profiling'], queryFn: () => api.get("/analytics/users/profiling").then(res => res.data) });
+  const { data: profiling } = useQuery({ queryKey: ['admin-profiling'], queryFn: () => api.get("/analytics/users/profiling").then(res => res.data) });
   const { data: logs = [] } = useQuery({
     queryKey: ['admin-logs'],
     queryFn: () => api.get("/analytics/logs?limit=200").then(res => res.data),
-    refetchInterval: 3000 // Auto-refresh logs
+    refetchInterval: 5000 
   });
   
   const { data: snapshots = [] } = useQuery({ 
@@ -48,7 +46,6 @@ export default function AdminAnalytics() {
       queryFn: () => api.get("/analytics/snapshots").then(res => res.data) 
   });
 
-  // Manual Snapshot Trigger
   const snapshotMutation = useMutation({
       mutationFn: () => api.post("/analytics/archive"),
       onSuccess: () => {
@@ -57,16 +54,20 @@ export default function AdminAnalytics() {
       }
   });
 
-  // --- DATA PREP ---
+  // --- SAFEGUARD DATA ---
   const { dau = [], actions = [] } = stats || {};
   
+  // FIX: Ensure profiling is an array before using it
+  const safeProfiling = Array.isArray(profiling) ? profiling : [];
+  const safeSnapshots = Array.isArray(snapshots) ? snapshots : [];
+
   // Transform User Profiling for Chart (Top 10 Active Users)
-  const userChartData = profiling
-    .sort((a: any, b: any) => b.total_actions - a.total_actions)
+  const userChartData = [...safeProfiling]
+    .sort((a: any, b: any) => (b.total_actions || 0) - (a.total_actions || 0))
     .slice(0, 10)
     .map((u: any) => ({ name: u.name, actions: u.total_actions }));
 
-  const timelineData = snapshots.map((s: any) => {
+  const timelineData = safeSnapshots.map((s: any) => {
       const p = s.timestamp.split('_');
       return {
           date: `${p[1].slice(0,2)}:${p[1].slice(2,4)}`, // HH:MM
@@ -125,7 +126,7 @@ export default function AdminAnalytics() {
             </h2>
         </div>
 
-        <div className="bg-[#18181b] border border-white/5 p-1.5 rounded-2xl flex items-center gap-1 shadow-2xl">
+        <div className="bg-[#18181b] border border-white/5 p-1.5 rounded-2xl flex items-center gap-1 shadow-2xl overflow-x-auto">
             {[
                 { id: 'overview', label: 'Overview', icon: BarChart2 },
                 { id: 'intelligence', label: 'Intelligence', icon: Layers },
@@ -220,7 +221,7 @@ export default function AdminAnalytics() {
                                     />
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <SmartTable title="User Directory" data={profiling} columns={userColumns} icon={Users} />
+                                    <SmartTable title="User Directory" data={safeProfiling} columns={userColumns} icon={Users} />
                                 </div>
                             </div>
                         ) : (
@@ -299,7 +300,7 @@ export default function AdminAnalytics() {
                     <div className="flex-1 overflow-hidden">
                         <SmartTable 
                             title="Restore Points (Snapshots)" 
-                            data={snapshots} 
+                            data={safeSnapshots} 
                             columns={snapshotColumns} 
                             icon={Database} 
                             expandedRowRender={(s) => (
