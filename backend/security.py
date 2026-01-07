@@ -70,3 +70,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Dep
     if user is None:
         raise credentials_exception
     return user
+
+async def get_current_user_optional(token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)) -> Optional[User]:
+    try:
+        # Reuse the logic from get_current_user but return None on failure instead of raising
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        user = session.exec(select(User).where(User.username == username)).first()
+        return user
+    except Exception:
+        return None
