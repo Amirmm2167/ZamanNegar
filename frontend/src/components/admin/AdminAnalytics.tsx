@@ -5,14 +5,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { 
     Activity, Layers, Terminal, Database, Users, 
-    BarChart2, RefreshCw, Smartphone, AlertTriangle, Wifi, Cpu, History, FileDown
+    BarChart2, RefreshCw, Smartphone, AlertTriangle, Wifi, Cpu, History, FileDown, Play
 } from "lucide-react";
 import clsx from "clsx";
 import SmartTable, { Column } from "@/components/ui/SmartTable";
-import SmartChart from "@/components/ui/SmartChart"; // Import SmartChart
+import SmartChart from "@/components/ui/SmartChart"; 
 import { motion, AnimatePresence } from "framer-motion";
 
-// --- Helper for Recursive JSON View ---
 const JsonTree = ({ data }: { data: any }) => {
     if (typeof data !== 'object' || data === null) return <span className="text-emerald-400">{String(data)}</span>;
     return (
@@ -40,7 +39,6 @@ export default function AdminAnalytics() {
     refetchInterval: 5000 
   });
   
-  // NEW: Fetch Snapshots for Time Machine
   const { data: snapshots = [] } = useQuery({ 
       queryKey: ['admin-snapshots'], 
       queryFn: () => api.get("/analytics/snapshots").then(res => res.data) 
@@ -54,22 +52,35 @@ export default function AdminAnalytics() {
       }
   });
 
-  // --- DERIVED DATA FOR CHARTS ---
+  // Manually trigger snapshot for Demo/Testing
+  const snapshotMutation = useMutation({
+      mutationFn: () => api.post("/analytics/archive?days=0"), // Hack: archiving 0 days effectively snapshots everything
+      onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['admin-snapshots'] });
+          alert("Snapshot captured successfully!");
+      }
+  });
+
+  // --- DERIVED DATA ---
   const { dau = [], actions = [] } = stats || {};
   
   // Transform Snapshots for Timeline Chart
-  const timelineData = snapshots.map((s: any) => ({
-      date: s.timestamp.split('_')[1].slice(0, 4), // Extract HHMM
-      fullDate: s.timestamp,
-      total: s.stats.total,
-      errors: s.stats.errors
-  })).reverse(); // Show oldest to newest
+  const timelineData = snapshots.map((s: any) => {
+      // Parse timestamp: 20250107_123045
+      const p = s.timestamp.split('_');
+      const dateStr = `${p[0].slice(0,4)}-${p[0].slice(4,6)}-${p[0].slice(6,8)} ${p[1].slice(0,2)}:${p[1].slice(2,4)}`;
+      return {
+          date: dateStr,
+          total: s.stats.total,
+          errors: s.stats.errors
+      };
+  }).reverse();
 
-  // --- COLUMNS CONFIG ---
+  // --- COLUMNS ---
   const logColumns: Column<any>[] = [
       { key: 'id', label: 'ID', width: 'w-16' },
-      { key: 'created_at', label: 'زمان', width: 'w-24', render: (l: any) => <span className="font-mono text-[10px]">{new Date(l.created_at).toLocaleTimeString()}</span> },
-      { key: 'event_type', label: 'نوع', width: 'w-24', render: (l: any) => (
+      { key: 'created_at', label: 'زمان', width: 'w-24', sortable: true, render: (l: any) => <span className="font-mono text-[10px]">{new Date(l.created_at).toLocaleTimeString()}</span> },
+      { key: 'event_type', label: 'نوع', width: 'w-24', filterable: true, sortable: true, render: (l: any) => (
           <span className={clsx("font-bold text-[10px] px-2 py-0.5 rounded-md", 
             l.event_type === 'ERROR' ? "bg-red-500/10 text-red-400" : 
             l.event_type === 'API_REQ' ? "bg-purple-500/10 text-purple-400" :
@@ -80,12 +91,12 @@ export default function AdminAnalytics() {
   ];
 
   const userColumns: Column<any>[] = [
-      { key: 'name', label: 'نام نمایشی', render: (u: any) => <span className="font-bold text-gray-200">{u.name}</span> },
-      { key: 'username', label: 'نام کاربری', render: (u: any) => <span className="font-mono text-xs opacity-80">{u.username}</span> },
-      { key: 'role', label: 'نقش', width: 'w-24', render: (u: any) => <span className="bg-white/10 px-2 py-0.5 rounded text-[10px]">{u.role}</span> },
-      { key: 'total_actions', label: 'فعالیت‌ها', width: 'w-24', render: (u: any) => <span className="text-emerald-400 font-bold">{u.total_actions}</span> },
-      { key: 'last_active', label: 'آخرین بازدید', render: (u: any) => u.last_active ? <span className="text-xs">{new Date(u.last_active).toLocaleDateString('fa-IR')}</span> : '-' },
-      { key: 'status', label: 'وضعیت', width: 'w-24', render: (u: any) => (
+      { key: 'name', label: 'نام نمایشی', sortable: true, render: (u: any) => <span className="font-bold text-gray-200">{u.name}</span> },
+      { key: 'username', label: 'نام کاربری', sortable: true, render: (u: any) => <span className="font-mono text-xs opacity-80">{u.username}</span> },
+      { key: 'role', label: 'نقش', width: 'w-24', filterable: true, render: (u: any) => <span className="bg-white/10 px-2 py-0.5 rounded text-[10px]">{u.role}</span> },
+      { key: 'total_actions', label: 'فعالیت‌ها', width: 'w-24', sortable: true, render: (u: any) => <span className="text-emerald-400 font-bold">{u.total_actions}</span> },
+      { key: 'last_active', label: 'آخرین بازدید', sortable: true, render: (u: any) => u.last_active ? <span className="text-xs">{new Date(u.last_active).toLocaleDateString('fa-IR')}</span> : '-' },
+      { key: 'status', label: 'وضعیت', width: 'w-24', filterable: true, render: (u: any) => (
           <div className="flex items-center gap-1.5">
               <span className={clsx("w-2 h-2 rounded-full shadow-[0_0_8px]", u.status === 'Active' ? "bg-emerald-500 shadow-emerald-500/50" : "bg-gray-500")}></span>
               <span className="text-[10px]">{u.status === 'Active' ? 'فعال' : 'غیرفعال'}</span>
@@ -94,18 +105,17 @@ export default function AdminAnalytics() {
   ];
 
   const systemDeptColumns: Column<any>[] = [
-     { key: 'name', label: 'دپارتمان' }, 
-     { key: 'count', label: 'تعداد رویداد', render: (d: any) => <span className="font-bold text-lg text-emerald-400">{d.count}</span> }
+     { key: 'name', label: 'دپارتمان', sortable: true }, 
+     { key: 'count', label: 'تعداد رویداد', sortable: true, render: (d: any) => <span className="font-bold text-lg text-emerald-400">{d.count}</span> }
   ];
 
   const systemRoleColumns: Column<any>[] = [
-     { key: 'role', label: 'نقش کاربری' }, 
-     { key: 'count', label: 'تعداد کاربر', render: (u: any) => <span className="bg-blue-500/20 px-3 py-1 rounded text-blue-300 font-bold">{u.count}</span> }
+     { key: 'role', label: 'نقش کاربری', sortable: true }, 
+     { key: 'count', label: 'تعداد کاربر', sortable: true, render: (u: any) => <span className="bg-blue-500/20 px-3 py-1 rounded text-blue-300 font-bold">{u.count}</span> }
   ];
 
-  // NEW: Snapshot Columns
   const snapshotColumns: Column<any>[] = [
-      { key: 'timestamp', label: 'زمان ایجاد', render: (s: any) => {
+      { key: 'timestamp', label: 'زمان ایجاد', sortable: true, render: (s: any) => {
           const [date, time] = s.timestamp.split('_');
           return <span className="font-mono text-xs">{date.slice(0,4)}/{date.slice(4,6)}/{date.slice(6,8)} - {time.slice(0,2)}:{time.slice(2,4)}</span>
       }},
@@ -113,7 +123,7 @@ export default function AdminAnalytics() {
       { key: 'stats.errors', label: 'خطاها', width: 'w-24', render: (s: any) => (
           <span className={clsx("font-bold", s.stats.errors > 0 ? "text-red-400" : "text-emerald-400")}>{s.stats.errors}</span>
       )},
-      { key: 'stats.users', label: 'کاربران درگیر', width: 'w-24', render: (s: any) => <span className="text-blue-300">{s.stats.users}</span> },
+      { key: 'stats.users', label: 'کاربران', width: 'w-24', render: (s: any) => <span className="text-blue-300">{s.stats.users}</span> },
       { key: 'raw_file', label: 'فایل خام', render: (s: any) => (
           <span className="text-[10px] font-mono opacity-50">{s.raw_file}</span>
       )},
@@ -160,7 +170,6 @@ export default function AdminAnalytics() {
 
       {/* --- CONTENT AREA --- */}
       <div className="flex-1 overflow-hidden relative">
-      
         <AnimatePresence mode="wait">
             
             {/* 1. OVERVIEW */}
@@ -169,7 +178,6 @@ export default function AdminAnalytics() {
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                     className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full pb-20 overflow-y-auto custom-scrollbar"
                 >
-                    {/* Replaced static chart with SmartChart */}
                     <SmartChart 
                         title="روند کاربران فعال (DAU)"
                         data={dau}
@@ -237,28 +245,37 @@ export default function AdminAnalytics() {
                 />
             )}
 
-            {/* 5. TIME MACHINE (ARCHIVE) */}
+            {/* 5. TIME MACHINE */}
             {activeTab === 'archive' && (
                 <motion.div 
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     className="flex flex-col h-full gap-4"
                 >
-                    {/* Top: Timeline Chart */}
                     <div className="h-64 shrink-0">
                          <SmartChart 
-                            title="تاریخچه سلامت سیستم (۳۰ ساعت گذشته)"
+                            title="تاریخچه سلامت سیستم (Timeline)"
                             data={timelineData}
                             dataKey="total"
                             xAxisKey="date"
-                            color="#f59e0b" // Orange
+                            color="#f59e0b"
                             type="bar"
                             height={240}
                             icon={History}
                         />
                     </div>
                     
-                    {/* Bottom: Snapshot List */}
-                    <div className="flex-1 overflow-hidden">
+                    <div className="flex-1 overflow-hidden relative">
+                         <div className="absolute top-4 left-4 z-20">
+                            <button 
+                                onClick={() => snapshotMutation.mutate()}
+                                disabled={snapshotMutation.isPending}
+                                className="bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-lg"
+                            >
+                                {snapshotMutation.isPending ? <RefreshCw className="animate-spin" size={12}/> : <Play size={12}/>}
+                                ثبت وضعیت فعلی (Force Snapshot)
+                            </button>
+                        </div>
+
                         <SmartTable 
                             title="نقاط بازگشت (Hourly Snapshots)" 
                             data={snapshots} 
@@ -268,7 +285,7 @@ export default function AdminAnalytics() {
                                 <div className="p-4 bg-black/20 text-xs">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <h4 className="font-bold text-gray-400 mb-2">Breakdown</h4>
+                                            <h4 className="font-bold text-gray-400 mb-2">خلاصه وضعیت</h4>
                                             <div className="space-y-1">
                                                 {Object.entries(s.breakdown || {}).map(([k, v]) => (
                                                     <div key={k} className="flex justify-between border-b border-white/5 pb-1">
@@ -279,7 +296,7 @@ export default function AdminAnalytics() {
                                             </div>
                                         </div>
                                         <div>
-                                            <h4 className="font-bold text-gray-400 mb-2">Actions</h4>
+                                            <h4 className="font-bold text-gray-400 mb-2">دانلود</h4>
                                             <button className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors">
                                                 <FileDown size={14} /> دانلود فایل خام ({s.raw_file})
                                             </button>
