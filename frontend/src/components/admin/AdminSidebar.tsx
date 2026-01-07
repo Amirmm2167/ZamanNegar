@@ -1,6 +1,6 @@
 "use client";
 
-import { Building, Calendar, FileText, LogOut, LayoutDashboard, Activity } from "lucide-react"; // Added Activity
+import { Building, Calendar, FileText, LogOut, LayoutDashboard, Activity, MessageSquare } from "lucide-react"; 
 import clsx from "clsx";
 
 interface AdminSidebarProps {
@@ -14,7 +14,8 @@ export default function AdminSidebar({ activeTab, onChangeTab, onLogout }: Admin
     { id: "companies", label: "سازمان‌ها", icon: Building },
     { id: "holidays", label: "تعطیلات", icon: Calendar },
     { id: "reports", label: "گزارشات", icon: FileText },
-    { id: "analytics", label: "آمار و تحلیل", icon: Activity }, // New Item
+    { id: "issues", label: "بازخوردها", icon: MessageSquare }, // NEW
+    { id: "analytics", label: "آمار و سلامت", icon: Activity }, 
   ];
 
   return (
