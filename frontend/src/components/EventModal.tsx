@@ -15,6 +15,8 @@ import {
   Trash2,
   Check,
   Ban,
+  CalendarDays,
+  ChevronDown
 } from "lucide-react";
 import api from "@/lib/api";
 import clsx from "clsx";
@@ -29,8 +31,8 @@ interface EventModalProps {
   onClose: () => void;
   onSuccess: () => void;
   initialDate?: Date;
-  initialStartTime?: string; // New Prop
-  initialEndTime?: string;   // New Prop
+  initialStartTime?: string;
+  initialEndTime?: string;
   eventToEdit?: CalendarEvent | null;
   currentUserId: number;
 }
@@ -176,7 +178,6 @@ export default function EventModal({
         setTitle("");
         setDepartmentId(null);
         
-        // Use passed props for time or fallback to defaults
         setStartTime(initialStartTime || "09:00");
         setEndTime(initialEndTime || "10:00");
         
@@ -264,7 +265,6 @@ export default function EventModal({
         await api.post("/events/", payload);
       }
 
-      // Save Tags
       const saveTags = (textStr: string, category: string) => {
         if (!textStr) return;
         const items = textStr
@@ -342,34 +342,41 @@ export default function EventModal({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+        dir="rtl"
       >
+        {/* Backdrop */}
+        <div 
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+          onClick={onClose}
+        />
+
+        {/* Modal Content */}
         <div
-          className="w-full max-w-lg bg-[#252526] border border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-          dir="rtl"
+          className="relative w-full max-w-lg bg-[#18181b]/90 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 bg-[#2d2d2e] border-b border-gray-700">
-            <h3 className="text-xl font-bold text-gray-100">
+          <div className="px-6 py-5 border-b border-white/5 flex justify-between items-center bg-white/5">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              <CalendarDays className="text-blue-500" />
               {eventToEdit ? "ویرایش رویداد" : "برنامه‌ریزی جدید"}
               {!canEdit && (
-                <span className="mr-2 text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded">
+                <span className="mr-2 text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded border border-red-500/20">
                   فقط مشاهده
                 </span>
               )}
             </h3>
             <button
               onClick={onClose}
-              className="p-1.5 text-gray-400 hover:text-white rounded-full"
+              className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
             >
               <X size={20} />
             </button>
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-gray-700 bg-[#1e1e1e]">
+          <div className="flex border-b border-white/5 bg-black/20 px-2 pt-2">
             {[
               { id: "general", label: "عمومی", icon: Type },
               { id: "timing", label: "زمان‌بندی", icon: Clock },
@@ -379,10 +386,10 @@ export default function EventModal({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as TabType)}
                 className={clsx(
-                  "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors",
+                  "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-all rounded-t-xl relative top-[1px]",
                   activeTab === tab.id
-                    ? "border-blue-500 text-blue-400 bg-[#252526]"
-                    : "border-transparent text-gray-500"
+                    ? "text-blue-400 bg-[#18181b]/50 border-t border-r border-l border-white/10 shadow-[0_-5px_15px_rgba(0,0,0,0.3)]"
+                    : "text-gray-500 hover:text-gray-300 hover:bg-white/5 border-transparent"
                 )}
               >
                 <tab.icon size={16} /> <span>{tab.label}</span>
@@ -395,15 +402,13 @@ export default function EventModal({
             className="p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6"
           >
             {error && (
-              <div className="p-3 text-sm text-red-200 bg-red-900/30 border border-red-800 rounded-lg">
-                {error}
+              <div className="p-4 text-sm text-red-200 bg-red-900/30 border border-red-800 rounded-xl flex items-center gap-2">
+                <Ban size={16} /> {error}
               </div>
             )}
 
             {/* TAB 1: GENERAL */}
-            <div
-              className={clsx("space-y-5", activeTab !== "general" && "hidden")}
-            >
+            <div className={clsx("space-y-5", activeTab !== "general" && "hidden")}>
               <div className="space-y-2">
                 <label className="text-xs text-gray-400 font-bold block">
                   عنوان رویداد *
@@ -414,8 +419,8 @@ export default function EventModal({
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#1e1e1e] border border-gray-600 rounded-xl text-white outline-none focus:border-blue-500 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  placeholder="مثلا: جلسه..."
+                  className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all text-lg placeholder-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="مثلا: جلسه هیئت مدیره..."
                   autoFocus
                 />
               </div>
@@ -425,25 +430,26 @@ export default function EventModal({
                   <label className="text-xs text-gray-400 font-bold">
                     دپارتمان
                   </label>
-                  <select
-                    disabled={!canEdit}
-                    value={departmentId || ""}
-                    onChange={(e) => setDepartmentId(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 bg-[#1e1e1e] border border-gray-600 rounded-xl text-white outline-none focus:border-blue-500 disabled:opacity-50"
-                  >
-                    <option value="">(انتخاب کنید)</option>
-                    {renderDeptOptions(null)}
-                  </select>
+                  <div className="relative">
+                    <select
+                      disabled={!canEdit}
+                      value={departmentId || ""}
+                      onChange={(e) => setDepartmentId(Number(e.target.value))}
+                      className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white outline-none focus:border-blue-500/50 appearance-none disabled:opacity-50"
+                    >
+                      <option value="">(انتخاب کنید)</option>
+                      {renderDeptOptions(null)}
+                    </select>
+                    <ChevronDown className="absolute left-4 top-3.5 text-gray-500 pointer-events-none" size={16} />
+                  </div>
                 </div>
               )}
             </div>
 
             {/* TAB 2: TIMING */}
-            <div
-              className={clsx("space-y-6", activeTab !== "timing" && "hidden")}
-            >
+            <div className={clsx("space-y-6", activeTab !== "timing" && "hidden")}>
               {/* All Day Toggle */}
-              <label className="flex items-center gap-3 p-3 bg-[#1e1e1e] border border-gray-600 rounded-xl cursor-pointer hover:bg-[#252526] transition-colors">
+              <label className="flex items-center gap-3 p-3 bg-black/20 border border-white/10 rounded-xl cursor-pointer hover:bg-white/5 transition-colors">
                 <div
                   className={clsx(
                     "w-5 h-5 rounded border flex items-center justify-center transition-colors",
@@ -472,25 +478,24 @@ export default function EventModal({
                 <div
                   onClick={() => canEdit && setPickerMode("date")}
                   className={clsx(
-                    "w-full px-4 py-3 bg-[#1e1e1e] border border-gray-600 rounded-xl text-white cursor-pointer hover:border-blue-500",
+                    "w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white cursor-pointer hover:border-blue-500/50 hover:bg-black/60 transition-all flex justify-between items-center",
                     !canEdit && "opacity-50 cursor-not-allowed"
                   )}
                 >
-                  {getDisplayDate(startDate)}
+                  <span>{getDisplayDate(startDate) || "انتخاب تاریخ"}</span>
+                  <CalendarDays size={18} className="text-gray-500" />
                 </div>
               </div>
 
-              {/* Time Inputs (Hidden if All Day) */}
+              {/* Time Inputs */}
               {!isAllDay && (
                 <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1">
                   <div className="space-y-2">
-                    <label className="text-xs text-gray-400 font-bold">
-                      شروع
-                    </label>
+                    <label className="text-xs text-gray-400 font-bold">شروع</label>
                     <div
                       onClick={() => canEdit && setShowStartTimePicker(true)}
                       className={clsx(
-                        "w-full px-4 py-3 bg-[#1e1e1e] border border-gray-600 rounded-xl text-white text-center cursor-pointer ltr",
+                        "w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-center cursor-pointer ltr hover:border-blue-500/50 transition-all",
                         !canEdit && "opacity-50 cursor-not-allowed"
                       )}
                     >
@@ -498,13 +503,11 @@ export default function EventModal({
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs text-gray-400 font-bold">
-                      پایان
-                    </label>
+                    <label className="text-xs text-gray-400 font-bold">پایان</label>
                     <div
                       onClick={() => canEdit && setShowEndTimePicker(true)}
                       className={clsx(
-                        "w-full px-4 py-3 bg-[#1e1e1e] border border-gray-600 rounded-xl text-white text-center cursor-pointer ltr",
+                        "w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-center cursor-pointer ltr hover:border-blue-500/50 transition-all",
                         !canEdit && "opacity-50 cursor-not-allowed"
                       )}
                     >
@@ -515,7 +518,7 @@ export default function EventModal({
               )}
 
               {/* Recurrence */}
-              <div className="border-t border-gray-700 pt-4">
+              <div className="border-t border-white/10 pt-4">
                 <div className="text-xs text-blue-400 font-bold mb-3 flex items-center gap-2">
                   <Repeat size={14} /> تکرار رویداد
                 </div>
@@ -532,10 +535,10 @@ export default function EventModal({
                       type="button"
                       onClick={() => setRecurrenceType(t.id)}
                       className={clsx(
-                        "py-2 text-xs rounded-lg border",
+                        "py-2 text-xs rounded-lg border transition-all",
                         recurrenceType === t.id
-                          ? "bg-blue-600 border-blue-600 text-white"
-                          : "bg-[#1e1e1e] border-gray-600 text-gray-400",
+                          ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/20"
+                          : "bg-black/20 border-white/10 text-gray-400 hover:bg-white/5",
                         !canEdit && "opacity-50 cursor-not-allowed"
                       )}
                     >
@@ -545,46 +548,49 @@ export default function EventModal({
                 </div>
 
                 {recurrenceType !== "none" && (
-                  <div className="bg-[#1e1e1e] p-3 rounded-lg border border-gray-700 space-y-3">
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                  <div className="bg-black/20 p-4 rounded-xl border border-white/10 space-y-3 animate-in fade-in">
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <div className={clsx("w-4 h-4 rounded-full border flex items-center justify-center", recurrenceEndMode === "count" ? "border-blue-500" : "border-gray-500")}>
+                           {recurrenceEndMode === "count" && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                        </div>
                         <input
                           disabled={!canEdit}
                           type="radio"
+                          className="hidden"
                           checked={recurrenceEndMode === "count"}
                           onChange={() => setRecurrenceEndMode("count")}
-                          className="accent-blue-500"
                         />
-                        <span className="text-xs text-gray-300">
-                          تعداد دفعات
-                        </span>
+                        <span className="text-xs text-gray-300 group-hover:text-white transition-colors">تعداد دفعات</span>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                         <div className={clsx("w-4 h-4 rounded-full border flex items-center justify-center", recurrenceEndMode === "date" ? "border-blue-500" : "border-gray-500")}>
+                           {recurrenceEndMode === "date" && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                        </div>
                         <input
                           disabled={!canEdit}
                           type="radio"
+                          className="hidden"
                           checked={recurrenceEndMode === "date"}
                           onChange={() => setRecurrenceEndMode("date")}
-                          className="accent-blue-500"
                         />
-                        <span className="text-xs text-gray-300">
-                          تا تاریخ مشخص
-                        </span>
+                        <span className="text-xs text-gray-300 group-hover:text-white transition-colors">تا تاریخ مشخص</span>
                       </label>
                     </div>
+                    
                     {recurrenceEndMode === "count" ? (
                       <input
                         disabled={!canEdit}
                         type="number"
                         value={recurrenceCount}
                         onChange={(e) => setRecurrenceCount(e.target.value)}
-                        className="w-full bg-[#2d2d2e] border border-gray-600 rounded px-3 py-2 text-white text-sm"
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white text-sm focus:border-blue-500/50 outline-none"
                         placeholder="مثلا: ۱۰ بار"
                       />
                     ) : (
                       <div
                         onClick={() => canEdit && setPickerMode("until")}
-                        className="w-full bg-[#2d2d2e] border border-gray-600 rounded px-3 py-2 text-white text-sm cursor-pointer"
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm cursor-pointer hover:border-blue-500/50 transition-colors"
                       >
                         {recurrenceUntil
                           ? getDisplayDate(recurrenceUntil)
@@ -597,9 +603,7 @@ export default function EventModal({
             </div>
 
             {/* TAB 3: DETAILS */}
-            <div
-              className={clsx("space-y-5", activeTab !== "details" && "hidden")}
-            >
+            <div className={clsx("space-y-5", activeTab !== "details" && "hidden")}>
               {canEdit ? (
                 <>
                   <div className="space-y-2">
@@ -637,33 +641,26 @@ export default function EventModal({
                   </div>
                 </>
               ) : (
-                <div className="space-y-4 text-sm text-gray-300">
+                <div className="space-y-4 text-sm text-gray-300 bg-black/20 p-4 rounded-xl border border-white/5">
                   {targetAudience && (
                     <div>
-                      <strong className="text-gray-500 block mb-1">
-                        مخاطبین:
-                      </strong>{" "}
-                      {targetAudience}
+                      <strong className="text-blue-400 block mb-1">مخاطبین:</strong> {targetAudience}
                     </div>
                   )}
                   {organizer && (
                     <div>
-                      <strong className="text-gray-500 block mb-1">
-                        برگزار کننده:
-                      </strong>{" "}
-                      {organizer}
+                      <strong className="text-emerald-400 block mb-1">برگزار کننده:</strong> {organizer}
                     </div>
                   )}
                   {goal && (
                     <div>
-                      <strong className="text-gray-500 block mb-1">هدف:</strong>{" "}
-                      {goal}
+                      <strong className="text-yellow-400 block mb-1">هدف:</strong> {goal}
                     </div>
                   )}
                 </div>
               )}
               <div className="space-y-2">
-                <label className="text-xs text-gray-400 font-bold">
+                <label className="text-xs text-gray-400 font-bold flex items-center gap-1">
                   <AlignLeft size={14} /> توضیحات
                 </label>
                 <textarea
@@ -671,19 +668,20 @@ export default function EventModal({
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-2 bg-[#1e1e1e] border border-gray-600 rounded-xl text-white outline-none resize-none disabled:opacity-50"
+                  className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white outline-none resize-none focus:border-blue-500/50 disabled:opacity-50"
+                  placeholder="توضیحات تکمیلی..."
                 />
               </div>
             </div>
           </form>
 
           {/* Footer */}
-          <div className="p-4 border-t border-gray-700 bg-[#2d2d2e] flex justify-between items-center">
+          <div className="p-5 border-t border-white/5 bg-black/20 flex justify-between items-center backdrop-blur-md">
             <div className="flex gap-2">
               {eventToEdit && canEdit && (
                 <button
                   onClick={handleDelete}
-                  className="p-2 text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
+                  className="p-3 text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded-xl transition-all"
                   title="حذف رویداد"
                 >
                   {deleting ? (
@@ -700,13 +698,13 @@ export default function EventModal({
                   <>
                     <button
                       onClick={handleApprove}
-                      className="flex items-center gap-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-600/30 rounded-xl text-xs font-bold transition-all"
                     >
                       <Check size={14} /> تایید
                     </button>
                     <button
                       onClick={handleReject}
-                      className="flex items-center gap-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 rounded-xl text-xs font-bold transition-all"
                     >
                       <Ban size={14} /> رد
                     </button>
@@ -717,7 +715,7 @@ export default function EventModal({
             <div className="flex items-center gap-3">
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors border border-transparent"
               >
                 {canEdit ? "انصراف" : "بستن"}
               </button>
@@ -726,7 +724,7 @@ export default function EventModal({
                   onClick={handleSubmit}
                   disabled={loading || deleting}
                   className={clsx(
-                    "px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-lg shadow-blue-900/20 transition-all flex items-center gap-2",
+                    "px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-all flex items-center gap-2 hover:scale-105 active:scale-95",
                     loading && "opacity-50 cursor-not-allowed"
                   )}
                 >
@@ -749,8 +747,12 @@ export default function EventModal({
 
           {eventToEdit?.status === "rejected" &&
             (eventToEdit as any).rejection_reason && (
-              <div className="mx-6 mb-4 p-3 bg-red-900/20 border border-red-800 rounded text-red-200 text-sm">
-                <b>علت رد شدن:</b> {(eventToEdit as any).rejection_reason}
+              <div className="mx-6 mb-4 p-4 bg-red-900/10 border border-red-500/20 rounded-xl text-red-200 text-sm flex gap-2 items-start">
+                <Ban size={16} className="mt-0.5 text-red-500" />
+                <div>
+                  <b className="text-red-400 block mb-1">علت رد شدن:</b> 
+                  {(eventToEdit as any).rejection_reason}
+                </div>
               </div>
             )}
         </div>
