@@ -10,6 +10,8 @@ import {
 import clsx from "clsx";
 import SmartTable, { Column } from "@/components/ui/SmartTable";
 import { motion, AnimatePresence } from "framer-motion";
+import SmartChart from "@/components/ui/SmartChart";
+
 
 // --- Helper for Recursive JSON View ---
 const JsonTree = ({ data }: { data: any }) => {
@@ -149,52 +151,31 @@ export default function AdminAnalytics() {
                     {activeTab === 'overview' && (
                         <motion.div
                             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                            className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full overflow-y-auto pb-20 custom-scrollbar"
+                            className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full pb-20 overflow-y-auto custom-scrollbar"
                         >
-                            <div className="p-6 bg-[#1e1e1e] rounded-2xl border border-white/5 shadow-2xl h-80 relative overflow-hidden group">
-                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-green-300"></div>
-                                <h3 className="font-bold flex items-center gap-2 text-gray-200 mb-6 relative z-10">
-                                    <Users size={18} className="text-emerald-400" /> کاربران فعال (DAU)
-                                </h3>
-                                <div className="h-48 flex items-end gap-2 px-2 border-b border-white/5 pb-2 relative z-10">
-                                    {dau.map((item: any, i: number) => (
-                                        <div key={i} className="flex flex-col items-center gap-2 flex-1 group/bar cursor-pointer">
-                                            <div
-                                                className="w-full bg-emerald-600/30 group-hover/bar:bg-emerald-500 rounded-t-md relative min-w-[10px] transition-all duration-300"
-                                                style={{ height: `${(item.count / maxDau) * 100}%` }}
-                                            >
-                                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black px-2 py-1 rounded text-xs opacity-0 group-hover/bar:opacity-100 transition-opacity whitespace-nowrap border border-white/10 z-20 pointer-events-none">
-                                                    {item.count} کاربر
-                                                </div>
-                                            </div>
-                                            <span className="text-[10px] text-gray-500 rotate-45 mt-2 origin-left whitespace-nowrap">{item.date.slice(5)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                            {/* Chart 1: Daily Active Users */}
+                            <SmartChart
+                                title="روند کاربران فعال (DAU)"
+                                data={dau}
+                                dataKey="count"
+                                xAxisKey="date"
+                                color="#10b981" // Emerald
+                                type="area"
+                                height={320}
+                                icon={Users}
+                            />
 
-                            <div className="p-6 bg-[#1e1e1e] rounded-2xl border border-white/5 shadow-2xl h-80 relative overflow-hidden">
-                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-300"></div>
-                                <h3 className="font-bold flex items-center gap-2 text-gray-200 mb-6 relative z-10">
-                                    <BarChart2 size={18} className="text-purple-400" /> عملیات‌های پرتکرار
-                                </h3>
-                                <div className="space-y-4 overflow-y-auto h-52 custom-scrollbar pr-2 relative z-10">
-                                    {actions.map((item: any, i: number) => (
-                                        <div key={i} className="group cursor-pointer">
-                                            <div className="flex justify-between text-xs text-gray-300 mb-1 group-hover:text-white transition-colors">
-                                                <span>{item.action}</span>
-                                                <span className="font-mono">{item.count}</span>
-                                            </div>
-                                            <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-purple-600 rounded-full shadow-[0_0_10px_rgba(147,51,234,0.3)] transition-all duration-500"
-                                                    style={{ width: `${(item.count / maxActions) * 100}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                            {/* Chart 2: Top Actions */}
+                            <SmartChart
+                                title="پرتکرارترین عملیات‌ها"
+                                data={actions} // e.g. [{action: 'LOGIN', count: 50}]
+                                dataKey="count"
+                                xAxisKey="action"
+                                color="#9333ea" // Purple
+                                type="bar"
+                                height={320}
+                                icon={BarChart2}
+                            />
                         </motion.div>
                     )}
 
