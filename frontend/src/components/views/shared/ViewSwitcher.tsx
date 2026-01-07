@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Calendar, List, Smartphone, Monitor, Grid } from "lucide-react";
+import { ChevronDown, Calendar, List, Smartphone, Monitor, Grid, LayoutGrid } from "lucide-react";
 import clsx from "clsx";
 
 export type ViewMode = "week" | "3day" | "1day" | "month" | "agenda" | "mobile-week";
@@ -10,30 +10,32 @@ interface ViewSwitcherProps {
   currentView: ViewMode;
   onChange: (view: ViewMode) => void;
   isMobile: boolean;
+  variant?: "default" | "embedded"; // NEW: Supports embedding in other menus
 }
 
-export default function ViewSwitcher({ currentView, onChange, isMobile }: ViewSwitcherProps) {
+export default function ViewSwitcher({ currentView, onChange, isMobile, variant = "default" }: ViewSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const desktopViews: { id: ViewMode; label: string; icon: any }[] = [
-    { id: "week", label: "هفتگی", icon: Monitor },
-    { id: "month", label: "ماهانه", icon: Grid },
-    { id: "agenda", label: "برنامه", icon: List },
+  const desktopViews = [
+    { id: "week" as const, label: "هفتگی", icon: Monitor },
+    { id: "month" as const, label: "ماهانه", icon: Grid },
+    { id: "agenda" as const, label: "برنامه", icon: List },
   ];
 
-  const mobileViews: { id: ViewMode; label: string; icon: any }[] = [
-    { id: "1day", label: "روزانه", icon: Smartphone },
-    { id: "3day", label: "۳ روزه", icon: Calendar },
-    { id: "mobile-week", label: "هفتگی", icon: Grid },
-    { id: "month", label: "ماهانه", icon: Calendar }, // Added Month
-    { id: "agenda", label: "برنامه", icon: List },
+  const mobileViews = [
+    { id: "1day" as const, label: "روزانه", icon: Smartphone },
+    { id: "3day" as const, label: "۳ روزه", icon: Calendar },
+    { id: "mobile-week" as const, label: "هفتگی", icon: LayoutGrid }, // Changed icon for distinction
+    { id: "month" as const, label: "ماهانه", icon: Calendar },
+    { id: "agenda" as const, label: "برنامه", icon: List },
   ];
 
   const views = isMobile ? mobileViews : desktopViews;
   const activeView = views.find((v) => v.id === currentView) || views[0];
 
   useEffect(() => {
+    if (variant === "embedded") return; // No outside click needed for embedded
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
@@ -41,8 +43,32 @@ export default function ViewSwitcher({ currentView, onChange, isMobile }: ViewSw
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [variant]);
 
+  // --- EMBEDDED MODE (For Floating Island) ---
+  if (variant === "embedded") {
+    return (
+      <div className="flex flex-col gap-1 w-full">
+        {views.map((view) => (
+          <button
+            key={view.id}
+            onClick={() => onChange(view.id)}
+            className={clsx(
+              "flex items-center gap-3 px-3 py-3 text-sm rounded-xl transition-all w-full text-right",
+              currentView === view.id
+                ? "bg-blue-600/30 text-blue-400 font-bold border border-blue-500/30"
+                : "text-gray-300 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            <view.icon size={18} />
+            {view.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  // --- DEFAULT MODE (Dropdown) ---
   return (
     <div className="relative z-50" ref={containerRef}>
       <button

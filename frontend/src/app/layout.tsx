@@ -1,9 +1,9 @@
-import type { Metadata, Viewport } from "next"; // Import Viewport
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import ModernBackground from "@/components/ui/ModernBackground";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import Providers from "@/components/Providers"; 
+import AppShell from "@/components/layout/AppShell"; // Import AppShell
 
 const pinar = localFont({
   src: [
@@ -18,7 +18,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Replaces 'user-scalable=0'
+  userScalable: false,
 };
 
 export const metadata: Metadata = {
@@ -29,7 +29,6 @@ export const metadata: Metadata = {
     icon: "/icons/icon.png",
     apple: "/icons/logo.png",
   },
-  // Removed themeColor and viewport from here
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -38,17 +37,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${pinar.className} bg-black min-h-screen overflow-hidden text-gray-100`}>
         <ServiceWorkerRegister />
         
-        {/* 1. Background */}
-        <div className="fixed inset-0 z-0">
-            <ModernBackground />
-        </div>
-        
-        {/* 2. Content */}
-        <div className="relative z-10 h-full">
-          <Providers>
-            {children}
-          </Providers>
-        </div>
+        <Providers>
+            {/* The AppShell now handles background, mobile detection, and navigation */}
+            <AppShell>
+              {children}
+            </AppShell>
+        </Providers>
       </body>
     </html>
   );
