@@ -6,13 +6,14 @@ import api from "@/lib/api";
 import { 
     Activity, Layers, Terminal, Database, Users, 
     BarChart2, RefreshCw, Smartphone, Wifi, Play, FileDown, History,
-    List, PieChart, FileText, Server
+    List, PieChart, FileText // <--- Added FileText here
 } from "lucide-react";
 import clsx from "clsx";
 import SmartTable, { Column } from "@/components/ui/SmartTable";
 import SmartChart from "@/components/ui/SmartChart"; 
 import { motion, AnimatePresence } from "framer-motion";
 
+// --- Helper for Recursive JSON View ---
 const JsonTree = ({ data }: { data: any }) => {
     if (typeof data !== 'object' || data === null) return <span className="text-emerald-400">{String(data)}</span>;
     return (
@@ -29,53 +30,69 @@ const JsonTree = ({ data }: { data: any }) => {
 export default function AdminAnalytics() {
   const queryClient = useQueryClient();
   
-  // --- MAIN TABS ---
+  // --- TABS STATE ---
   const [activeTab, setActiveTab] = useState<'overview' | 'intelligence' | 'terminal' | 'timemachine'>('overview');
   
-  // --- SUB TABS (VIEW MODES) ---
-  // Intelligence: Users Chart | Users Table | Depts | Roles
-  const [intelView, setIntelView] = useState<'users_chart' | 'users_table' | 'system_depts' | 'system_roles'>('users_table');
-  // Time Machine: Timeline Chart | Snapshot List
-  const [timeView, setTimeView] = useState<'timeline' | 'files'>('files');
+  // --- SUB-TABS STATE ---
+  const [intelView, setIntelView] = useState<'users_table' | 'users_chart' | 'system_depts' | 'system_roles'>('users_table');
+  const [timeView, setTimeView] = useState<'files' | 'timeline'>('files');
+  
+  // --- CHART STATE (Fusion Engine) ---
+  const [timeRange, setTimeRange] = useState('24h');
 
   // --- QUERIES ---
+  
+  // 1. Core Stats
   const { data: stats } = useQuery({ queryKey: ['admin-stats'], queryFn: () => api.get("/analytics/stats?days=7").then(res => res.data) });
   const { data: system } = useQuery({ queryKey: ['admin-system'], queryFn: () => api.get("/analytics/system").then(res => res.data) });
   const { data: profiling } = useQuery({ queryKey: ['admin-profiling'], queryFn: () => api.get("/analytics/users/profiling").then(res => res.data) });
+  
+  // 2. Live Logs
   const { data: logs = [] } = useQuery({
     queryKey: ['admin-logs'],
     queryFn: () => api.get("/analytics/logs?limit=200").then(res => res.data),
     refetchInterval: 5000 
   });
   
+  // 3. Snapshots
   const { data: snapshots = [] } = useQuery({ 
       queryKey: ['admin-snapshots'], 
       queryFn: () => api.get("/analytics/snapshots").then(res => res.data) 
   });
 
+  // 4. FUSION ENGINE
+  const { data: fusionTimeline = [] } = useQuery({
+      queryKey: ['fusion-timeline', timeRange],
+      queryFn: () => api.get(`/analytics/fusion/timeline?range=${timeRange}`).then(res => res.data)
+  });
+
+  const { data: fusionBreakdown = [] } = useQuery({
+      queryKey: ['fusion-breakdown'],
+      queryFn: () => api.get(`/analytics/fusion/breakdown`).then(res => res.data)
+  });
+
+  // --- MUTATIONS ---
   const snapshotMutation = useMutation({
       mutationFn: () => api.post("/analytics/archive"),
       onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ['admin-snapshots'] });
-          alert("نقطه بازگشت (Snapshot) با موفقیت ایجاد شد!");
+          alert("نقطه بازگشت (Snapshot) با موفقیت ثبت شد!");
       }
   });
 
-  // --- SAFE DATA ---
+  // --- DATA TRANSFORMATION ---
   const { dau = [], actions = [] } = stats || {};
   const safeProfiling = Array.isArray(profiling) ? profiling : [];
   const safeSnapshots = Array.isArray(snapshots) ? snapshots : [];
 
-  // Charts Data Prep
   const userChartData = [...safeProfiling]
     .sort((a: any, b: any) => (b.total_actions || 0) - (a.total_actions || 0))
     .slice(0, 10)
     .map((u: any) => ({ name: u.name || u.username, actions: u.total_actions }));
 
-  const timelineData = safeSnapshots.map((s: any) => {
+  const snapshotTimelineData = safeSnapshots.map((s: any) => {
       try {
         const parts = s.timestamp.split('_');
-        if (parts.length < 2) return { date: 'N/A', total: 0, errors: 0 };
         const timePart = parts[1];
         return {
             date: `${timePart.slice(0,2)}:${timePart.slice(2,4)}`,
@@ -137,7 +154,7 @@ export default function AdminAnalytics() {
                 </div>
                 <div>
                     <span className="block text-sm text-blue-400 font-mono tracking-wider mb-1">SYSTEM_V3</span>
-                    مرکز کنترل هوشمند
+                    مرکز کنترل هوشمند (Fusion Engine)
                 </div>
             </h2>
         </div>
@@ -170,14 +187,35 @@ export default function AdminAnalytics() {
       <div className="flex-1 overflow-hidden relative bg-[#0a0a0a]/50 rounded-3xl border border-white/5 p-1 backdrop-blur-sm">
         <AnimatePresence mode="wait">
             
-            {/* --- OVERVIEW --- */}
+            {/* --- OVERVIEW (FUSION CHARTS) --- */}
             {activeTab === 'overview' && (
                 <motion.div 
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                     className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-6 overflow-y-auto custom-scrollbar"
                 >
-                    <SmartChart title="کاربران فعال (DAU)" data={dau} dataKey="count" xAxisKey="date" color="#10b981" type="area" height={350} icon={Users} />
-                    <SmartChart title="عملیات‌های پرتکرار" data={actions} dataKey="count" xAxisKey="action" color="#8b5cf6" type="bar" height={350} icon={BarChart2} />
+                    <SmartChart 
+                        title="روند فعالیت سیستم (Data Fusion)"
+                        data={fusionTimeline} 
+                        dataKey="total" 
+                        xAxisKey="date" 
+                        defaultType="area" 
+                        color="#3b82f6"
+                        height={350} 
+                        icon={Activity}
+                        showControls={true}
+                        onRangeChange={(r) => setTimeRange(r)}
+                    />
+
+                    <SmartChart 
+                        title="تحلیل نوع عملیات (Aggregated)"
+                        data={fusionBreakdown} 
+                        dataKey="value" 
+                        nameKey="name"
+                        defaultType="doughnut" 
+                        height={350} 
+                        icon={PieChart}
+                        showControls={true}
+                    />
                 </motion.div>
             )}
 
@@ -187,7 +225,6 @@ export default function AdminAnalytics() {
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     className="flex flex-col h-full"
                 >
-                    {/* Sub-Nav */}
                     <div className="flex gap-2 px-6 pt-4 border-b border-white/5 overflow-x-auto">
                         <button onClick={() => setIntelView('users_table')} className={clsx("px-4 py-2 text-xs font-bold rounded-t-lg transition-colors flex items-center gap-2", intelView === 'users_table' ? "bg-white/10 text-white border-t border-x border-white/10" : "text-gray-500 hover:text-white")}>
                             <List size={14}/> لیست کاربران
@@ -297,7 +334,16 @@ export default function AdminAnalytics() {
                             />
                         )}
                         {timeView === 'timeline' && (
-                            <SmartChart title="تاریخچه سلامت سیستم (Total Logs vs Errors)" data={timelineData} dataKey="total" xAxisKey="date" color="#ea580c" type="area" height={400} icon={History} />
+                            <SmartChart 
+                                title="تاریخچه سلامت سیستم (Total Logs vs Errors)" 
+                                data={snapshotTimelineData} 
+                                dataKey="total" 
+                                xAxisKey="date" 
+                                color="#ea580c" 
+                                type="area" 
+                                height={400} 
+                                icon={History} 
+                            />
                         )}
                     </div>
                 </motion.div>

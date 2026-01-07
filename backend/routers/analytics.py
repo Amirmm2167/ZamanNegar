@@ -7,9 +7,11 @@ from models import AnalyticsLog, User, Event, Department
 from security import get_current_user, get_current_user_optional
 from pydantic import BaseModel
 from utils.snapshot_engine import SnapshotEngine
+from utils.data_fusion import DataFusionEngine
 
 router = APIRouter()
 snapshot_engine = SnapshotEngine()
+fusion_engine = DataFusionEngine()
 
 # --- DTOs ---
 class LogCreate(BaseModel):
@@ -195,3 +197,17 @@ def get_snapshot_history(
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
     return snapshot_engine.get_snapshots()
+
+@router.get("/fusion/timeline")
+def get_fusion_timeline(range: str = '24h', current_user: User = Depends(get_current_user)):
+    """Returns combined historical + live time-series data"""
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return fusion_engine.get_time_series(range)
+
+@router.get("/fusion/breakdown")
+def get_fusion_breakdown(current_user: User = Depends(get_current_user)):
+    """Returns combined historical + live breakdown for Pie/Doughnut charts"""
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return fusion_engine.get_aggregated_analysis()
