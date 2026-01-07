@@ -6,7 +6,8 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminReports from "@/components/admin/AdminReports"; 
 import AdminHolidays from "@/components/admin/AdminHolidays"; 
 import AdminCompanies from "@/components/admin/AdminCompanies"; 
-import AdminAnalytics from "@/components/admin/AdminAnalytics"; // New Import
+import AdminAnalytics from "@/components/admin/AdminAnalytics"; 
+import AdminIssues from "@/components/admin/AdminIssues"; // NEW
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function AdminDashboard() {
             {activeTab === "reports" && <AdminReports />}
             {activeTab === "holidays" && <AdminHolidays />}
             {activeTab === "companies" && <AdminCompanies />}
+            {activeTab === "issues" && <AdminIssues />}
             {activeTab === "analytics" && <AdminAnalytics />} 
         </div>
       </main>
