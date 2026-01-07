@@ -6,17 +6,20 @@ from sqlmodel import Session, select, delete
 from models import AnalyticsLog
 from database import engine
 
-ARCHIVE_DIR = "archives"
+# Use an absolute path inside the container to avoid ambiguity
+ARCHIVE_DIR = os.path.join(os.getcwd(), "archives")
 
 class ArchiveManager:
     def __init__(self):
-        if not os.path.exists(ARCHIVE_DIR):
-            os.makedirs(ARCHIVE_DIR)
+        try:
+            if not os.path.exists(ARCHIVE_DIR):
+                os.makedirs(ARCHIVE_DIR, exist_ok=True)
+        except OSError as e:
+            print(f"WARNING: Failed to create archive directory at {ARCHIVE_DIR}: {e}")
+            # We don't crash the app here; archiving just won't work until perm is fixed.
 
     def archive_logs(self, days_older_than: int = 30):
-        """
-        Moves logs older than X days from DB to a compressed JSON file.
-        """
+        # ... (rest of the code remains the same)
         cutoff_date = datetime.utcnow() - timedelta(days=days_older_than)
         
         with Session(engine) as session:
@@ -35,12 +38,13 @@ class ArchiveManager:
             filename = f"logs_archive_{timestamp}.json.gz"
             filepath = os.path.join(ARCHIVE_DIR, filename)
             
-            with gzip.open(filepath, 'wt', encoding='UTF-8') as f:
-                json.dump(data_to_save, f)
+            try:
+                with gzip.open(filepath, 'wt', encoding='UTF-8') as f:
+                    json.dump(data_to_save, f)
+            except OSError as e:
+                return {"status": "error", "message": f"Write failed: {e}"}
             
             # 4. Delete from DB
-            # Note: In SQLModel/SQLAlchemy, mass delete is safer via distinct execution
-            # But for simple logic, we use the where clause again
             delete_statement = delete(AnalyticsLog).where(AnalyticsLog.created_at < cutoff_date)
             session.exec(delete_statement)
             session.commit()
@@ -57,12 +61,18 @@ class ArchiveManager:
 
     def list_archives(self):
         files = []
+        if not os.path.exists(ARCHIVE_DIR):
+            return []
+            
         for f in os.listdir(ARCHIVE_DIR):
             if f.endswith(".gz"):
                 path = os.path.join(ARCHIVE_DIR, f)
-                files.append({
-                    "filename": f,
-                    "size_kb": round(os.path.getsize(path) / 1024, 2),
-                    "created_at": datetime.fromtimestamp(os.path.getctime(path))
-                })
+                try:
+                    files.append({
+                        "filename": f,
+                        "size_kb": round(os.path.getsize(path) / 1024, 2),
+                        "created_at": datetime.fromtimestamp(os.path.getctime(path))
+                    })
+                except OSError:
+                    continue # Skip file if perm issue
         return sorted(files, key=lambda x: x['created_at'], reverse=True)
