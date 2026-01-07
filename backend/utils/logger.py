@@ -62,17 +62,12 @@ class LogMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             process_time = (time.time() - start_time) * 1000
             
-            # 1. Log to Console
-            logger.info("Request processed", extra={
-                "req_id": request_id,
-                "status": response.status_code,
-                "duration": process_time,
-                "path": request.url.path
-            })
-
-            # 2. Log to Database (Skip generic assets to save space)
-            # Filter out: favicon, next.js internals, static files
-            if request.url.path.startswith("/") and not any(x in request.url.path for x in ["_next", "favicon.ico", "static"]):
+            # --- LOGIC UPDATE: NOISE FILTER ---
+            # Don't log static files, nextjs internals, OR analytics calls
+            # This ensures the log viewer doesn't fill up with "Get Logs" requests
+            is_noise = any(x in request.url.path for x in ["_next", "favicon.ico", "static", "/analytics/"])
+            
+            if request.url.path.startswith("/") and not is_noise:
                 save_log_to_db(
                     "API_REQ", 
                     {
