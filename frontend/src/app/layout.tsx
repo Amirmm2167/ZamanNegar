@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next"; // Import Viewport
 import localFont from "next/font/local";
 import "./globals.css";
 import ModernBackground from "@/components/ui/ModernBackground";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
-import Providers from "@/components/Providers"; // NEW
+import Providers from "@/components/Providers"; 
 
 const pinar = localFont({
   src: [
@@ -13,6 +13,14 @@ const pinar = localFont({
   variable: "--font-pinar",
 });
 
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // Replaces 'user-scalable=0'
+};
+
 export const metadata: Metadata = {
   title: "زمان‌نگار",
   description: "سامانه مدیریت رویدادها",
@@ -21,8 +29,7 @@ export const metadata: Metadata = {
     icon: "/icons/icon.png",
     apple: "/icons/logo.png",
   },
-  themeColor: "#000000",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
+  // Removed themeColor and viewport from here
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
