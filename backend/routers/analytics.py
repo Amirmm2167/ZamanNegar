@@ -177,3 +177,41 @@ def get_archives_list(
         raise HTTPException(status_code=403, detail="Not authorized")
         
     return archiver.list_archives()
+
+@router.get("/users/profiling")
+def get_user_profiling(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """Req #5 & #6: Rich User Activity Table"""
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # We want: User Name, Role, Total Logs, Last Active Time
+    # Left Join ensures we see users even if they have 0 logs
+    query = (
+        select(
+            User.display_name,
+            User.username,
+            User.role,
+            func.count(AnalyticsLog.id).label("total_actions"),
+            func.max(AnalyticsLog.created_at).label("last_active")
+        )
+        .outerjoin(AnalyticsLog, User.id == AnalyticsLog.user_id)
+        .group_by(User.id)
+        .order_by(desc("last_active"))
+    )
+    
+    results = session.exec(query).all()
+
+    return [
+        {
+            "name": r[0],
+            "username": r[1],
+            "role": r[2],
+            "total_actions": r[3],
+            "last_active": r[4], # Can be None if never logged in
+            "status": "Active" if r[4] and r[4] > datetime.utcnow() - timedelta(days=30) else "Inactive"
+        }
+        for r in results
+    ]
