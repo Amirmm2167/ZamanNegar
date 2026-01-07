@@ -4,7 +4,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from database import get_session
 from models import AnalyticsLog, User, Event, Department
-from security import get_current_user
+from security import get_current_user, get_current_user_optional
 from pydantic import BaseModel
 from utils.archiver import ArchiveManager
 
@@ -22,7 +22,7 @@ class LogCreate(BaseModel):
 def log_event(
     log_data: LogCreate,
     session: Session = Depends(get_session),
-    current_user: Optional[User] = Depends(get_current_user) 
+    current_user: Optional[User] = Depends(get_current_user_optional) 
 ):
     user_id = current_user.id if current_user else None
     log = AnalyticsLog(
