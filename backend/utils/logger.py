@@ -23,7 +23,10 @@ class StructuredLogger(logging.Logger):
         except TypeError:
             json_payload = json.dumps({"timestamp": time.time(), "message": "Log serialization failed", "original_msg": str(msg)})
 
-        super()._log(level, json_payload, args, exc_info, stack_info)
+        # FIX: Pass arguments explicitly to avoid positional mismatch
+        # extra=None because we baked the extra data into the message (json_payload)
+        # stack_info is passed correctly as a keyword arg
+        super()._log(level, json_payload, args, exc_info=exc_info, extra=None, stack_info=stack_info)
 
 # Configure the global logger
 logging.setLoggerClass(StructuredLogger)
