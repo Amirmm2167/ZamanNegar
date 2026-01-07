@@ -4,79 +4,93 @@ import time
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from uuid import uuid4
+from sqlmodel import Session
+from database import engine 
+from models import AnalyticsLog 
 
+# Keep the console logger for Docker logs
 class StructuredLogger(logging.Logger):
     def _log(self, level, msg, args, exc_info=None, extra=None, stack_info=False):
         if extra is None: extra = {}
-        
-        # Base log object
         payload = {
             "timestamp": time.time(),
             "level": logging.getLevelName(level),
             "message": msg,
             **extra
         }
-        
-        # Serialize to JSON
         try:
             json_payload = json.dumps(payload, default=str)
         except TypeError:
-            json_payload = json.dumps({"timestamp": time.time(), "message": "Log serialization failed", "original_msg": str(msg)})
-
-        # FIX: Pass arguments explicitly to avoid positional mismatch
-        # extra=None because we baked the extra data into the message (json_payload)
-        # stack_info is passed correctly as a keyword arg
+            json_payload = json.dumps({"message": "Log serialization failed"})
+        
         super()._log(level, json_payload, args, exc_info=exc_info, extra=None, stack_info=stack_info)
 
-# Configure the global logger
 logging.setLoggerClass(StructuredLogger)
 logger = logging.getLogger("zaman_negar")
 logger.setLevel(logging.INFO)
-
-# Avoid adding duplicate handlers if reloaded
 if not logger.handlers:
-    handler = logging.StreamHandler()
-    logger.addHandler(handler)
+    logger.addHandler(logging.StreamHandler())
 
 class LogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = str(uuid4())
         start_time = time.time()
         
-        # Context for this request
-        log_context = {
-            "req_id": request_id,
-            "method": request.method,
-            "path": request.url.path,
-            "ip": request.client.host if request.client else "unknown",
-        }
+        # Helper to save to DB safely
+        def save_log_to_db(event_type: str, details: dict, user_id: int = None):
+            try:
+                with Session(engine) as session:
+                    log_entry = AnalyticsLog(
+                        event_type=event_type,
+                        details=json.dumps(details, default=str),
+                        user_id=user_id
+                    )
+                    session.add(log_entry)
+                    session.commit()
+            except Exception as db_err:
+                print(f"Failed to write log to DB: {db_err}")
 
         try:
             response = await call_next(request)
             process_time = (time.time() - start_time) * 1000
             
-            # Log Success (only API routes to reduce noise, or all if preferred)
-            if request.url.path.startswith("/"): 
-                logger.info(
-                    "Request processed",
-                    extra={
-                        **log_context,
+            # 1. Log to Console (Standard Output)
+            logger.info("Request processed", extra={
+                "req_id": request_id,
+                "status": response.status_code,
+                "duration": process_time
+            })
+
+            # 2. Log to Database (Only for API routes to avoid spamming assets)
+            if request.url.path.startswith("/"):
+                # We do this in background or just fire-and-forget logic here
+                # For robust apps, use BackgroundTasks, but here sync is fine for safety
+                save_log_to_db(
+                    "API_REQ", 
+                    {
+                        "method": request.method,
+                        "path": request.url.path,
                         "status": response.status_code,
-                        "duration_ms": round(process_time, 2)
+                        "latency": round(process_time, 2),
+                        "ip": request.client.host if request.client else "unknown"
                     }
                 )
+            
             return response
             
         except Exception as e:
-            # Log Failure
             process_time = (time.time() - start_time) * 1000
-            logger.error(
-                "Request failed",
-                extra={
-                    **log_context,
-                    "status": 500,
-                    "duration_ms": round(process_time, 2),
-                    "error": str(e)
+            
+            # Log Error to DB
+            save_log_to_db(
+                "ERROR", 
+                {
+                    "path": request.url.path,
+                    "error": str(e),
+                    "latency": round(process_time, 2)
                 }
             )
+            
+            # Re-raise so FastAPI handles the 500 response
+            logger.error("Request failed", extra={"error": str(e)})
             raise e
