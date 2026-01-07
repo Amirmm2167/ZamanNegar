@@ -2,9 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { 
-    Search, Filter, Download, Copy, FileText, FileJson, Table as TableIcon, 
-    ChevronDown, ChevronUp, CheckSquare, Square, MoreHorizontal, ArrowUpDown,
-    XCircle
+    Search, Filter, Copy, FileJson, Table as TableIcon, 
+    CheckSquare, Square, ArrowUpDown, XCircle, ChevronDown, ChevronRight
 } from "lucide-react";
 import clsx from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,6 +23,7 @@ interface SmartTableProps<T> {
     icon?: React.ElementType;
     onRowClick?: (item: T) => void;
     rowClassName?: (item: T) => string;
+    expandedRowRender?: (item: T) => React.ReactNode; // NEW: For Deep Context
 }
 
 export default function SmartTable<T extends { id?: string | number }>({ 
@@ -32,27 +32,35 @@ export default function SmartTable<T extends { id?: string | number }>({
     title, 
     icon: Icon,
     onRowClick,
-    rowClassName
+    rowClassName,
+    expandedRowRender
 }: SmartTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+    const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set()); // NEW
 
     // --- LOGIC: FILTER & SORT ---
     const processedData = useMemo(() => {
-        // Safety: Ensure data is an array
         if (!Array.isArray(data)) return [];
 
         let result = [...data];
 
-        // 1. Search (Fuzzy on all string fields)
+        // 1. Deep Recursive Search
         if (searchTerm) {
             const lowerTerm = searchTerm.toLowerCase();
-            result = result.filter(item => 
-                Object.values(item as any).some(val => 
-                    String(val).toLowerCase().includes(lowerTerm)
-                )
-            );
+            const deepSearch = (obj: any): boolean => {
+                if (!obj) return false;
+                if (typeof obj === 'string' || typeof obj === 'number') {
+                    return String(obj).toLowerCase().includes(lowerTerm);
+                }
+                if (typeof obj === 'object') {
+                    return Object.values(obj).some(val => deepSearch(val));
+                }
+                return false;
+            };
+            
+            result = result.filter(item => deepSearch(item));
         }
 
         // 2. Sort
@@ -60,7 +68,6 @@ export default function SmartTable<T extends { id?: string | number }>({
             result.sort((a, b) => {
                 const aVal = (a as any)[sortConfig.key];
                 const bVal = (b as any)[sortConfig.key];
-                
                 if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -70,7 +77,7 @@ export default function SmartTable<T extends { id?: string | number }>({
         return result;
     }, [data, searchTerm, sortConfig]);
 
-    // --- LOGIC: SELECTION ---
+    // --- ACTIONS ---
     const toggleSelect = (index: number) => {
         const newSet = new Set(selectedIndices);
         if (newSet.has(index)) newSet.delete(index);
@@ -83,6 +90,13 @@ export default function SmartTable<T extends { id?: string | number }>({
         else setSelectedIndices(new Set(processedData.map((_, i) => i)));
     };
 
+    const toggleExpand = (index: number) => {
+        const newSet = new Set(expandedIndices);
+        if (newSet.has(index)) newSet.delete(index);
+        else newSet.add(index);
+        setExpandedIndices(newSet);
+    };
+
     const handleSort = (key: string) => {
         let direction: 'asc' | 'desc' = 'asc';
         if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -91,7 +105,7 @@ export default function SmartTable<T extends { id?: string | number }>({
         setSortConfig({ key, direction });
     };
 
-    // --- LOGIC: EXPORT ---
+    // Export Logic (Same as before)
     const handleExport = (format: 'csv' | 'json' | 'copy') => {
         const itemsToExport = selectedIndices.size > 0 
             ? processedData.filter((_, i) => selectedIndices.has(i))
@@ -102,10 +116,10 @@ export default function SmartTable<T extends { id?: string | number }>({
         if (format === 'copy') {
             const text = JSON.stringify(itemsToExport, null, 2);
             navigator.clipboard.writeText(text);
-            // In a real app, use a toast here. For now, we trust the action.
             return;
         }
-
+        
+        // ... (Keep existing JSON/CSV export logic)
         let content = "";
         let mimeType = "";
         let ext = "";
@@ -163,41 +177,32 @@ export default function SmartTable<T extends { id?: string | number }>({
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                         {searchTerm && (
-                            <button 
-                                onClick={() => setSearchTerm("")}
-                                className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
-                            >
-                                <XCircle size={14} />
-                            </button>
+                            <button onClick={() => setSearchTerm("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"><XCircle size={14} /></button>
                         )}
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-auto">
-                    <AnimatePresence>
-                        {selectedIndices.size > 0 && (
-                            <motion.div 
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 20 }}
-                                className="flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-500/20"
-                            >
-                                <span className="text-xs text-blue-400 font-bold ml-2 px-1 border-l border-blue-500/20">{selectedIndices.size}</span>
-                                <button onClick={() => handleExport('copy')} title="Copy" className="p-1.5 hover:bg-blue-500/20 rounded text-blue-300 transition-colors"><Copy size={14}/></button>
-                                <button onClick={() => handleExport('json')} title="JSON" className="p-1.5 hover:bg-blue-500/20 rounded text-blue-300 transition-colors"><FileJson size={14}/></button>
-                                <button onClick={() => handleExport('csv')} title="CSV" className="p-1.5 hover:bg-blue-500/20 rounded text-blue-300 transition-colors"><TableIcon size={14}/></button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                    {selectedIndices.size > 0 && (
+                        <div className="flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-500/20">
+                            <span className="text-xs text-blue-400 font-bold ml-2 px-1 border-l border-blue-500/20">{selectedIndices.size}</span>
+                            <button onClick={() => handleExport('copy')} title="Copy" className="p-1.5 hover:bg-blue-500/20 rounded text-blue-300 transition-colors"><Copy size={14}/></button>
+                            <button onClick={() => handleExport('json')} title="JSON" className="p-1.5 hover:bg-blue-500/20 rounded text-blue-300 transition-colors"><FileJson size={14}/></button>
+                            <button onClick={() => handleExport('csv')} title="CSV" className="p-1.5 hover:bg-blue-500/20 rounded text-blue-300 transition-colors"><TableIcon size={14}/></button>
+                        </div>
+                    )}
                     <button className="p-2 hover:bg-white/10 rounded-lg text-gray-400 transition-colors"><Filter size={16}/></button>
                 </div>
             </div>
 
-            {/* TABLE HEADER */}
+            {/* HEADER */}
             <div className="flex items-center bg-black/40 border-b border-white/5 px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-bold shrink-0 select-none">
                 <button onClick={toggleSelectAll} className="w-8 flex items-center justify-center hover:text-white transition-colors">
                     {selectedIndices.size > 0 && selectedIndices.size === processedData.length ? <CheckSquare size={16} className="text-blue-400"/> : <Square size={16} />}
                 </button>
+                {/* Expand Arrow Space */}
+                {expandedRowRender && <div className="w-8"></div>}
+                
                 {columns.map((col, i) => (
                     <div 
                         key={i} 
@@ -205,27 +210,18 @@ export default function SmartTable<T extends { id?: string | number }>({
                         onClick={() => col.sortable !== false ? handleSort(col.key as string) : undefined}
                     >
                         {col.label}
-                        {sortConfig?.key === col.key && (
-                            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>
-                                <ArrowUpDown size={10} className="text-blue-400" />
-                            </motion.div>
-                        )}
+                        {sortConfig?.key === col.key && <ArrowUpDown size={10} className="text-blue-400" />}
                     </div>
                 ))}
             </div>
 
-            {/* TABLE BODY */}
+            {/* BODY */}
             <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                <AnimatePresence initial={false}>
-                    {processedData.map((item, i) => (
-                        <motion.div 
-                            key={(item.id as any) || i} 
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.1, delay: i < 20 ? i * 0.02 : 0 }}
+                {processedData.map((item, i) => (
+                    <div key={(item.id as any) || i}>
+                        <div 
                             className={clsx(
-                                "flex items-center px-4 py-3 border-b border-white/5 last:border-0 transition-colors group cursor-pointer",
+                                "flex items-center px-4 py-3 border-b border-white/5 transition-colors group cursor-pointer",
                                 selectedIndices.has(i) ? "bg-blue-500/5" : "hover:bg-white/5",
                                 rowClassName ? rowClassName(item) : ""
                             )}
@@ -237,15 +233,39 @@ export default function SmartTable<T extends { id?: string | number }>({
                             >
                                 {selectedIndices.has(i) ? <CheckSquare size={16} className="text-blue-400"/> : <Square size={16} />}
                             </button>
+
+                            {/* Expand Toggle */}
+                            {expandedRowRender && (
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); toggleExpand(i); }} 
+                                    className="w-8 flex items-center justify-center text-gray-500 hover:text-white"
+                                >
+                                    {expandedIndices.has(i) ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                                </button>
+                            )}
                             
                             {columns.map((col, cIndex) => (
                                 <div key={cIndex} className={clsx("text-xs text-gray-300 truncate px-1", col.width || "flex-1")}>
                                     {col.render ? col.render(item) : String((item as any)[col.key] || "-")}
                                 </div>
                             ))}
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
+                        </div>
+
+                        {/* Expanded Content */}
+                        <AnimatePresence>
+                            {expandedIndices.has(i) && expandedRowRender && (
+                                <motion.div 
+                                    initial={{ height: 0, opacity: 0 }} 
+                                    animate={{ height: "auto", opacity: 1 }} 
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="overflow-hidden bg-black/40 border-b border-white/5"
+                                >
+                                    {expandedRowRender(item)}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                ))}
                 
                 {processedData.length === 0 && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 gap-3">
@@ -258,10 +278,8 @@ export default function SmartTable<T extends { id?: string | number }>({
                 )}
             </div>
             
-            {/* FOOTER */}
             <div className="bg-black/20 border-t border-white/10 p-2 px-4 flex justify-between items-center text-[10px] text-gray-500 shrink-0 select-none">
                 <span>نمایش {processedData.length} از {data.length} رکورد</span>
-                <span className="font-mono">{sortConfig ? `Sorted by: ${sortConfig.key} (${sortConfig.direction})` : "Unsorted"}</span>
             </div>
         </motion.div>
     );
