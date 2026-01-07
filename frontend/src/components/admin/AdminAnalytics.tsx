@@ -12,7 +12,6 @@ import SmartTable, { Column } from "@/components/ui/SmartTable";
 import SmartChart from "@/components/ui/SmartChart"; 
 import { motion, AnimatePresence } from "framer-motion";
 
-// --- Helper for Recursive JSON View ---
 const JsonTree = ({ data }: { data: any }) => {
     if (typeof data !== 'object' || data === null) return <span className="text-emerald-400">{String(data)}</span>;
     return (
@@ -50,69 +49,77 @@ export default function AdminAnalytics() {
       mutationFn: () => api.post("/analytics/archive"),
       onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ['admin-snapshots'] });
-          alert("Snapshot successfully captured!");
+          alert("نقطه بازگشت (Snapshot) با موفقیت ایجاد شد!");
       }
   });
 
   // --- SAFEGUARD DATA ---
   const { dau = [], actions = [] } = stats || {};
-  
-  // FIX: Ensure profiling is an array before using it
   const safeProfiling = Array.isArray(profiling) ? profiling : [];
   const safeSnapshots = Array.isArray(snapshots) ? snapshots : [];
 
-  // Transform User Profiling for Chart (Top 10 Active Users)
+  // Transform User Profiling for Chart
   const userChartData = [...safeProfiling]
     .sort((a: any, b: any) => (b.total_actions || 0) - (a.total_actions || 0))
     .slice(0, 10)
     .map((u: any) => ({ name: u.name, actions: u.total_actions }));
 
+  // Transform Snapshots for Timeline
   const timelineData = safeSnapshots.map((s: any) => {
-      const p = s.timestamp.split('_');
-      return {
-          date: `${p[1].slice(0,2)}:${p[1].slice(2,4)}`, // HH:MM
-          total: s.stats.total,
-          errors: s.stats.errors
-      };
+      // Expected: 20250107_063824
+      try {
+        const parts = s.timestamp.split('_');
+        if (parts.length < 2) return { date: s.timestamp, total: 0, errors: 0 };
+        const timePart = parts[1];
+        return {
+            date: `${timePart.slice(0,2)}:${timePart.slice(2,4)}`, // HH:MM
+            total: s.stats.total,
+            errors: s.stats.errors
+        };
+      } catch (e) {
+          return { date: 'Invalid', total: 0, errors: 0 };
+      }
   }).reverse();
 
   // --- COLUMNS ---
   const logColumns: Column<any>[] = [
-      { key: 'id', label: 'ID', width: 'w-16' },
-      { key: 'created_at', label: 'Time', width: 'w-24', sortable: true, render: (l: any) => <span className="font-mono text-[10px]">{new Date(l.created_at).toLocaleTimeString()}</span> },
-      { key: 'event_type', label: 'Type', width: 'w-24', filterable: true, sortable: true, render: (l: any) => (
+      { key: 'id', label: 'شناسه', width: 'w-16' },
+      { key: 'created_at', label: 'زمان', width: 'w-24', sortable: true, render: (l: any) => <span className="font-mono text-[10px]">{new Date(l.created_at).toLocaleTimeString('fa-IR')}</span> },
+      { key: 'event_type', label: 'نوع', width: 'w-24', filterable: true, sortable: true, render: (l: any) => (
           <span className={clsx("font-bold text-[10px] px-2 py-0.5 rounded-md", 
             l.event_type === 'ERROR' ? "bg-red-500/10 text-red-400" : 
             l.event_type === 'API_REQ' ? "bg-purple-500/10 text-purple-400" :
             "bg-blue-500/10 text-blue-400"
           )}>{l.event_type}</span>
       )},
-      { key: 'details', label: 'Details', render: (l: any) => <span className="font-mono opacity-70 truncate block max-w-md text-[10px]">{l.details}</span> }
+      { key: 'details', label: 'جزئیات', render: (l: any) => <span className="font-mono opacity-70 truncate block max-w-md text-[10px]">{l.details}</span> }
   ];
 
   const userColumns: Column<any>[] = [
-      { key: 'name', label: 'Name', sortable: true, render: (u: any) => <span className="font-bold text-gray-200">{u.name}</span> },
-      { key: 'role', label: 'Role', width: 'w-24', filterable: true, render: (u: any) => <span className="bg-white/10 px-2 py-0.5 rounded text-[10px]">{u.role}</span> },
-      { key: 'total_actions', label: 'Actions', width: 'w-24', sortable: true, render: (u: any) => <span className="text-emerald-400 font-bold">{u.total_actions}</span> },
-      { key: 'last_active', label: 'Last Active', sortable: true, render: (u: any) => u.last_active ? <span className="text-xs">{new Date(u.last_active).toLocaleDateString('fa-IR')}</span> : '-' },
+      { key: 'name', label: 'نام نمایشی', sortable: true, render: (u: any) => <span className="font-bold text-gray-200">{u.name}</span> },
+      { key: 'role', label: 'نقش', width: 'w-24', filterable: true, render: (u: any) => <span className="bg-white/10 px-2 py-0.5 rounded text-[10px]">{u.role}</span> },
+      { key: 'total_actions', label: 'فعالیت‌ها', width: 'w-24', sortable: true, render: (u: any) => <span className="text-emerald-400 font-bold">{u.total_actions}</span> },
+      { key: 'last_active', label: 'آخرین بازدید', sortable: true, render: (u: any) => u.last_active ? <span className="text-xs">{new Date(u.last_active).toLocaleDateString('fa-IR')}</span> : '-' },
   ];
 
   const snapshotColumns: Column<any>[] = [
-      { key: 'timestamp', label: 'Time', sortable: true, render: (s: any) => {
-          const [date, time] = s.timestamp.split('_');
-          return <span className="font-mono text-xs">{date.slice(4,6)}/{date.slice(6,8)} {time.slice(0,2)}:{time.slice(2,4)}</span>
+      { key: 'timestamp', label: 'زمان ایجاد', sortable: true, render: (s: any) => {
+          try {
+            const [date, time] = s.timestamp.split('_');
+            return <span className="font-mono text-xs">{date.slice(0,4)}/{date.slice(4,6)}/{date.slice(6,8)} - {time.slice(0,2)}:{time.slice(2,4)}</span>
+          } catch { return <span>{s.timestamp}</span> }
       }},
-      { key: 'stats.total', label: 'Logs', width: 'w-20', render: (s: any) => <span className="text-white font-bold">{s.stats.total}</span> },
-      { key: 'stats.errors', label: 'Errors', width: 'w-20', render: (s: any) => (
+      { key: 'stats.total', label: 'کل لاگ‌ها', width: 'w-20', render: (s: any) => <span className="text-white font-bold">{s.stats.total}</span> },
+      { key: 'stats.errors', label: 'خطاها', width: 'w-20', render: (s: any) => (
           <span className={clsx("font-bold", s.stats.errors > 0 ? "text-red-400" : "text-emerald-400")}>{s.stats.errors}</span>
       )},
-      { key: 'raw_file', label: 'Archive File', render: (s: any) => <span className="text-[10px] font-mono opacity-50">{s.raw_file}</span> },
+      { key: 'raw_file', label: 'نام فایل آرشیو', render: (s: any) => <span className="text-[10px] font-mono opacity-50">{s.raw_file}</span> },
   ];
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] gap-6 animate-in fade-in duration-500">
       
-      {/* 1. HEADER & NAVIGATION */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div>
             <h2 className="text-2xl font-bold text-white flex items-center gap-3">
@@ -121,23 +128,23 @@ export default function AdminAnalytics() {
                 </div>
                 <div>
                     <span className="block text-sm text-blue-400 font-mono tracking-wider mb-1">SYSTEM_ADMIN_V3</span>
-                    Mission Control
+                    مرکز کنترل هوشمند (Mission Control)
                 </div>
             </h2>
         </div>
 
         <div className="bg-[#18181b] border border-white/5 p-1.5 rounded-2xl flex items-center gap-1 shadow-2xl overflow-x-auto">
             {[
-                { id: 'overview', label: 'Overview', icon: BarChart2 },
-                { id: 'intelligence', label: 'Intelligence', icon: Layers },
-                { id: 'terminal', label: 'Terminal', icon: Terminal },
-                { id: 'timemachine', label: 'Time Machine', icon: History },
+                { id: 'overview', label: 'نمای کلی', icon: BarChart2 },
+                { id: 'intelligence', label: 'هوش تجاری', icon: Layers },
+                { id: 'terminal', label: 'ترمینال زنده', icon: Terminal },
+                { id: 'timemachine', label: 'ماشین زمان', icon: History },
             ].map(tab => (
                 <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
                     className={clsx(
-                        "px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300",
+                        "px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 whitespace-nowrap",
                         activeTab === tab.id 
                             ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20 scale-105" 
                             : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -150,18 +157,18 @@ export default function AdminAnalytics() {
         </div>
       </div>
 
-      {/* 2. CONTENT AREA */}
+      {/* CONTENT AREA */}
       <div className="flex-1 overflow-hidden relative bg-[#0a0a0a]/50 rounded-3xl border border-white/5 p-1 backdrop-blur-sm">
         <AnimatePresence mode="wait">
             
-            {/* --- TAB: OVERVIEW --- */}
+            {/* OVERVIEW */}
             {activeTab === 'overview' && (
                 <motion.div 
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                     className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-6 overflow-y-auto custom-scrollbar"
                 >
                     <SmartChart 
-                        title="Daily Active Users (7 Days)"
+                        title="روند کاربران فعال (DAU)"
                         data={dau}
                         dataKey="count"
                         xAxisKey="date"
@@ -171,7 +178,7 @@ export default function AdminAnalytics() {
                         icon={Users}
                     />
                     <SmartChart 
-                        title="Top System Actions"
+                        title="عملیات‌های پرتکرار سیستم"
                         data={actions}
                         dataKey="count"
                         xAxisKey="action"
@@ -183,25 +190,24 @@ export default function AdminAnalytics() {
                 </motion.div>
             )}
 
-            {/* --- TAB: INTELLIGENCE (SUB-TABS) --- */}
+            {/* INTELLIGENCE */}
             {activeTab === 'intelligence' && (
                 <motion.div 
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     className="flex flex-col h-full"
                 >
-                    {/* Sub-Tab Navigation */}
                     <div className="flex gap-4 px-6 pt-4 border-b border-white/5">
                         <button 
                             onClick={() => setIntelSubTab('users')}
                             className={clsx("pb-3 text-sm font-bold transition-colors border-b-2", intelSubTab === 'users' ? "text-blue-400 border-blue-400" : "text-gray-500 border-transparent hover:text-gray-300")}
                         >
-                            User Analysis
+                            تحلیل کاربران
                         </button>
                         <button 
                             onClick={() => setIntelSubTab('system')}
                             className={clsx("pb-3 text-sm font-bold transition-colors border-b-2", intelSubTab === 'system' ? "text-blue-400 border-blue-400" : "text-gray-500 border-transparent hover:text-gray-300")}
                         >
-                            System Health
+                            سلامت سیستم
                         </button>
                     </div>
 
@@ -210,7 +216,7 @@ export default function AdminAnalytics() {
                             <div className="flex flex-col h-full gap-6">
                                 <div className="h-64 shrink-0">
                                     <SmartChart 
-                                        title="Most Active Users"
+                                        title="فعال‌ترین کاربران"
                                         data={userChartData}
                                         dataKey="actions"
                                         xAxisKey="name"
@@ -221,24 +227,24 @@ export default function AdminAnalytics() {
                                     />
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <SmartTable title="User Directory" data={safeProfiling} columns={userColumns} icon={Users} />
+                                    <SmartTable title="لیست کامل کاربران" data={safeProfiling} columns={userColumns} icon={Users} />
                                 </div>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-                                <SmartTable title="Departments" data={system?.events_distribution || []} columns={[{ key: 'name', label: 'Dept' }, { key: 'count', label: 'Events' }]} icon={Layers} />
-                                <SmartTable title="User Roles" data={system?.user_demographics || []} columns={[{ key: 'role', label: 'Role' }, { key: 'count', label: 'Users' }]} icon={Users} />
+                                <SmartTable title="دپارتمان‌ها" data={system?.events_distribution || []} columns={[{ key: 'name', label: 'دپارتمان' }, { key: 'count', label: 'رویدادها' }]} icon={Layers} />
+                                <SmartTable title="نقش‌های کاربری" data={system?.user_demographics || []} columns={[{ key: 'role', label: 'نقش' }, { key: 'count', label: 'تعداد' }]} icon={Users} />
                             </div>
                         )}
                     </div>
                 </motion.div>
             )}
 
-            {/* --- TAB: TERMINAL --- */}
+            {/* TERMINAL */}
             {activeTab === 'terminal' && (
                 <motion.div className="h-full p-4">
                     <SmartTable 
-                        title="Live System Logs" 
+                        title="لاگ‌های زنده سیستم" 
                         data={logs} 
                         columns={logColumns} 
                         icon={Terminal}
@@ -251,8 +257,8 @@ export default function AdminAnalytics() {
                                 <div className="p-4 flex gap-6 text-xs text-gray-300 bg-black/40">
                                     {(details as any).context && (
                                         <div className="flex flex-col gap-2 min-w-[150px] border-l border-white/10 pl-4 text-gray-400">
-                                            <div className="flex items-center gap-2"><Smartphone size={12}/> {(details as any).context.screen?.width < 768 ? "Mobile" : "Desktop"}</div>
-                                            <div className="flex items-center gap-2"><Wifi size={12}/> {(details as any).context.network?.type || "N/A"}</div>
+                                            <div className="flex items-center gap-2"><Smartphone size={12}/> {(details as any).context.screen?.width < 768 ? "موبایل" : "دسکتاپ"}</div>
+                                            <div className="flex items-center gap-2"><Wifi size={12}/> {(details as any).context.network?.type || "نامشخص"}</div>
                                         </div>
                                     )}
                                     <div className="flex-1"><JsonTree data={details} /></div>
@@ -263,7 +269,7 @@ export default function AdminAnalytics() {
                 </motion.div>
             )}
 
-            {/* --- TAB: TIME MACHINE --- */}
+            {/* TIME MACHINE */}
             {activeTab === 'timemachine' && (
                 <motion.div 
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -272,7 +278,7 @@ export default function AdminAnalytics() {
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-orange-400">
                             <History />
-                            <h3 className="font-bold">System Timeline</h3>
+                            <h3 className="font-bold">خط زمانی سیستم (System Timeline)</h3>
                         </div>
                         <button 
                             onClick={() => snapshotMutation.mutate()}
@@ -280,13 +286,13 @@ export default function AdminAnalytics() {
                             className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg transition-all"
                         >
                             {snapshotMutation.isPending ? <RefreshCw className="animate-spin" size={14}/> : <Play size={14}/>}
-                            Create Snapshot Now
+                            ثبت وضعیت فعلی (Force Snapshot)
                         </button>
                     </div>
 
                     <div className="h-64 shrink-0">
                          <SmartChart 
-                            title="Historical Activity (Timeline)"
+                            title="فعالیت تاریخی (تعداد لاگ در ساعت)"
                             data={timelineData}
                             dataKey="total"
                             xAxisKey="date"
@@ -299,7 +305,7 @@ export default function AdminAnalytics() {
                     
                     <div className="flex-1 overflow-hidden">
                         <SmartTable 
-                            title="Restore Points (Snapshots)" 
+                            title="نقاط بازگشت (Hourly Snapshots)" 
                             data={safeSnapshots} 
                             columns={snapshotColumns} 
                             icon={Database} 
@@ -307,11 +313,11 @@ export default function AdminAnalytics() {
                                 <div className="p-4 bg-black/20 text-xs flex justify-between items-center">
                                     <div className="space-y-1">
                                         {Object.entries(s.breakdown || {}).map(([k, v]) => (
-                                            <span key={k} className="mr-4 text-gray-400">{k}: <b className="text-white">{String(v)}</b></span>
+                                            <span key={k} className="ml-4 text-gray-400">{k}: <b className="text-white">{String(v)}</b></span>
                                         ))}
                                     </div>
                                     <button className="text-blue-400 hover:text-blue-300 flex items-center gap-2">
-                                        <FileDown size={14} /> Download Raw Log ({s.raw_file})
+                                        <FileDown size={14} /> دانلود فایل خام ({s.raw_file})
                                     </button>
                                 </div>
                             )}

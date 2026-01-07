@@ -6,11 +6,9 @@ from database import get_session
 from models import AnalyticsLog, User, Event, Department
 from security import get_current_user, get_current_user_optional
 from pydantic import BaseModel
-from utils.archiver import ArchiveManager
 from utils.snapshot_engine import SnapshotEngine
 
 router = APIRouter()
-archiver = ArchiveManager()
 snapshot_engine = SnapshotEngine()
 
 # --- DTOs ---
@@ -27,9 +25,12 @@ def log_event(
     current_user: Optional[User] = Depends(get_current_user_optional) 
 ):
     user_id = current_user.id if current_user else None
+    # Ensure details is stored as a string even if pydantic validation missed it
+    details_str = log_data.details if log_data.details else "{}"
+    
     log = AnalyticsLog(
         event_type=log_data.event_type,
-        details=log_data.details,
+        details=details_str,
         user_id=user_id
     )
     session.add(log)
@@ -137,59 +138,6 @@ def get_user_profiling(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """Req #5 & #6: Power Users and Ghost Users"""
-    if current_user.role != "superadmin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    # 1. Power Users (Most logs in last 30 days)
-    cutoff = datetime.utcnow() - timedelta(days=30)
-    
-    power_users = session.exec(
-        select(User.display_name, func.count(AnalyticsLog.id).label("activity"))
-        .join(AnalyticsLog)
-        .where(AnalyticsLog.created_at >= cutoff)
-        .group_by(User.id)
-        .order_by(desc("activity"))
-        .limit(10)
-    ).all()
-
-    return {
-        "power_users": [{"name": r[0], "score": r[1]} for r in power_users]
-    }
-
-# --- ARCHIVING ---
-@router.post("/archive")
-def run_manual_snapshot(
-    days: int = 0, # Ignored for snapshot engine, it processes "now"
-    current_user: User = Depends(get_current_user)
-):
-    """Triggers the Snapshot Engine manually"""
-    if current_user.role != "superadmin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    # We use the smart engine now, not the old archiver
-    snapshot_engine.take_hourly_snapshot()
-    return {"status": "success", "message": "Snapshot created"}
-
-@router.get("/snapshots")
-def get_snapshot_history(
-    current_user: User = Depends(get_current_user)
-):
-    if current_user.role != "superadmin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    return snapshot_engine.get_snapshots()
-
-# REMOVE the old /archives endpoint if it conflicts, or update it to list snapshot files
-@router.get("/archives")
-def get_archives_list(current_user: User = Depends(get_current_user)):
-    # Alias to snapshots for backward compatibility
-    return snapshot_engine.get_snapshots()
-
-@router.get("/users/profiling")
-def get_user_profiling(
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
     """Req #5 & #6: Rich User Activity Table"""
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -222,3 +170,32 @@ def get_user_profiling(
         }
         for r in results
     ]
+
+# --- ARCHIVING / SNAPSHOTS ---
+
+@router.post("/archive")
+def run_manual_snapshot(
+    current_user: User = Depends(get_current_user)
+):
+    """Triggers the Snapshot Engine manually"""
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Call the engine and check result
+    result = snapshot_engine.take_hourly_snapshot()
+    
+    if result and result.get("status") == "success":
+        return result
+    elif result and result.get("status") == "skipped":
+        return {"status": "warning", "message": "No new data to snapshot."}
+    else:
+        # If result is None or error
+        raise HTTPException(status_code=500, detail="Snapshot failed. Check server logs.")
+
+@router.get("/snapshots")
+def get_snapshot_history(
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return snapshot_engine.get_snapshots()
