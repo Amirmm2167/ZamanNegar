@@ -7,9 +7,11 @@ from models import AnalyticsLog, User, Event, Department
 from security import get_current_user, get_current_user_optional
 from pydantic import BaseModel
 from utils.archiver import ArchiveManager
+from utils.snapshot_engine import SnapshotEngine
 
 router = APIRouter()
 archiver = ArchiveManager()
+snapshot_engine = SnapshotEngine()
 
 # --- DTOs ---
 class LogCreate(BaseModel):
@@ -215,3 +217,13 @@ def get_user_profiling(
         }
         for r in results
     ]
+    
+@router.get("/snapshots")
+def get_snapshot_history(
+    current_user: User = Depends(get_current_user)
+):
+    """Returns list of hourly summaries"""
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    return snapshot_engine.get_snapshots()
