@@ -151,8 +151,6 @@ export default function Dashboard() {
         
         {/* RIGHT SIDE (RTL Start) */}
         <div className="flex items-center gap-4">
-          
-
           <h1 className="text-xl font-bold text-white tracking-tight">زمان‌نگار</h1>
         </div>
         
