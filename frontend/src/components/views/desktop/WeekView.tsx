@@ -81,7 +81,7 @@ export default function WeekView({
             {Array.from({ length: 24 }).map((_, i) => (
                <div key={i} className="flex-1 border-l border-white/5 text-[10px] text-gray-500 flex items-center justify-center relative group">
                   <span className="z-10 bg-[#020205]/50 px-1 rounded transition-colors group-hover:text-white">
-                    {toPersianDigits(i)}:00
+                    {toPersianDigits(i)}:۰۰
                   </span>
                </div>
             ))}
