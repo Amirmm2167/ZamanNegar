@@ -1,77 +1,56 @@
 "use client";
 
-import { useEffect } from "react";
-import { motion, useAnimation, PanInfo } from "framer-motion";
+import { useState, useRef, useEffect, ReactNode } from "react";
+import { motion, useMotionValue, animate, PanInfo } from "framer-motion";
 
 interface InfiniteSwiperProps {
   currentIndex: number;
-  onChange: (newIndex: number) => void;
-  renderItem: (offset: number) => React.ReactNode; 
+  onChange: (index: number) => void;
+  renderItem: (offset: number) => ReactNode;
 }
 
 export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: InfiniteSwiperProps) {
-  const controls = useAnimation();
+  const x = useMotionValue(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
 
   useEffect(() => {
-    controls.set({ x: "0%" });
-  }, [currentIndex, controls]);
+    if (containerRef.current) setWidth(containerRef.current.offsetWidth);
+  }, []);
 
-  const handleDragEnd = async (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    const { offset, velocity } = info;
-    const threshold = 50; 
-    const velocityThreshold = 200;
+  const handleDragEnd = (e: any, { offset, velocity }: PanInfo) => {
+    const swipeThreshold = width / 4;
+    const swipePower = Math.abs(offset.x) * velocity.x;
 
-    // RTL SWIPE LOGIC
-    // Next Day is on the LEFT (-100%). To see it, we drag content RIGHT (offset > 0).
-    // Previous Day is on the RIGHT (+100%). To see it, we drag content LEFT (offset < 0).
-
-    // Swipe Right (Go to Future/Next)
-    if (offset.x > threshold || velocity.x > velocityThreshold) {
-      // Animate content to Right (showing what's on the left)
-      await controls.start({ x: "100%", transition: { type: "spring", stiffness: 300, damping: 30 } });
-      onChange(currentIndex + 1); // +1 is Future
-      controls.set({ x: "0%" });
-    } 
-    // Swipe Left (Go to Past/Prev)
-    else if (offset.x < -threshold || velocity.x < -velocityThreshold) {
-      // Animate content to Left (showing what's on the right)
-      await controls.start({ x: "-100%", transition: { type: "spring", stiffness: 300, damping: 30 } });
-      onChange(currentIndex - 1); // -1 is Past
-      controls.set({ x: "0%" });
-    } 
-    // Snap back
-    else {
-      controls.start({ x: "0%", transition: { type: "spring", stiffness: 400, damping: 40 } });
+    if (offset.x > swipeThreshold || swipePower > 10000) {
+      // Swiped Right -> Previous
+      onChange(currentIndex - 1);
+    } else if (offset.x < -swipeThreshold || swipePower < -10000) {
+      // Swiped Left -> Next
+      onChange(currentIndex + 1);
     }
+    // Always animate back to center; the index change will replace the content
+    animate(x, 0, { type: "spring", bounce: 0, duration: 0.3 });
   };
 
   return (
-    <div className="w-full h-full overflow-hidden bg-[#121212] relative">
+    <div ref={containerRef} className="w-full h-full overflow-hidden relative touch-pan-y">
       <motion.div
+        className="flex h-full w-full"
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.2}
         onDragEnd={handleDragEnd}
-        animate={controls}
-        style={{ x: "0%", touchAction: "pan-y" }} 
-        className="flex h-full w-full absolute top-0 left-0"
+        style={{ x }}
       >
-        {/* RTL LAYOUT: [Future] [Current] [Past] */}
+        {/* Render Previous Panel */}
+        <div className="w-full h-full shrink-0 relative right-full">{renderItem(-1)}</div>
         
-        {/* Future/Next Panel (Left side in RTL) */}
-        <div className="absolute top-0 left-[-100%] w-full h-full border-r border-white/5">
-          {renderItem(1)}
-        </div>
-
-        {/* Current Panel */}
-        <div className="absolute top-0 left-0 w-full h-full border-r border-white/5">
-          {renderItem(0)}
-        </div>
-
-        {/* Past/Prev Panel (Right side in RTL) */}
-        <div className="absolute top-0 left-[100%] w-full h-full">
-          {renderItem(-1)}
-        </div>
+        {/* Render Current Panel */}
+        <div className="w-full h-full shrink-0">{renderItem(0)}</div>
+        
+        {/* Render Next Panel */}
+        <div className="w-full h-full shrink-0 relative left-full">{renderItem(1)}</div>
       </motion.div>
     </div>
   );
