@@ -5,35 +5,41 @@ import { usePathname } from "next/navigation";
 import { useLayoutStore } from "@/stores/layoutStore";
 import FloatingIsland from "./FloatingIsland";
 import ContextRail from "./ContextRail";
-import Sidebar from "./Sidebar"; // NEW
+import Sidebar from "./Sidebar";
 import ModernBackground from "@/components/ui/ModernBackground";
 import EventModal from "@/components/EventModal";
 import IssueModal from "@/components/IssueModal";
+import { Loader2 } from "lucide-react";
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
 export default function AppShell({ children }: AppShellProps) {
-  const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore(); // Added isSidebarOpen
+  const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore();
   const pathname = usePathname();
-  const [isMounted, setIsMounted] = useState(false);
-  const [role, setRole] = useState("viewer");
+  const [role, setRole] = useState<string | null>(null); // Start null to indicate loading
 
   const isAuthPage = pathname === "/login" || pathname === "/register";
 
-  // Modal States
   const [showEventModal, setShowEventModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
 
   useEffect(() => {
-    setIsMounted(true);
+    // 1. Mobile Detection
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener("resize", checkMobile);
     
-    const storedRole = localStorage.getItem("role") || "viewer";
-    setRole(storedRole);
+    // 2. Auth Hydration (Critical Fix)
+    const storedRole = localStorage.getItem("role");
+    // We set state immediately. If null, we default to viewer BUT only after checking.
+    // However, to avoid flash, we prefer to wait a tick or just set it.
+    if (storedRole) {
+        setRole(storedRole);
+    } else {
+        setRole("viewer");
+    }
 
     return () => window.removeEventListener("resize", checkMobile);
   }, [setIsMobile]);
@@ -41,35 +47,40 @@ export default function AppShell({ children }: AppShellProps) {
   const handleSaveEvent = () => setShowEventModal(false);
   const handleSubmitIssue = () => setShowIssueModal(false);
 
-  if (!isMounted) return null;
+  // BLOCKING LOADER: Prevents the app from rendering the wrong view
+  if (role === null) {
+      return (
+          <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
+              <Loader2 className="animate-spin" size={32} />
+          </div>
+      );
+  }
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden flex" dir="rtl">
       
-      {/* 1. Global Background */}
+      {/* Background */}
       <div className="fixed inset-0 z-0 pointer-events-none">
          <ModernBackground />
       </div>
 
-      {/* 2. Desktop Sidebar (Right Side) - Layout Shifting */}
+      {/* Desktop Navigation */}
       {!isMobile && !isAuthPage && <Sidebar role={role} />}
-
-      {/* 3. Context Rail (Left Side) - Overlay */}
       {!isMobile && !isAuthPage && <ContextRail role={role} />}
 
-      {/* 4. Main Content Area */}
+      {/* Main Content */}
       <main 
         className={`
           relative z-10 flex-1 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
           ${isMobile && !isAuthPage ? 'pb-28' : ''} 
-          /* Desktop Sidebar Margin Logic (RTL: Margin Right) */
+          /* Desktop Shift Logic */
           ${!isMobile && !isAuthPage ? (isSidebarOpen ? 'mr-[240px]' : 'mr-[80px]') : ''}
         `}
       >
         {children}
       </main>
 
-      {/* 5. Mobile Navigation */}
+      {/* Mobile Navigation */}
       {isMobile && !isAuthPage && (
         <FloatingIsland 
            role={role} 
@@ -78,7 +89,7 @@ export default function AppShell({ children }: AppShellProps) {
         />
       )}
 
-      {/* 6. Global Modals */}
+      {/* Global Modals */}
       <EventModal 
         isOpen={showEventModal} 
         onClose={() => setShowEventModal(false)}
@@ -91,7 +102,6 @@ export default function AppShell({ children }: AppShellProps) {
         onClose={() => setShowIssueModal(false)}
         onSubmit={handleSubmitIssue}
       />
-
     </div>
   );
 }
