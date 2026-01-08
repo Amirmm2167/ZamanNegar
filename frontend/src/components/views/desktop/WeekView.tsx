@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useState } from "react";
 import { CalendarEvent, Department } from "@/types";
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
@@ -34,34 +34,16 @@ export default function WeekView({
   onEventLeave,
   draftEvent
 }: WeekViewProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
-  const [hoveredHour, setHoveredHour] = useState<number | null>(null);
-
+  
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
-
-  useEffect(() => {
-    if (scrollRef.current) {
-        const currentHour = new Date().getHours();
-        const scrollContainer = scrollRef.current;
-        const hourWidth = scrollContainer.scrollWidth / 24;
-        const targetHour = Math.max(0, currentHour - 1);
-        scrollContainer.scrollTo({ left: - (targetHour * hourWidth), behavior: "smooth" });
-    }
-  }, []);
-
-  // --- Interaction Helpers ---
-  const handleContextMenu = (e: React.MouseEvent, event: CalendarEvent) => {
-      e.preventDefault();
-      onEventLongPress(event); // Right click triggers long press logic (context menu placeholder)
-  };
-
+  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+  
+  // Calculate Start of Week
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay(); 
     const diff = (day + 1) % 7;
     d.setDate(d.getDate() - diff);
-    d.setHours(0, 0, 0, 0);
     return d;
   };
   const startOfWeek = getStartOfWeek(currentDate);
@@ -70,139 +52,159 @@ export default function WeekView({
     d.setDate(d.getDate() + i);
     return d;
   });
-  const isToday = (date: Date) => new Date().toDateString() === date.toDateString();
 
   const getEventStyle = (event: CalendarEvent) => {
     const dept = departments.find(d => d.id === event.department_id);
-    const baseColor = dept ? dept.color : "#6b7280"; 
+    const color = dept?.color || "#6b7280";
     
     if (event.status === 'pending') {
-      return { backgroundColor: `${baseColor}40`, border: `1px dashed ${baseColor}`, color: '#fef08a' };
+      return { 
+        backgroundColor: `${color}30`, 
+        border: `1px dashed ${color}`, 
+        color: '#fef08a' 
+      };
     }
-    return { backgroundColor: `${baseColor}60`, color: "#e5e7eb", borderLeft: `3px solid ${baseColor}` };
+    return { 
+      backgroundColor: `${color}90`, 
+      borderRight: `3px solid ${color}`,
+      color: '#fff' 
+    };
   };
 
   return (
-    <div 
-      className="flex flex-1 overflow-hidden relative transition-all duration-300 bg-[#020205]"
-      onMouseLeave={() => { setHoveredDayIndex(null); setHoveredHour(null); }}
-    >
-          {/* SIDEBAR (Days) */}
-          <div className="w-20 sm:w-32 flex flex-col border-l border-white/10 bg-black/40 backdrop-blur-md z-20 shadow-[4px_0_24px_rgba(0,0,0,0.5)] relative">
-            <div className="h-12 border-b border-white/10 bg-white/5 flex items-center justify-center text-xs font-bold text-gray-400 shadow-sm">
-                روزها
-            </div>
-            
-            {weekDays.map((dayDate, i) => {
+    <div className="flex flex-col h-full bg-[#020205] overflow-hidden select-none">
+      
+      {/* 1. Time Header (X-Axis) */}
+      {/* Reduced padding-right (mr-24) to match the sidebar width below */}
+      <div className="flex flex-row h-10 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 shrink-0 mr-24">
+         <div className="flex-1 relative flex">
+            {Array.from({ length: 24 }).map((_, i) => (
+               <div key={i} className="flex-1 border-l border-white/5 text-[10px] text-gray-500 flex items-center justify-center relative group">
+                  <span className="z-10 bg-[#020205]/50 px-1 rounded transition-colors group-hover:text-white">
+                    {toPersianDigits(i)}:00
+                  </span>
+               </div>
+            ))}
+         </div>
+      </div>
+
+      {/* 2. Main Body (Rows = Days) */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+          
+          {weekDays.map((dayDate, dayIndex) => {
               const dateStr = dayDate.toISOString().split('T')[0];
-              const holidayObj = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
-              const allDayEvents = events.filter(e => e.is_all_day && new Date(e.start_time).toDateString() === dayDate.toDateString() && (!e.department_id || !hiddenDeptIds.includes(e.department_id)));
+              const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
+              const isToday = new Date().toDateString() === dayDate.toDateString();
+
+              // Filter Events for this Day
+              const dayEvents = events.filter(e => 
+                  !hiddenDeptIds.includes(e.department_id || 0) &&
+                  new Date(e.start_time).toDateString() === dayDate.toDateString() &&
+                  !e.is_all_day
+              );
+
+              // Calculate Layout (Horizontal)
+              const visualEvents = calculateEventLayout(dayEvents, 'horizontal');
+              const isDraftDay = draftEvent && draftEvent.date.toDateString() === dayDate.toDateString();
 
               return (
-                <div key={i} className={clsx("flex-1 flex flex-row items-stretch border-b border-white/10 relative transition-all gap-1 group", isToday(dayDate) && "bg-white/5", hoveredDayIndex === i && "bg-white/10")}>
-                  <div className="flex flex-row items-center justify-between shrink-0 border-l border-white/5 bg-black/20 w-8 sm:w-12">
-                      <div className="flex flex-col items-center justify-center w-full">
-                          <span className="text-[9px] sm:text-[10px] font-bold">{WEEK_DAYS[i]}</span>
-                          <span className="text-[9px] sm:text-xs opacity-70 mt-0.5">{dayDate.toLocaleDateString("fa-IR-u-nu-arab", { day: "numeric" })}</span>
-                      </div>
-                      {holidayObj && (
-                          <div className="h-full flex items-center justify-center pt-1 pb-1">
-                              <span className="text-[8px] sm:text-[9px] text-red-400/80 font-bold whitespace-nowrap tracking-tight" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-                                  {holidayObj.occasion}
-                              </span>
-                          </div>
-                      )}
-                  </div>
-                  <div className="flex-1 flex flex-row gap-1 items-center justify-start overflow-hidden px-1">
-                    {allDayEvents.map(ev => (
-                        <div key={ev.id} onClick={(e) => { e.stopPropagation(); onEventClick(ev); }} 
-                             className="h-[80%] w-[4px] sm:w-[6px] rounded-full cursor-pointer hover:scale-125 transition-transform" style={{ backgroundColor: getEventStyle(ev).backgroundColor }}></div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* TIMELINE */}
-          <div className="flex-1 flex flex-col min-w-0 relative overflow-x-auto custom-scrollbar" ref={scrollRef}>
-            <div className="flex h-12 border-b border-white/10 bg-white/5 select-none min-w-[1200px] sticky top-0 z-10 backdrop-blur-md shadow-sm">
-              {Array.from({ length: 24 }).map((_, i) => (
-                <div key={i} className={clsx("flex-1 flex items-center justify-start text-[10px] font-medium text-gray-500 border-l border-white/10 px-2", hoveredHour === i && "bg-white/10")}>
-                  {toPersianDigits(i)}:{toPersianDigits("00")}
-                </div>
-              ))}
-            </div>
-
-            <div className="flex-1 flex flex-col relative min-w-[1200px]">
-              <div className="absolute inset-0 flex pointer-events-none">
-                {Array.from({ length: 24 }).map((_, i) => <div key={i} className="flex-1 border-l border-white/5 h-full"></div>)}
-              </div>
-
-              {weekDays.map((dayDate, dayIndex) => {
-                const dayEvents = events.filter(e => {
-                  const eStart = new Date(e.start_time).getTime();
-                  const dStart = dayDate.getTime();
-                  const dEnd = dStart + 86400000;
-                  if (e.department_id && hiddenDeptIds.includes(e.department_id)) return false;
-                  return eStart < dEnd && eStart >= dStart && !e.is_all_day;
-                });
-                const visualEvents = calculateEventLayout(dayEvents.map(e => {
-                   const eStart = new Date(e.start_time).getTime();
-                   const eEnd = new Date(e.end_time).getTime();
-                   const visualStart = Math.max(eStart, dayDate.getTime());
-                   const visualEnd = Math.min(eEnd, dayDate.getTime() + 86400000);
-                   return { ...e, start_time: new Date(visualStart).toISOString(), end_time: new Date(visualEnd).toISOString() };
-                }));
-
-                const isDraftDay = draftEvent && draftEvent.date.toDateString() === dayDate.toDateString();
-
-                return (
-                  <div key={dayIndex} className={clsx("flex-1 border-b border-white/5 relative group min-h-[60px]", hoveredDayIndex === dayIndex && "bg-white/[0.03]")}>
-                    <div className="absolute inset-0 flex z-0">
-                      {Array.from({ length: 24 }).map((_, h) => (
-                         <div key={h} className="flex-1 h-full border-r border-white/5 cursor-pointer hover:bg-white/[0.02]" 
-                              onMouseEnter={() => { setHoveredDayIndex(dayIndex); setHoveredHour(h); }}
-                              onClick={() => onSlotClick(dayDate, h)} />
-                      ))}
-                    </div>
-
-                    {isDraftDay && (
-                        <div 
-                          className="absolute z-20 h-[80%] top-[10%] bg-emerald-500/20 border-2 border-dashed border-emerald-500 rounded flex items-center justify-center animate-pulse cursor-pointer"
-                          style={{
-                              right: `${(draftEvent!.startHour / 24) * 100}%`,
-                              width: `${((draftEvent!.endHour - draftEvent!.startHour) / 24) * 100}%`
-                          }}
-                          onClick={() => onSlotClick(dayDate, draftEvent!.startHour)}
-                        >
-                            <Plus className="text-emerald-400" size={20} />
-                        </div>
+                  <div 
+                    key={dayIndex} 
+                    className={clsx(
+                        "flex border-b border-white/5 min-h-[80px] relative transition-colors",
+                        hoveredDayIndex === dayIndex ? "bg-white/[0.03]" : ""
                     )}
+                    onMouseEnter={() => setHoveredDayIndex(dayIndex)}
+                    onMouseLeave={() => setHoveredDayIndex(null)}
+                  >
+                      
+                      {/* Y-Axis Label (Day) - Sticky Right */}
+                      <div className="sticky right-0 w-24 shrink-0 bg-[#09090b] border-l border-white/10 z-30 flex flex-col items-center justify-center p-2 transition-colors shadow-[-5px_0_20px_rgba(0,0,0,0.5)]">
+                          <span className={clsx("text-sm font-bold", isToday ? "text-blue-400" : "text-gray-300")}>
+                              {WEEK_DAYS[dayIndex]}
+                          </span>
+                          <div className={clsx("text-[10px] px-2 py-0.5 rounded-full mt-1 font-mono", isToday ? "bg-blue-900/30 text-blue-200" : "text-gray-500")}>
+                              {toPersianDigits(dayDate.getDate())}
+                          </div>
+                          {holiday && (
+                              <span className="text-[9px] text-red-400 text-center mt-1 leading-tight line-clamp-1">
+                                {holiday.occasion}
+                              </span>
+                          )}
+                      </div>
 
-                    {visualEvents.map((event) => {
-                      const originalEvent = dayEvents.find(e => e.id === event.id);
-                      if(!originalEvent) return null;
-                      const style = getEventStyle(originalEvent);
-                      const laneHeightPercent = 100 / event.totalLanes;
-                      return (
-                        <div 
-                          key={event.id} 
-                          onClick={(e) => { e.stopPropagation(); onEventClick(originalEvent); }} 
-                          onContextMenu={(e) => handleContextMenu(e, originalEvent)}
-                          onMouseEnter={(e) => onEventHover(e, originalEvent)} 
-                          onMouseLeave={onEventLeave}
-                          className="absolute rounded-sm px-1 flex items-center shadow-lg cursor-pointer hover:brightness-125 z-10 border-y border-r border-white/10 text-[10px]"
-                          style={{ right: `${event.right}%`, width: `${event.width}%`, top: `${event.laneIndex * laneHeightPercent}%`, height: `calc(${laneHeightPercent}% - 2px)`, ...style }}>
-                          <div className="truncate w-full">{event.title}</div>
-                        </div>
-                      );
-                    })}
+                      {/* Grid Cells (24 Hours) & Events Container */}
+                      <div className="flex-1 relative flex z-0">
+                          
+                          {/* Background Grid & Click Handlers */}
+                          <div className="absolute inset-0 flex">
+                            {Array.from({ length: 24 }).map((_, h) => (
+                                <div 
+                                  key={h} 
+                                  className="flex-1 border-l border-white/5 cursor-pointer hover:bg-white/5 transition-colors"
+                                  onClick={() => onSlotClick(dayDate, h)}
+                                  title={`افزودن رویداد: ${toPersianDigits(h)}:00`}
+                                />
+                            ))}
+                          </div>
+
+                          {/* Draft Indicator */}
+                          {isDraftDay && draftEvent && (
+                             <div 
+                                className="absolute top-2 bottom-2 z-10 bg-emerald-500/20 border-2 border-dashed border-emerald-500 rounded-md flex items-center justify-center animate-pulse pointer-events-none"
+                                style={{
+                                   // In Horizontal (RTL): 00:00 is Right. 
+                                   // StartHour / 24 * 100 = Right Position %
+                                   right: `${(draftEvent.startHour / 24) * 100}%`,
+                                   width: `${((draftEvent.endHour - draftEvent.startHour) / 24) * 100}%`
+                                }}
+                             >
+                                <Plus className="text-emerald-400" size={20} />
+                             </div>
+                          )}
+
+                          {/* Events Overlay */}
+                          <div className="absolute inset-0 pointer-events-none w-full h-full">
+                              {visualEvents.map((ev) => {
+                                  const styles = getEventStyle(ev);
+                                  // In Horizontal mode: 
+                                  // startPercent -> Right position (Time)
+                                  // sizePercent -> Width (Duration)
+                                  // laneIndex -> Top position (Stacking)
+                                  const laneHeight = 100 / ev.totalLanes;
+                                  
+                                  return (
+                                      <div
+                                          key={ev.id}
+                                          onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
+                                          onContextMenu={(e) => { e.preventDefault(); onEventLongPress(ev); }}
+                                          onMouseEnter={(e) => onEventHover(e, ev)}
+                                          onMouseLeave={onEventLeave}
+                                          className="absolute z-20 rounded-md shadow-lg cursor-pointer pointer-events-auto flex items-center px-2 overflow-hidden hover:brightness-110 hover:z-30 hover:shadow-xl transition-all group/event"
+                                          style={{
+                                              right: `${ev.startPercent}%`, 
+                                              width: `${ev.sizePercent}%`,
+                                              top: `${ev.laneIndex * laneHeight}%`,
+                                              height: `calc(${laneHeight}% - 2px)`, // -2px gap
+                                              backgroundColor: styles.backgroundColor,
+                                              borderRight: styles.borderRight,
+                                              border: styles.border,
+                                              color: styles.color
+                                          }}
+                                      >
+                                          <span className="text-[10px] font-bold truncate group-hover/event:whitespace-normal group-hover/event:overflow-visible mix-blend-plus-lighter">
+                                              {ev.title}
+                                          </span>
+                                      </div>
+                                  );
+                              })}
+                          </div>
+                      </div>
+
                   </div>
-                );
-              })}
-            </div>
-          </div>
+              );
+          })}
+      </div>
     </div>
   );
 }
