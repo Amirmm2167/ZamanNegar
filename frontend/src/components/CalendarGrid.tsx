@@ -4,7 +4,7 @@ import { useEffect, useState, useImperativeHandle, forwardRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Plus, Calendar as CalendarIcon } from "lucide-react";
+import { ChevronRight, ChevronLeft, Plus, Calendar as CalendarIcon, Bell } from "lucide-react"; // Added Bell
 import clsx from "clsx";
 import EventModal from "./EventModal";
 import EventTooltip from "./EventTooltip";
@@ -142,13 +142,13 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
         setIsSheetExpanded(false); 
         setIsSheetOpen(true);
       } else {
-        setSelectedEventId(event.id); // Open Desktop Rail
+        setSelectedEventId(event.id); 
       }
   };
 
   const handleEditFromQuickView = () => {
       setActiveSheetMode("edit");
-      setIsSheetExpanded(true); // Open full sheet for editing
+      setIsSheetExpanded(true); 
   };
   
   const handleDateJump = (dateStr: string) => {
@@ -163,18 +163,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const prevDate = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 1); return d; });
   const goToToday = () => { setCurrentIndex(0); setCurrentDate(new Date()); };
   
-  const handleEventClick = (event: CalendarEvent) => { setHoveredEvent(event); };
   const canEditSheet = (sheetEvent && (sheetEvent.proposer_id === userId || ["manager", "superadmin"].includes(userRole))) || (!sheetEvent);
-
-  const handleMobileMonthDayClick = (date: Date) => {
-      setViewMode('1day');
-      setCurrentIndex(0);
-      setCurrentDate(date);
-  };
-
-  const handleRefresh = () => {
-      queryClient.invalidateQueries();
-  };
+  const handleMobileMonthDayClick = (date: Date) => { setViewMode('1day'); setCurrentIndex(0); setCurrentDate(date); };
+  const handleRefresh = () => { queryClient.invalidateQueries(); };
 
   const getHeaderDateLabel = () => {
       const formatterMonth = new Intl.DateTimeFormat("fa-IR", { month: "long" });
@@ -213,37 +204,65 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   return (
     <>
       <GlassPane intensity="medium" className={clsx("flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10")}>
-        {/* HEADER */}
-        <div className="flex flex-row gap-3 items-center justify-between px-4 py-3 border-b border-white/10 shadow-sm z-30 bg-black/20 backdrop-blur-sm shrink-0 h-14 sm:h-auto">
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+        
+        {/* UNIFIED HEADER */}
+        <div className={clsx(
+            "flex items-center justify-between px-4 border-b border-white/10 bg-[#09090b]/90 backdrop-blur-md shrink-0 z-50",
+            isMobile ? "h-16 shadow-lg" : "py-3 h-auto"
+        )}>
+          
+          {/* MOBILE LEFT SIDE: Branding & Notifications */}
+          {isMobile && (
+             <div className="flex items-center gap-3">
+                 <div className="flex flex-col">
+                    <span className="text-[20px] text-gray-100 font-bold">
+                        {monthLabel}
+                    </span>
+                    <span className="text-[12px] text-gray-400 font-bold">
+                       {toPersianDigits(yearLabel)}
+                    </span>
+                 </div>
+             </div>
+          )}
+
+          {/* DESKTOP LEFT / MOBILE RIGHT: Controls */}
+          <div className="flex items-center gap-2 w-auto justify-end">
             {!isMobile && <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />}
             
-            {/* Conditional Nav Buttons: Hidden on Agenda */}
+            {/* Date Controls (Visible on both, compact on mobile) */}
             {viewMode !== 'agenda' && (
-                <div className="flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10">
-                  <button onClick={nextDate} className="p-2 text-gray-300 hover:text-white"><ChevronRight size={18} /></button>
-                  <button onClick={goToToday} className="px-3 py-1 text-xs font-bold text-white">امروز</button>
-                  <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
+                <div className={clsx("flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10", isMobile && "order-last")}>
+                  <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronRight size={18} /></button>
+                  <button onClick={goToToday} className="px-3 py-1 text-xs font-bold text-white min-w-[40px]">
+                      {viewMode === "week" &&("هفته جاری")}
+                      {viewMode === "month" &&("ماه جاری")}
+                      {viewMode === "3day" &&("امروز")}
+                      {viewMode === "1day" &&("امروز")}
+                  </button>
+                  <button onClick={nextDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
                 </div>
             )}
             
+            {/* Mobile: Date Picker Toggle */}
             {isMobile && (
                 <button 
                     onClick={() => setIsDatePickerOpen(true)}
-                    className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5 active:scale-95 transition-transform hover:bg-white/10"
+                    className="p-2 bg-white/5 text-gray-300 rounded-lg border border-white/5 active:scale-95 transition-transform hover:bg-white/10 ml-2"
                 >
                     <CalendarIcon size={18} />
                 </button>
             )}
-            
-            {isMobile && <button onClick={() => handleOpenModal(new Date(), "09:00", "10:00")} className="p-2 bg-emerald-600 text-white rounded-lg"><Plus size={18} /></button>}
+
+            {/* Mobile: Notification Bell (Injected here) */}
+            {isMobile && (
+               <button className="p-2 text-gray-400 hover:text-white relative active:scale-95">
+                   <Bell size={20} />
+                   <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-[#09090b]" />
+               </button>
+            )}
           </div>
           
-          <div className="flex items-center gap-2 sm:hidden absolute left-1/2 -translate-x-1/2 pointer-events-none">
-             <span className="text-sm font-bold text-gray-100">{monthLabel}</span>
-             <span className="text-xs text-gray-400 font-mono mt-0.5">{toPersianDigits ? toPersianDigits(yearLabel) : yearLabel}</span>
-          </div>
-
+          {/* Desktop Only: Right Side Legend */}
           <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto justify-end">
              <div className="flex flex-col items-end mx-2">
                 <span className="text-sm font-bold text-gray-100">{monthLabel}</span>
@@ -277,7 +296,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
 
                                 return (
                                     <MobileGrid 
-                                        key={panelIndex}
                                         daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} 
                                         startDate={panelDate} 
                                         events={events} holidays={holidays} departments={departments} hiddenDeptIds={hiddenDeptIds} 
@@ -318,7 +336,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                   canEdit={canEditSheet} 
                   onClose={() => { setIsSheetOpen(false); setSheetDraft(null); }} 
                   onRefresh={handleRefresh}
-                  // FIX: Explicitly pass editing mode
                   isEditing={activeSheetMode === 'edit' || activeSheetMode === 'create'}
                 />
             )}

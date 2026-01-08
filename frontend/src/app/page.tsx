@@ -151,14 +151,7 @@ export default function Dashboard() {
         
         {/* RIGHT SIDE (RTL Start) */}
         <div className="flex items-center gap-4">
-          <div className="sm:hidden">
-            <button 
-                onClick={() => setIsMobileMenuOpen(true)} 
-                className="p-2 text-white bg-white/10 rounded-xl border border-white/10 active:scale-90 transition-transform hover:bg-white/20"
-            >
-                <Menu size={24} />
-            </button>
-          </div>
+          
 
           <h1 className="text-xl font-bold text-white tracking-tight">زمان‌نگار</h1>
         </div>

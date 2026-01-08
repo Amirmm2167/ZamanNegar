@@ -143,7 +143,7 @@ export default function MobileGrid({
   return (
     <div className="flex flex-col h-full w-full bg-[#121212] select-none relative">
         {/* HEADER */}
-        <div className="flex flex-row-reverse border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
+        <div className="flex flex-row border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
             <div className="w-10 border-l border-white/10 bg-black/20"></div>
             {days.map((day, i) => {
                 const isToday = now && day.toDateString() === now.toDateString();
@@ -168,7 +168,7 @@ export default function MobileGrid({
             className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" 
             ref={scrollRef}
         >
-            <div className="flex flex-row-reverse relative h-[1440px]">
+            <div className="flex flex-row relative h-[1440px]">
                 
                 {/* Time Column */}
                 <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
