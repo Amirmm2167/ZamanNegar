@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, ReactNode } from "react";
+import { useEffect, useRef, useState, ReactNode } from "react";
 import { motion, useMotionValue, animate, PanInfo } from "framer-motion";
 
 interface InfiniteSwiperProps {
@@ -10,47 +10,70 @@ interface InfiniteSwiperProps {
 }
 
 export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: InfiniteSwiperProps) {
-  const x = useMotionValue(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-
+  const x = useMotionValue(0);
+  
   useEffect(() => {
-    if (containerRef.current) setWidth(containerRef.current.offsetWidth);
+    const updateWidth = () => {
+        if (containerRef.current) setWidth(containerRef.current.offsetWidth);
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
   }, []);
 
-  const handleDragEnd = (e: any, { offset, velocity }: PanInfo) => {
-    const swipeThreshold = width / 4;
+  const handleDragEnd = (event: any, info: PanInfo) => {
+    const { offset, velocity } = info;
+    const swipeThreshold = width * 0.25;
     const swipePower = Math.abs(offset.x) * velocity.x;
 
     if (offset.x > swipeThreshold || swipePower > 10000) {
-      // Swiped Right -> Previous
-      onChange(currentIndex - 1);
-    } else if (offset.x < -swipeThreshold || swipePower < -10000) {
-      // Swiped Left -> Next
+      // Swiped Right -> Go NEXT (As requested)
       onChange(currentIndex + 1);
+    } else if (offset.x < -swipeThreshold || swipePower < -10000) {
+      // Swiped Left -> Go PREV
+      onChange(currentIndex - 1);
     }
-    // Always animate back to center; the index change will replace the content
-    animate(x, 0, { type: "spring", bounce: 0, duration: 0.3 });
+    
+    animate(x, 0, { type: "spring", stiffness: 300, damping: 30 });
   };
 
   return (
-    <div ref={containerRef} className="w-full h-full overflow-hidden relative touch-pan-y">
+    <div 
+        ref={containerRef} 
+        className="w-full h-full overflow-hidden relative touch-pan-y" 
+        style={{ touchAction: "pan-y" }}
+    >
       <motion.div
-        className="flex h-full w-full"
+        className="flex h-full absolute top-0 right-0 will-change-transform"
+        style={{ 
+            width: width * 3,
+            x: x,
+            right: -width, 
+        }}
         drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
+        dragConstraints={{ left: -width, right: width }}
         dragElastic={0.2}
         onDragEnd={handleDragEnd}
-        style={{ x }}
       >
-        {/* Render Previous Panel */}
-        <div className="w-full h-full shrink-0 relative right-full">{renderItem(-1)}</div>
+        {/* Render Order for Vice-Versa Logic */}
         
-        {/* Render Current Panel */}
-        <div className="w-full h-full shrink-0">{renderItem(0)}</div>
-        
-        {/* Render Next Panel */}
-        <div className="w-full h-full shrink-0 relative left-full">{renderItem(1)}</div>
+        {/* Left Side (swiped into from Right) -> Next Day */}
+        <div className="w-[33.33%] h-full shrink-0">
+            {renderItem(1)} 
+        </div>
+
+        {/* Center */}
+        <div className="w-[33.33%] h-full shrink-0">
+            {renderItem(0)}
+        </div>
+
+        {/* Right Side (swiped into from Left) -> Prev Day */}
+        <div className="w-[33.33%] h-full shrink-0">
+            {renderItem(-1)}
+        </div>
+
       </motion.div>
     </div>
   );

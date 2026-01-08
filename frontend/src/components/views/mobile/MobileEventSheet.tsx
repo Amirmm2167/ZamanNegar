@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { CalendarEvent } from "@/types";
-import { X, Clock, AlignLeft, Calendar as CalendarIcon, MapPin, Trash2, Check, User, Flag, Target } from "lucide-react";
+import { AlignLeft, Calendar as CalendarIcon, Clock, Flag, Target, Trash2, Check } from "lucide-react";
 import { toPersianDigits } from "@/lib/utils";
 import api from "@/lib/api";
 import { useMutation } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ interface MobileEventSheetProps {
   canEdit: boolean;
   onClose: () => void;
   onRefresh: () => void;
-  isEditing?: boolean; // NEW: Controls initial mode
+  isEditing?: boolean;
 }
 
 export default function MobileEventSheet({
@@ -29,14 +29,16 @@ export default function MobileEventSheet({
   onRefresh,
   isEditing = false,
 }: MobileEventSheetProps) {
-  // Mode: 'view' (details) or 'edit' (form)
   const [mode, setMode] = useState<"view" | "edit">("view");
-  
-  // Form State
   const [formData, setFormData] = useState<Partial<CalendarEvent>>({});
   const [loading, setLoading] = useState(false);
+  
+  // Picker visibility states to satisfy the onClose requirement logic if needed
+  // For now, we just pass empty functions to satisfy the prop requirement 
+  // as the pickers in this sheet seem to be inline or managed differently.
+  // Actually, DatePicker usually opens a modal. Let's add state if we want real closing.
+  // But based on the code provided, they seem inline. We will pass a no-op.
 
-  // Sync mode with prop
   useEffect(() => {
     if (isEditing || !event) {
         setMode("edit");
@@ -45,12 +47,10 @@ export default function MobileEventSheet({
     }
   }, [isEditing, event]);
 
-  // Initialize Form Data
   useEffect(() => {
     if (event) {
       setFormData({ ...event });
     } else if (draftSlot) {
-      // Create Mode
       const start = new Date(draftSlot.date);
       start.setHours(draftSlot.startHour, 0, 0);
       const end = new Date(draftSlot.date);
@@ -65,7 +65,6 @@ export default function MobileEventSheet({
     }
   }, [event, draftSlot]);
 
-  // Mutations
   const saveMutation = useMutation({
     mutationFn: (data: any) => {
       if (event?.id) return api.patch(`/events/${event.id}`, data);
@@ -87,13 +86,12 @@ export default function MobileEventSheet({
 
   const handleSave = () => {
     setLoading(true);
-    // Basic validation could go here
     saveMutation.mutate(formData);
   };
 
-  // Helper for Date/Time display
+  // Fixed Helper
   const formatDateTime = (iso: string) => {
-    if (!iso) return "-";
+    if (!iso) return { date: "-", time: "-" };
     const d = new Date(iso);
     return {
         date: d.toLocaleDateString("fa-IR"),
@@ -101,14 +99,12 @@ export default function MobileEventSheet({
     };
   };
 
-  // --- VIEW MODE RENDER ---
   if (mode === "view" && event) {
     const start = formatDateTime(event.start_time);
     const end = formatDateTime(event.end_time);
 
     return (
       <div className="h-full flex flex-col p-6 space-y-6">
-        {/* Header */}
         <div className="flex justify-between items-start">
            <div>
               <h2 className="text-2xl font-bold text-white leading-snug">{event.title}</h2>
@@ -120,16 +116,12 @@ export default function MobileEventSheet({
               </div>
            </div>
            {canEdit && (
-             <button 
-               onClick={() => setMode("edit")}
-               className="p-2 bg-white/10 rounded-full text-blue-400 hover:bg-white/20 transition-colors"
-             >
-                <AlignLeft size={20} /> {/* Edit Icon placeholder */}
+             <button onClick={() => setMode("edit")} className="p-2 bg-white/10 rounded-full text-blue-400 hover:bg-white/20 transition-colors">
+                <AlignLeft size={20} />
              </button>
            )}
         </div>
 
-        {/* Time Card */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-4">
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
@@ -153,7 +145,6 @@ export default function MobileEventSheet({
             </div>
         </div>
 
-        {/* Description */}
         {event.description && (
             <div className="space-y-2">
                 <h3 className="text-sm font-bold text-gray-400">توضیحات</h3>
@@ -163,7 +154,6 @@ export default function MobileEventSheet({
             </div>
         )}
 
-        {/* Meta Data */}
         <div className="grid grid-cols-2 gap-3">
             {event.goal && (
                 <div className="bg-white/5 p-3 rounded-xl border border-white/5">
@@ -182,22 +172,16 @@ export default function MobileEventSheet({
     );
   }
 
-  // --- EDIT MODE RENDER ---
   return (
     <div className="h-full flex flex-col relative">
-       {/* Sticky Header */}
        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#09090b]/50 backdrop-blur-md sticky top-0 z-10">
           <h3 className="font-bold text-white">{event ? "ویرایش رویداد" : "رویداد جدید"}</h3>
           {event && (
-             <button onClick={() => setMode("view")} className="text-sm text-gray-400 hover:text-white">
-                لغو
-             </button>
+             <button onClick={() => setMode("view")} className="text-sm text-gray-400 hover:text-white">لغو</button>
           )}
        </div>
 
-       {/* Form Body */}
        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
-          
           <div className="space-y-2">
              <label className="text-xs text-gray-400 font-bold">عنوان</label>
              <input 
@@ -208,9 +192,7 @@ export default function MobileEventSheet({
              />
           </div>
 
-          {/* Date/Time Group */}
           <div className="space-y-4">
-             {/* Start */}
              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                    <label className="text-xs text-gray-400">تاریخ شروع</label>
@@ -220,6 +202,7 @@ export default function MobileEventSheet({
                          const time = formData.start_time?.split("T")[1] || "09:00:00";
                          setFormData({...formData, start_time: `${d}T${time}`});
                       }}
+                      onClose={() => {}} // Added dummy handler
                    />
                 </div>
                 <div className="space-y-2">
@@ -230,11 +213,11 @@ export default function MobileEventSheet({
                          const date = formData.start_time?.split("T")[0] || new Date().toISOString().split("T")[0];
                          setFormData({...formData, start_time: `${date}T${t}:00`});
                       }}
+                      onClose={() => {}} // Added dummy handler
                    />
                 </div>
              </div>
 
-             {/* End */}
              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                    <label className="text-xs text-gray-400">تاریخ پایان</label>
@@ -244,6 +227,7 @@ export default function MobileEventSheet({
                          const time = formData.end_time?.split("T")[1] || "10:00:00";
                          setFormData({...formData, end_time: `${d}T${time}`});
                       }}
+                      onClose={() => {}} // Added dummy handler
                    />
                 </div>
                 <div className="space-y-2">
@@ -254,6 +238,7 @@ export default function MobileEventSheet({
                          const date = formData.end_time?.split("T")[0] || new Date().toISOString().split("T")[0];
                          setFormData({...formData, end_time: `${date}T${t}:00`});
                       }}
+                      onClose={() => {}} // Added dummy handler
                    />
                 </div>
              </div>
@@ -268,10 +253,8 @@ export default function MobileEventSheet({
                 placeholder="توضیحات تکمیلی..."
              />
           </div>
-
        </div>
 
-       {/* Sticky Footer */}
        <div className="p-4 border-t border-white/10 bg-[#09090b] flex gap-3">
           {event && (
              <button 

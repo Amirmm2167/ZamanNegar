@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { CalendarEvent, Department } from "@/types";
-import { toPersianDigits, getPersianWeekday } from "@/lib/jalali";
+import { toPersianDigits } from "@/lib/utils"; // Assumed utility, or use jalali one
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
@@ -33,10 +33,19 @@ export default function MobileGrid({
   draftEvent
 }: MobileGridProps) {
   const [now, setNow] = useState<Date | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setNow(new Date());
     const interval = setInterval(() => setNow(new Date()), 60000);
+    
+    // Auto-scroll to 8 AM
+    if (scrollRef.current) {
+        const h = new Date().getHours();
+        const offset = Math.max(0, (h - 1) * 60);
+        scrollRef.current.scrollTop = offset;
+    }
+
     return () => clearInterval(interval);
   }, []);
 
@@ -117,7 +126,7 @@ export default function MobileGrid({
     
     return {
         style: {
-            borderRight: `3px solid ${baseColor}`,
+            borderRight: `3px solid ${baseColor}`, // Vertical stripe
             boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
             backgroundColor: event.status === 'pending' 
                 ? `${baseColor}20` 
@@ -142,7 +151,9 @@ export default function MobileGrid({
                 
                 return (
                     <div key={i} className={clsx("flex-1 flex flex-col items-center justify-center border-r border-white/10 relative overflow-hidden", isToday && "bg-white/5")}>
-                        <span className={clsx("text-[10px] font-bold", isToday ? "text-blue-400" : "text-gray-400")}>{getPersianWeekday(day, true)}</span>
+                        <span className={clsx("text-[10px] font-bold", isToday ? "text-blue-400" : "text-gray-400")}>
+                            {day.toLocaleDateString("fa-IR", { weekday: 'short' })}
+                        </span>
                         <div className={clsx("w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold mt-1 transition-all", isToday ? "bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]" : "text-gray-200")}>{dayNum}</div>
                         {holiday && <div className="absolute bottom-0 w-full h-0.5 bg-red-500"></div>}
                     </div>
@@ -150,9 +161,8 @@ export default function MobileGrid({
             })}
         </div>
 
-        {/* BODY - FIX: Added overflow-y-auto and touch-pan-y */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y">
-            {/* FIX: Fixed height 1440px to ensure px calculations are correct */}
+        {/* BODY */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" ref={scrollRef}>
             <div className="flex flex-row-reverse relative h-[1440px]">
                 
                 {/* Time Column */}
@@ -171,7 +181,8 @@ export default function MobileGrid({
                         return !e.is_all_day && eStart.toDateString() === day.toDateString() && (!e.department_id || !hiddenDeptIds.includes(e.department_id));
                     }) || [];
                     
-                    const visualEvents = calculateEventLayout(dayEvents);
+                    // Use 'vertical' layout logic
+                    const visualEvents = calculateEventLayout(dayEvents, 'vertical');
 
                     return (
                         <div key={i} className="flex-1 relative border-r border-white/10 h-full">
@@ -191,7 +202,6 @@ export default function MobileGrid({
                                 const end = new Date(original.end_time);
                                 const endMin = end.getHours() * 60 + end.getMinutes();
                                 
-                                // FIX: Use pixels instead of percentage
                                 const topPx = startMin; 
                                 const heightPx = endMin - startMin;
                                 const styleInfo = getEventStyle(original);
@@ -202,12 +212,12 @@ export default function MobileGrid({
                                         onTouchStart={(e) => handleTouchStart(e, original)} 
                                         onTouchMove={(e) => handleTouchMove(e)} 
                                         onTouchEnd={(e) => handleTouchEnd(e, original)}
-                                        className="absolute px-1.5 py-1 flex flex-col w-full overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform rounded text-[10px]"
+                                        className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform rounded text-[10px] z-10"
                                         style={{ 
                                             top: `${topPx}px`, 
                                             height: `max(20px, ${heightPx}px)`, 
-                                            right: `${ev.right}%`, 
-                                            width: `${ev.width}%`, 
+                                            right: `${ev.laneIndex * (100 / ev.totalLanes)}%`, // Right position based on Lane
+                                            width: `${100 / ev.totalLanes}%`, // Shared width
                                             ...styleInfo.style 
                                         }}
                                     >
@@ -225,7 +235,8 @@ export default function MobileGrid({
                                     style={{ 
                                         top: `${draftEvent.startHour * 60}px`, 
                                         height: `${(draftEvent.endHour - draftEvent.startHour) * 60}px` 
-                                    }}>
+                                    }}
+                                >
                                     <Plus className="text-emerald-400 animate-pulse" size={20} />
                                 </div>
                             )}
