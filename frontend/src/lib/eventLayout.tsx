@@ -1,103 +1,114 @@
 import { CalendarEvent } from "@/types";
 
 export interface VisualEvent extends CalendarEvent {
-  right: number;
-  width: number;
+  // Positioning (0-100%)
+  startPercent: number; // Top (Vertical) or Right (Horizontal/RTL)
+  sizePercent: number;  // Height (Vertical) or Width (Horizontal)
+  
+  // Cross-Axis (Lanes)
   laneIndex: number;
-  totalLanes: number; 
+  totalLanes: number;
 }
 
-// Internal interface for processing
-interface ProcessedEvent extends VisualEvent {
-  _start: number;
-  _end: number;
-}
+type LayoutDirection = 'vertical' | 'horizontal';
 
-export function calculateEventLayout(events: CalendarEvent[]): VisualEvent[] {
+/**
+ * Calculates the visual position of events for both Vertical (Mobile) and Horizontal (Desktop) views.
+ * Uses a column-packing/graph-coloring algorithm to handle overlaps efficiently.
+ */
+export function calculateEventLayout(events: CalendarEvent[], direction: LayoutDirection = 'vertical'): VisualEvent[] {
   if (events.length === 0) return [];
 
-  // 1. Sort events by start time, then by duration (longest first)
-  const sorted = [...events].sort((a, b) => {
-    const startA = new Date(a.start_time).getTime();
-    const startB = new Date(b.start_time).getTime();
-    if (startA !== startB) return startA - startB;
+  // 1. Normalize Events (Convert time to 0-1440 minutes)
+  const processed = events.map(e => {
+    const start = new Date(e.start_time);
+    const end = new Date(e.end_time);
     
-    const endA = new Date(a.end_time).getTime();
-    const endB = new Date(b.end_time).getTime();
-    return (endB - startB) - (endA - startA);
-  });
-
-  const tempEvents: ProcessedEvent[] = [];
-
-  // 2. Assign Lanes (Greedy Packing)
-  sorted.forEach(event => {
-    const startDate = new Date(event.start_time);
-    const endDate = new Date(event.end_time);
+    let startMin = start.getHours() * 60 + start.getMinutes();
+    let endMin = end.getHours() * 60 + end.getMinutes();
     
-    // Normalize to minutes of the day
-    const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-    let endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-    
-    // Handle events ending at midnight (00:00) of next day as 1440
-    if (endMinutes === 0 && endDate.getDate() !== startDate.getDate()) {
-        endMinutes = 1440;
-    }
-    // Handle minimal height for visibility
-    if (endMinutes <= startMinutes) endMinutes = startMinutes + 15;
-
-    const visualEvent: ProcessedEvent = {
-      ...event,
-      right: 0, // Placeholder, calculated in step 3
-      width: 0, // Placeholder, calculated in step 3
-      laneIndex: 0,
-      totalLanes: 1, 
-      _start: startMinutes,
-      _end: endMinutes
-    };
-
-    // Find used lanes by checking overlaps with already placed events
-    const usedLanes = new Set<number>();
-    const collidingEvents = tempEvents.filter(e => 
-      (visualEvent._start < e._end) && (visualEvent._end > e._start)
-    );
-
-    collidingEvents.forEach(e => usedLanes.add(e.laneIndex));
-
-    // Find first free lane
-    let lane = 0;
-    while (usedLanes.has(lane)) {
-      lane++;
-    }
-    visualEvent.laneIndex = lane;
-    tempEvents.push(visualEvent);
-  });
-
-  // 3. Calculate Visual Dimensions (Width & Right Position)
-  const finalEvents = tempEvents.map(ev => {
-    // Find the "cluster" of mutually overlapping events to determine shared width
-    const cluster = tempEvents.filter(other => 
-      (ev._start < other._end) && (ev._end > other._start)
-    );
-    
-    // The max lane index in this cluster determines the total columns needed
-    const maxLane = Math.max(...cluster.map(e => e.laneIndex));
-    const totalLanes = maxLane + 1;
-    
-    // Calculate width as a percentage of the day column
-    const width = 100 / totalLanes;
-    
-    // Calculate Right position (RTL: Lane 0 is rightmost)
-    // Lane 0 -> Right 0%
-    // Lane 1 -> Right 50% (if 2 lanes)
-    const right = ev.laneIndex * width;
+    // Handle wrapping/midnight (e.g., ends next day)
+    if (endMin <= startMin) endMin = 1440; 
+    // Minimum duration of 15 minutes for visibility
+    if (endMin - startMin < 15) endMin = startMin + 15;
 
     return {
-      ...ev,
-      totalLanes,
-      width,
-      right
+      ...e,
+      _start: startMin,
+      _end: endMin,
+      _duration: endMin - startMin
     };
+  }).sort((a, b) => {
+    // Sort by start time primary, duration secondary (longest first for better packing)
+    if (a._start !== b._start) return a._start - b._start;
+    return b._duration - a._duration;
   });
 
+  const finalEvents: VisualEvent[] = [];
+  const columns: typeof processed[] = [];
+  let lastEnd = -1;
+
+  // 2. Pack into Columns/Lanes (Graph Coloring)
+  processed.forEach(ev => {
+    // If this event starts after the last group finished, process the group
+    if (ev._start >= lastEnd) {
+      packGroup(columns, finalEvents, direction);
+      columns.length = 0;
+      lastEnd = -1;
+    }
+
+    // Try to place in an existing lane/column
+    let placed = false;
+    for (let i = 0; i < columns.length; i++) {
+      const col = columns[i];
+      if (col.length === 0 || col[col.length - 1]._end <= ev._start) {
+        col.push(ev);
+        placed = true;
+        break;
+      }
+    }
+
+    // If no space, create a new lane
+    if (!placed) {
+      columns.push([ev]);
+    }
+
+    if (ev._end > lastEnd) {
+      lastEnd = ev._end;
+    }
+  });
+
+  // Process the final group
+  if (columns.length > 0) {
+    packGroup(columns, finalEvents, direction);
+  }
+
   return finalEvents;
+}
+
+/**
+ * Calculates dimensions for a group of overlapping events.
+ * Distributes width/height evenly among lanes.
+ */
+function packGroup(columns: any[][], output: VisualEvent[], direction: LayoutDirection) {
+  const n = columns.length;
+  for (let i = 0; i < n; i++) {
+    const col = columns[i];
+    for (const ev of col) {
+      // Primary Axis (Time): 0 to 1440 mins -> 0% to 100%
+      const startP = (ev._start / 1440) * 100;
+      const sizeP = (ev._duration / 1440) * 100;
+
+      // Secondary Axis (Lanes): Distribute evenly
+      // In RTL Horizontal, we don't necessarily invert here because CSS 'right' handles it.
+      
+      output.push({
+        ...ev,
+        startPercent: startP,
+        sizePercent: sizeP,
+        laneIndex: i,
+        totalLanes: n
+      });
+    }
+  }
 }
