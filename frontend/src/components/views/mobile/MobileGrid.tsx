@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { CalendarEvent, Department } from "@/types";
-import { toPersianDigits } from "@/lib/utils"; // Assumed utility, or use jalali one
+import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
@@ -39,7 +39,7 @@ export default function MobileGrid({
     setNow(new Date());
     const interval = setInterval(() => setNow(new Date()), 60000);
     
-    // Auto-scroll to 8 AM
+    // Auto-scroll to 8 AM on mount
     if (scrollRef.current) {
         const h = new Date().getHours();
         const offset = Math.max(0, (h - 1) * 60);
@@ -50,23 +50,24 @@ export default function MobileGrid({
   }, []);
 
   // --- Day Logic ---
+  // Generate the days based on the startDate passed by the Swiper
   const days: Date[] = [];
   try {
       if (daysToShow === 1) {
           days.push(new Date(startDate));
       } else if (daysToShow === 3) {
-          for (let i = -1; i <= 1; i++) {
+          // 3 Day view: Start Date is the center? Or start? 
+          // Usually swiper passes the "Center" date.
+          // Let's assume startDate is the first day of the view.
+          for (let i = 0; i < 3; i++) {
               const d = new Date(startDate);
               d.setDate(d.getDate() + i);
               days.push(d);
           }
       } else if (daysToShow === 7) {
-          const dayOfWeek = startDate.getDay(); 
-          const diff = (dayOfWeek + 1) % 7; 
-          const startOfWeek = new Date(startDate);
-          startOfWeek.setDate(startOfWeek.getDate() - diff);
+          // Week view
           for (let i = 0; i < 7; i++) {
-              const d = new Date(startOfWeek);
+              const d = new Date(startDate);
               d.setDate(d.getDate() + i);
               days.push(d);
           }
@@ -82,7 +83,8 @@ export default function MobileGrid({
   const hasMoved = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent, event: CalendarEvent) => {
-      e.stopPropagation(); 
+      // Don't stop propagation immediately, let the swiper know if it's a tap or scroll
+      // But we need to stop vertical scroll if holding
       touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       isHolding.current = false;
       hasMoved.current = false;
@@ -90,6 +92,7 @@ export default function MobileGrid({
       holdTimer.current = setTimeout(() => {
           isHolding.current = true;
           if (navigator.vibrate) navigator.vibrate(50);
+          onEventHold(event); // Trigger hold immediately
       }, 500);
   };
 
@@ -105,12 +108,11 @@ export default function MobileGrid({
   };
 
   const handleTouchEnd = (e: React.TouchEvent, event: CalendarEvent) => {
-      e.stopPropagation();
       if (holdTimer.current) clearTimeout(holdTimer.current);
 
-      if (isHolding.current && !hasMoved.current) {
-          onEventHold(event);
-      } else if (!isHolding.current && !hasMoved.current) {
+      // Only trigger tap if we didn't move and weren't holding
+      if (!isHolding.current && !hasMoved.current) {
+          e.stopPropagation(); // Stop click from hitting slot below
           onEventTap(event);
       }
       
@@ -126,7 +128,7 @@ export default function MobileGrid({
     
     return {
         style: {
-            borderRight: `3px solid ${baseColor}`, // Vertical stripe
+            borderRight: `3px solid ${baseColor}`,
             boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
             backgroundColor: event.status === 'pending' 
                 ? `${baseColor}20` 
@@ -162,7 +164,10 @@ export default function MobileGrid({
         </div>
 
         {/* BODY */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" ref={scrollRef}>
+        <div 
+            className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" 
+            ref={scrollRef}
+        >
             <div className="flex flex-row-reverse relative h-[1440px]">
                 
                 {/* Time Column */}
@@ -181,7 +186,6 @@ export default function MobileGrid({
                         return !e.is_all_day && eStart.toDateString() === day.toDateString() && (!e.department_id || !hiddenDeptIds.includes(e.department_id));
                     }) || [];
                     
-                    // Use 'vertical' layout logic
                     const visualEvents = calculateEventLayout(dayEvents, 'vertical');
 
                     return (
@@ -189,7 +193,11 @@ export default function MobileGrid({
                             {/* Slots */}
                             <div className="absolute inset-0 flex flex-col z-0">
                                 {Array.from({ length: 24 }).map((_, h) => (
-                                    <div key={h} className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors shrink-0" onClick={() => onSlotClick(day, h)}></div>
+                                    <div 
+                                        key={h} 
+                                        className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors shrink-0" 
+                                        onClick={() => onSlotClick(day, h)}
+                                    ></div>
                                 ))}
                             </div>
 
@@ -216,8 +224,8 @@ export default function MobileGrid({
                                         style={{ 
                                             top: `${topPx}px`, 
                                             height: `max(20px, ${heightPx}px)`, 
-                                            right: `${ev.laneIndex * (100 / ev.totalLanes)}%`, // Right position based on Lane
-                                            width: `${100 / ev.totalLanes}%`, // Shared width
+                                            right: `${ev.laneIndex * (100 / ev.totalLanes)}%`, 
+                                            width: `${100 / ev.totalLanes}%`, 
                                             ...styleInfo.style 
                                         }}
                                     >
