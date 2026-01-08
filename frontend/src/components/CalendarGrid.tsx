@@ -4,7 +4,7 @@ import { useEffect, useState, useImperativeHandle, forwardRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { CalendarEvent, Department } from "@/types";
-import { ChevronRight, ChevronLeft, Plus, Calendar as CalendarIcon, Bell } from "lucide-react"; // Added Bell
+import { ChevronRight, ChevronLeft, Plus, Calendar as CalendarIcon, Bell } from "lucide-react";
 import clsx from "clsx";
 import EventModal from "./EventModal";
 import EventTooltip from "./EventTooltip";
@@ -34,8 +34,10 @@ export interface CalendarGridHandle {
 
 const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
   const queryClient = useQueryClient();
-  const { setSelectedEventId } = useLayoutStore();
-  const [viewMode, setViewMode] = useState<ViewMode>("1day"); 
+  
+  // FIX: Read/Write from Global Store instead of local state
+  const { viewMode, setViewMode, setSelectedEventId } = useLayoutStore();
+  
   const [isMobile, setIsMobile] = useState(false);
   
   const { data: events = [], isLoading: eventsLoading } = useQuery<CalendarEvent[]>({
@@ -86,20 +88,22 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     setView: (view: ViewMode) => setViewMode(view)
   }));
 
+  // Logic to switch view mode automatically on resize
   useEffect(() => {
     const handleResize = () => {
         const mobile = window.innerWidth < 768;
         setIsMobile(mobile);
+        // Only switch if we are crossing the boundary
         if (mobile) {
             if (viewMode === 'week') setViewMode('1day'); 
         } else {
             if (viewMode === '1day' || viewMode === '3day' || viewMode === 'mobile-week') setViewMode('week');
         }
     };
-    handleResize();
+    handleResize(); // Run once on mount
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [viewMode]);
+  }, [setViewMode]); // Removed viewMode from deps to prevent infinite loop
 
   const getDateForIndex = (index: number) => {
       const d = new Date(currentDate); 
@@ -205,45 +209,49 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
     <>
       <GlassPane intensity="medium" className={clsx("flex flex-col h-full w-full rounded-none sm:rounded-2xl overflow-hidden border-none sm:border border-white/10")}>
         
-        {/* UNIFIED HEADER */}
+        {/* HEADER */}
         <div className={clsx(
             "flex items-center justify-between px-4 border-b border-white/10 bg-[#09090b]/90 backdrop-blur-md shrink-0 z-50",
             isMobile ? "h-16 shadow-lg" : "py-3 h-auto"
         )}>
           
-          {/* MOBILE LEFT SIDE: Branding & Notifications */}
+          {/* MOBILE LEFT: Branding */}
           {isMobile && (
              <div className="flex items-center gap-3">
                  <div className="flex flex-col">
-                    <span className="text-[20px] text-gray-100 font-bold">
-                        {monthLabel}
+                    <span className="text-[20px] text-gray-100 font-black">
+                       {monthLabel}
                     </span>
-                    <span className="text-[12px] text-gray-400 font-bold">
+                    <span className="text-[12px] text-gray-400 font-medium">
                        {toPersianDigits(yearLabel)}
                     </span>
                  </div>
              </div>
           )}
 
-          {/* DESKTOP LEFT / MOBILE RIGHT: Controls */}
+          {/* CONTROLS */}
           <div className="flex items-center gap-2 w-auto justify-end">
             {!isMobile && <ViewSwitcher currentView={viewMode} onChange={setViewMode} isMobile={isMobile} />}
             
-            {/* Date Controls (Visible on both, compact on mobile) */}
             {viewMode !== 'agenda' && (
                 <div className={clsx("flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10", isMobile && "order-last")}>
-                  <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronRight size={18} /></button>
+                  <button onClick={nextDate} className="p-2 text-gray-300 hover:text-white"><ChevronRight size={18} /></button>
                   <button onClick={goToToday} className="px-3 py-1 text-xs font-bold text-white min-w-[40px]">
+
                       {viewMode === "week" &&("هفته جاری")}
+                      {viewMode === "mobile-week" &&("هفته جاری")}
+
                       {viewMode === "month" &&("ماه جاری")}
+
                       {viewMode === "3day" &&("امروز")}
+
                       {viewMode === "1day" &&("امروز")}
+
                   </button>
-                  <button onClick={nextDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
+                  <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
                 </div>
             )}
             
-            {/* Mobile: Date Picker Toggle */}
             {isMobile && (
                 <button 
                     onClick={() => setIsDatePickerOpen(true)}
@@ -253,7 +261,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                 </button>
             )}
 
-            {/* Mobile: Notification Bell (Injected here) */}
             {isMobile && (
                <button className="p-2 text-gray-400 hover:text-white relative active:scale-95">
                    <Bell size={20} />
@@ -262,7 +269,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
             )}
           </div>
           
-          {/* Desktop Only: Right Side Legend */}
+          {/* DESKTOP LEGEND */}
           <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto justify-end">
              <div className="flex flex-col items-end mx-2">
                 <span className="text-sm font-bold text-gray-100">{monthLabel}</span>
@@ -273,7 +280,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
           </div>
         </div>
 
-        {/* MAIN CONTENT */}
+        {/* CONTENT */}
         <div className="flex-1 overflow-hidden relative w-full h-full">
             {isMobile && loading && events.length === 0 ? (
                 <SkeletonGrid daysToShow={viewMode === '1day' ? 1 : viewMode === '3day' ? 3 : 7} />
