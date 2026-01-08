@@ -1,16 +1,9 @@
 "use client";
 
 import { useLayoutStore } from "@/stores/layoutStore";
-import { 
-  Plus, 
-  AlertTriangle, 
-  Building2, 
-  LayoutGrid, 
-  CalendarDays, 
-  List
-} from "lucide-react";
+import { Plus, List, LayoutGrid, AlertTriangle, Building2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import ViewSwitcher from "@/components/views/shared/ViewSwitcher";
 import Link from "next/link";
 
@@ -23,42 +16,37 @@ interface FloatingIslandProps {
 export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: FloatingIslandProps) {
   const { viewMode, setViewMode } = useLayoutStore();
   const [showViewMenu, setShowViewMenu] = useState(false);
-
-  // --- Logic for different roles ---
   const isManager = role === "manager" || role === "superadmin";
-  const isViewer = role === "viewer";
-  
-  // Managers get the "Dynamic Dock"
-  // Viewers get the "Simple Pill"
-  
+
   return (
-    <>
-      {/* The Floating Island Container */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 w-full max-w-[350px] pointer-events-none">
+    // Z-Index 30 allows Sidebar (Z-40/50) to overlap this
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-3 w-auto pointer-events-none">
         
-        {/* View Switcher Popover (Appears above Island) */}
+        {/* Popover Menu */}
         <AnimatePresence>
           {showViewMenu && (
             <motion.div 
-              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+              initial={{ opacity: 0, y: 10, scale: 0.8 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.9 }}
-              className="mb-2 p-2 bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl pointer-events-auto min-w-[200px]"
+              exit={{ opacity: 0, y: 10, scale: 0.8 }}
+              className="p-2 bg-[#18181b]/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl pointer-events-auto mb-2 origin-bottom"
             >
              <ViewSwitcher 
                 currentView={viewMode} 
                 onChange={(v) => { setViewMode(v); setShowViewMenu(false); }} 
                 isMobile={true} 
-                variant="embedded" // We will update ViewSwitcher to support this 'headless' mode
+                variant="embedded" 
              />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* The Glass Pill */}
-        <div className="flex items-center gap-1 p-1.5 bg-black/60 backdrop-blur-2xl backdrop-saturate-150 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)] rounded-full pointer-events-auto transition-all duration-300">
-          
-          {/* 1. LEFT ACTION: View Switcher */}
+        {/* Main Pill */}
+        <motion.div 
+           className="flex items-center gap-1 p-2 bg-[#09090b]/80 backdrop-blur-xl backdrop-saturate-150 border border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] rounded-full pointer-events-auto"
+           layout
+        >
+          {/* View Switcher */}
           <button 
             onClick={() => setShowViewMenu(!showViewMenu)}
             className="w-12 h-12 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
@@ -66,37 +54,35 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
             {viewMode === 'agenda' ? <List size={22} /> : <LayoutGrid size={22} />}
           </button>
 
-          {/* 2. CENTER ACTION: Contextual */}
-          {isViewer ? (
-             // Viewers don't have a center button, or we use it for "Today"
-             <div className="w-8" /> 
-          ) : (
-            <button
-              onClick={onOpenEvent}
-              className="w-14 h-14 -mt-4 mb-1 flex items-center justify-center rounded-full bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.6)] border border-white/20 hover:scale-105 active:scale-95 transition-transform"
-            >
-              <Plus size={28} />
-            </button>
-          )}
+          <div className="w-px h-6 bg-white/10 mx-1" />
 
-          {/* 3. RIGHT ACTION: Manager vs Others */}
+          {/* Add Event (Primary) */}
+          <button
+             onClick={onOpenEvent}
+             className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-full shadow-[0_0_20px_rgba(59,130,246,0.5)] flex items-center justify-center hover:scale-105 active:scale-95 transition-transform border-2 border-[#09090b]"
+          >
+             <Plus size={28} />
+          </button>
+
+          <div className="w-px h-6 bg-white/10 mx-1" />
+
+          {/* Contextual Action */}
           {isManager ? (
             <Link href="/company-panel">
-               <button className="w-12 h-12 flex items-center justify-center rounded-full text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors">
+               <button className="w-12 h-12 flex items-center justify-center rounded-full text-emerald-400 hover:text-white hover:bg-emerald-500/10 transition-colors">
                   <Building2 size={22} />
                </button>
             </Link>
           ) : (
-            <button 
+             <button 
               onClick={onOpenIssue}
-              className="w-12 h-12 flex items-center justify-center rounded-full text-yellow-500 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors"
+              className="w-12 h-12 flex items-center justify-center rounded-full text-yellow-500 hover:text-white hover:bg-yellow-500/10 transition-colors"
             >
               <AlertTriangle size={22} />
             </button>
           )}
 
-        </div>
-      </div>
-    </>
+        </motion.div>
+    </div>
   );
 }
