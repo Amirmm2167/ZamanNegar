@@ -235,8 +235,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
             
             {viewMode !== 'agenda' && (
                 <div className={clsx("flex items-center gap-1 bg-white/5 rounded-xl p-0.5 border border-white/10", isMobile && "order-last")}>
-                  <button onClick={nextDate} className="p-2 text-gray-300 hover:text-white"><ChevronRight size={18} /></button>
-                  <button onClick={goToToday} className="px-3 py-1 text-xs font-bold text-white min-w-[40px]">
+                  <button onClick={goToToday} className="px-3 py-2 text-xs font-bold text-white min-w-[40px]">
 
                       {viewMode === "week" &&("هفته جاری")}
                       {viewMode === "mobile-week" &&("هفته جاری")}
@@ -248,7 +247,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle>((props, ref) => {
                       {viewMode === "1day" &&("امروز")}
 
                   </button>
-                  <button onClick={prevDate} className="p-2 text-gray-300 hover:text-white"><ChevronLeft size={18} /></button>
                 </div>
             )}
             

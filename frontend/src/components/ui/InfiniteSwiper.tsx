@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, ReactNode } from "react";
+import { useState, useRef, useEffect, ReactNode } from "react";
 import { 
   motion, 
   useMotionValue, 
   animate, 
-  PanInfo, 
+  PanInfo,
+  ValueAnimationTransition 
 } from "framer-motion";
 
 interface InfiniteSwiperProps {
@@ -20,7 +21,6 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
   const x = useMotionValue(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Measure width on mount/resize
   useEffect(() => {
     const measure = () => {
       if (containerRef.current) setWidth(containerRef.current.offsetWidth);
@@ -34,41 +34,32 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
     setIsDragging(false);
     
     const { offset, velocity } = info;
-    const swipeThreshold = width * 0.25; // Swipe 25% to trigger
+    const swipeThreshold = width * 0.25;
     const swipePower = Math.abs(offset.x) * velocity.x;
 
     let targetX = 0;
     let indexChange = 0;
 
-    // LOGIC: RTL Natural Swipe
-    // Swipe RIGHT (Positive X) -> Dragging content to the right -> Reveal Left side -> Next Day
-    // Wait, user said: "sliding rtl (Right): last partial (Prev)"
-    // "sliding ltr (Left): next partial (Next)"
-    
+    // Logic: Swipe Left (< 0) -> Next | Swipe Right (> 0) -> Prev
     if (offset.x > swipeThreshold || swipePower > 10000) {
-      // Swiped Right ( --> )
-      targetX = width;     // Move track to right
-      indexChange = 1;    // Go to PREVIOUS index (Show what was on the left visually? No, in RTL Prev is Right)
-      // Visual Logic: 
-      // [Next] [Current] [Prev]
-      // Move Right --> [Next] [Current]
-      // We see [Next]. 
-      // User wants "Last Partial" (Prev) on Right swipe? 
-      // Let's stick to standard RTL: Right = Prev.
+      targetX = width;
+      indexChange = 1;
     } else if (offset.x < -swipeThreshold || swipePower < -10000) {
-      // Swiped Left ( <-- )
-      targetX = -width;    // Move track to left
-      indexChange = -1;     // Go to NEXT index
+      targetX = -width;
+      indexChange = -1;
     }
 
-    const transition = { type: "spring", stiffness: 300, damping: 30 };
-    
-    animate(x, targetX, transition).then(() => {
-      if (indexChange !== 0) {
-        // 1. Update Logic
-        onChange(currentIndex + indexChange);
-        // 2. Teleport back to center instantly
-        x.set(0);
+    // Fix: Explicitly type the transition or cast if needed
+    // Framer Motion 'animate' on a MotionValue expects (value, to, transition)
+    animate(x, targetX, { 
+      type: "spring", 
+      stiffness: 300, 
+      damping: 30,
+      onComplete: () => {
+        if (indexChange !== 0) {
+          onChange(currentIndex + indexChange);
+          x.set(0); // Teleport back to 0
+        }
       }
     });
   };
@@ -77,14 +68,14 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
     <div 
       ref={containerRef} 
       className="w-full h-full overflow-hidden relative"
-      style={{ touchAction: "pan-y" }} // Allow vertical scroll, capture horizontal
+      style={{ touchAction: "pan-y" }} 
     >
       <motion.div
         className="flex h-full absolute top-0 right-0"
         style={{ 
           x, 
-          width: width * 3, // 3 Panels
-          right: -width,    // Center the middle panel (RTL)
+          width: width * 3, 
+          right: -width, 
         }}
         drag="x"
         dragDirectionLock
@@ -93,26 +84,15 @@ export default function InfiniteSwiper({ currentIndex, onChange, renderItem }: I
         onDragStart={() => setIsDragging(true)}
         onDragEnd={handleDragEnd}
       >
-        {/* RENDER ORDER (RTL Flex Row starts from Right)
-            Visual: [Panel 3 (Left)] [Panel 2 (Center)] [Panel 1 (Right)]
-            Data:   [Next (+1)]      [Current (0)]      [Prev (-1)]
-        */}
-
-        {/* Leftmost (Visually Next) */}
         <div className="w-[33.33%] h-full shrink-0 relative">
            {width > 0 && renderItem(-1)}
         </div>
-
-        {/* Center */}
         <div className="w-[33.33%] h-full shrink-0 relative">
            {width > 0 && renderItem(0)}
         </div>
-
-        {/* Rightmost (Visually Prev) */}
         <div className="w-[33.33%] h-full shrink-0 relative">
            {width > 0 && renderItem(1)}
         </div>
-
       </motion.div>
     </div>
   );

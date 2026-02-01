@@ -111,7 +111,7 @@ export default function WeekView({
                   <div 
                     key={dayIndex} 
                     className={clsx(
-                        "flex border-b border-white/5 min-h-[80px] relative transition-colors",
+                        "flex border-b border-white/5 min-h-[84px] relative transition-colors",
                         hoveredDayIndex === dayIndex ? "bg-white/[0.03]" : ""
                     )}
                     onMouseEnter={() => setHoveredDayIndex(dayIndex)}
@@ -143,7 +143,7 @@ export default function WeekView({
                                   key={h} 
                                   className="flex-1 border-l border-white/5 cursor-pointer hover:bg-white/5 transition-colors"
                                   onClick={() => onSlotClick(dayDate, h)}
-                                  title={`افزودن رویداد: ${toPersianDigits(h)}:00`}
+                                  title={`افزودن رویداد: ${toPersianDigits(h)}:۰۰`}
                                 />
                             ))}
                           </div>

@@ -6,7 +6,6 @@ import { useLayoutStore } from "@/stores/layoutStore";
 import FloatingIsland from "./FloatingIsland";
 import ContextRail from "./ContextRail";
 import Sidebar from "./Sidebar";
-// REMOVED: import MobileHeader from "./MobileHeader"; 
 import ModernBackground from "@/components/ui/ModernBackground";
 import EventModal from "@/components/EventModal";
 import IssueModal from "@/components/IssueModal";

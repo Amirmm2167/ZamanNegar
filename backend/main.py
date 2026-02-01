@@ -46,6 +46,8 @@ origins = [
     "https://api.mohaman.ir",
     "http://localhost:8000",
     "127.0.0.1:3000"
+    "127.0.0.1:80"
+    "localhost:80"
 ]
 
 app.add_middleware(
