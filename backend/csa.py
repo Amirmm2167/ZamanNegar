@@ -18,7 +18,7 @@ def create_super_user():
         super_user = User(
             username="amir",
             display_name="مدیر کل سیستم", # System Superadmin
-            hashed_password=get_password_hash("@Amirmm21671381"), # Change this in production!
+            hashed_password=get_password_hash("123456"), # Change this in production!
             role="superadmin",
             company_id=None, 
             department_id=None
@@ -28,7 +28,7 @@ def create_super_user():
         session.commit()
         print("✅ Superadmin created successfully!")
         print("Username: admin")
-        print("Password: admin123")
+        print("Password: 123456")
 
 if __name__ == "__main__":
     # Ensure tables exist first
