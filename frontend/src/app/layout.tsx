@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
-import Providers from "@/components/Providers"; 
+import Providers from "@/components/Providers";
 import AppShell from "@/components/layout/AppShell"; // Import AppShell
 
 const pinar = localFont({
@@ -36,12 +36,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fa" dir="rtl">
       <body className={`${pinar.className} bg-black min-h-screen overflow-hidden text-gray-100`}>
         <ServiceWorkerRegister />
-        
+
         <Providers>
-            {/* The AppShell now handles background, mobile detection, and navigation */}
-            <AppShell>
-              {children}
-            </AppShell>
+          {/* The AppShell now handles background, mobile detection, and navigation */}
+          <AppShell>
+            {children}
+          </AppShell>
         </Providers>
       </body>
     </html>

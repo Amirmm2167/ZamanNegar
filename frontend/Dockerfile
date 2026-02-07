@@ -1,5 +1,5 @@
 # Stage 1: Dependencies
-FROM node:22-slim AS deps
+FROM node:24-slim AS deps
 # We don't need libc6-compat anymore, but we need openssl for some packages
 RUN apt-get update && apt-get install -y openssl
 
@@ -8,12 +8,12 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # If you still have network issues, keep the mirror. If not, remove this line.
-# RUN npm config set registry https://registry.npmmirror.com/
+RUN npm config set registry https://registry.npmmirror.com/
 
 RUN npm ci
 
 # Stage 2: Builder
-FROM node:22-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -23,7 +23,7 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # Stage 3: Runner
-FROM node:22-slim AS runner
+FROM node:24-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

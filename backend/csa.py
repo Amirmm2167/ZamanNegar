@@ -16,7 +16,7 @@ def create_super_user():
         # 2. Create the user
         # Note: Superadmin doesn't need a company_id (it's null)
         super_user = User(
-            username="amir",
+            username="admin",
             display_name="مدیر کل سیستم", # System Superadmin
             hashed_password=get_password_hash("123456"), # Change this in production!
             role="superadmin",
