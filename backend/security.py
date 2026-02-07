@@ -13,8 +13,8 @@ from models import User, UserSession
 
 SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_THIS_TO_A_LONG_RANDOM_STRING")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 # Short lived access token
-SESSION_EXPIRE_DAYS = 14 # Long lived session
+ACCESS_TOKEN_EXPIRE_MINUTES = 30 
+SESSION_EXPIRE_DAYS = 14 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
@@ -41,10 +41,6 @@ def get_current_user(
     token: str = Depends(oauth2_scheme), 
     session: Session = Depends(get_session)
 ) -> User:
-    """
-    Validates the Token AND the Session.
-    Updates 'last_active' on the session.
-    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -62,12 +58,10 @@ def get_current_user(
     except PyJWTError:
         raise credentials_exception
 
-    # 1. Check User Identity
     user = session.exec(select(User).where(User.username == username)).first()
     if user is None:
         raise credentials_exception
 
-    # 2. Check Session Validity (The "5-Seat" Enforcement Layer)
     user_session = session.exec(
         select(UserSession).where(UserSession.id == session_id)
     ).first()
@@ -75,15 +69,50 @@ def get_current_user(
     if not user_session:
         raise HTTPException(status_code=401, detail="Session expired or invalid. Please login again.")
 
-    # 3. Check Session Expiry (14 Days inactive)
     if datetime.utcnow() - user_session.last_active > timedelta(days=SESSION_EXPIRE_DAYS):
         session.delete(user_session)
         session.commit()
         raise HTTPException(status_code=401, detail="Session timed out due to inactivity.")
 
-    # 4. Update Last Active (Keep-Alive)
     user_session.last_active = datetime.utcnow()
     session.add(user_session)
     session.commit()
 
     return user
+
+async def get_current_user_optional(
+    token: str = Depends(oauth2_scheme), 
+    session: Session = Depends(get_session)
+) -> Optional[User]:
+    """
+    Safely attempts to get the current user. Returns None if ANY check fails.
+    Used by Analytics or public-facing endpoints that change behavior if logged in.
+    """
+    try:
+        # We manually call the logic to avoid the HTTPException raise
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except PyJWTError:
+            return None
+            
+        username: str = payload.get("sub")
+        session_id: str = payload.get("session_id")
+        
+        if not username or not session_id:
+            return None
+            
+        user = session.exec(select(User).where(User.username == username)).first()
+        if not user:
+            return None
+            
+        user_session = session.exec(select(UserSession).where(UserSession.id == session_id)).first()
+        if not user_session:
+            return None
+            
+        # Check expiry but don't delete/commit side-effects in a GET (optional) check
+        if datetime.utcnow() - user_session.last_active > timedelta(days=SESSION_EXPIRE_DAYS):
+            return None
+            
+        return user
+    except Exception:
+        return None

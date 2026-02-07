@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import models, database 
 from routers import auth, events, departments, users, superadmin, holidays, issues, tags, analytics
 from utils.logger import LogMiddleware
-from utils.snapshot_engine import SnapshotEngine # NEW
+from utils.snapshot_engine import SnapshotEngine
+from middleware import ContextMiddleware # <--- NEW IMPORT
 
 # Background Task Loop
 async def run_scheduler():
@@ -14,10 +15,7 @@ async def run_scheduler():
     print("⏳ Scheduler started: Snapshots will run every 60 minutes.")
     
     while True:
-        # Wait 60 minutes (3600 seconds)
-        # We wait first so we don't clear the DB immediately on restart
         await asyncio.sleep(3600) 
-        
         try:
             snapshot_engine.take_hourly_snapshot()
         except Exception as e:
@@ -27,17 +25,15 @@ async def run_scheduler():
 async def lifespan(app: FastAPI):
     print("Startup: Creating database tables...")
     database.create_db_and_tables()
-    
-    # Start Scheduler in Background
     asyncio.create_task(run_scheduler())
-    
     yield
     print("Shutdown: Cleaning up...")
 
 app = FastAPI(lifespan=lifespan)
 
-# Add Logger FIRST
+# Middlewares
 app.add_middleware(LogMiddleware)
+app.add_middleware(ContextMiddleware) # <--- REGISTERED HERE
 
 origins = [
     "http://localhost:3000",
@@ -52,6 +48,7 @@ origins = [
     "*"
 ]
 
+# Note: Ideally replace "*" with specific origins for security, especially with credentials
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
