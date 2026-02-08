@@ -1,204 +1,184 @@
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlmodel import Session, select, or_
 from typing import List, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select 
-from dateutil.rrule import rrulestr
-from pydantic import BaseModel
 
 from database import get_session
-from models import Event, EventCreate, User, Tag
+from models import (
+    EventMaster, EventInstance, EventCreate, 
+    User, EventScope, EventStatus, Role, Company
+)
 from security import get_current_user
+from utils.recurrence import expand_master_to_instances
 
 router = APIRouter()
 
-# Schema for Updating (Optional fields)
-class EventUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    goal: Optional[str] = None
-    target_audience: Optional[str] = None
-    organizer: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    is_all_day: Optional[bool] = None
-    status: Optional[str] = None
-    rejection_reason: Optional[str] = None
-    recurrence_rule: Optional[str] = None
-    department_id: Optional[int] = None
+# --- 1. CREATE (The "Master" Logic) ---
 
-# --- HELPER: Promote Tags to Active ---
-def promote_tags(session: Session, company_id: int, text_list: Optional[str], category: str):
-    if not text_list:
-        return
-    # Split comma separated tags (handling both Persian and English comma)
-    items = [t.strip() for t in text_list.replace("،", ",").split(",") if t.strip()]
-    
-    for item in items:
-        # Find the tag
-        tag = session.exec(
-            select(Tag).where(
-                Tag.company_id == company_id,
-                Tag.text == item, 
-                Tag.category == category
-            )
-        ).first()
-        
-        # If found and pending, upgrade it
-        if tag and tag.status == "pending":
-            tag.status = "active"
-            session.add(tag)
-
-# 1. GET ALL EVENTS
-@router.get("/", response_model=List[Event])
-def read_events(
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
-    if not start_date:
-        start_date = datetime.now() - timedelta(days=30)
-    if not end_date:
-        end_date = datetime.now() + timedelta(days=60)
-
-    # Base Filter: Company & Date Range
-    statement = select(Event).where(
-        Event.company_id == current_user.company_id,
-        Event.recurrence_rule == None,
-        Event.start_time >= start_date,
-        Event.start_time <= end_date
-    )
-
-    # Visibility Logic
-    if current_user.role == "viewer":
-        statement = statement.where(Event.status == "approved")
-    elif current_user.role in ["manager", "superadmin", "evaluator"]:
-        statement = statement.where(
-            (Event.status == "approved") | (Event.status == "pending")
-        )
-    elif current_user.role == "proposer":
-        statement = statement.where(
-            (Event.status == "approved") |
-            (Event.proposer_id == current_user.id)
-        )
-
-    normal_events = session.exec(statement).all()
-
-    # Fetch Recurring Masters
-    statement_rec = select(Event).where(
-        Event.company_id == current_user.company_id,
-        Event.recurrence_rule != None
-    )
-    
-    if current_user.role == "viewer":
-        statement_rec = statement_rec.where(Event.status == "approved")
-    elif current_user.role in ["manager", "superadmin", "evaluator"]:
-        statement_rec = statement_rec.where((Event.status == "approved") | (Event.status == "pending"))
-    elif current_user.role == "proposer":
-        statement_rec = statement_rec.where((Event.status == "approved") | (Event.proposer_id == current_user.id))
-
-    recurring_masters = session.exec(statement_rec).all()
-    expanded_events = list(normal_events)
-
-    for master in recurring_masters:
-        try:
-            rule = rrulestr(master.recurrence_rule, dtstart=master.start_time)
-            instances = rule.between(start_date, end_date, inc=True)
-            for dt in instances:
-                duration = master.end_time - master.start_time
-                instance = master.model_copy()
-                instance.start_time = dt
-                instance.end_time = dt + duration
-                expanded_events.append(instance)
-        except Exception as e:
-            continue
-
-    return expanded_events
-
-# 2. CREATE EVENT
-@router.post("/", response_model=Event)
+@router.post("/", response_model=EventMaster)
 def create_event(
+    request: Request,
     event_data: EventCreate, 
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    initial_status = "approved" if current_user.role in ["manager", "evaluator", "superadmin"] else "pending"
-
-    new_event = Event.model_validate(
-        event_data, 
-        update={
-            "proposer_id": current_user.id,
-            "company_id": current_user.company_id,
-            "status": initial_status,
-            "department_id": event_data.department_id or current_user.department_id
-        }
-    )
+    """
+    Creates an Event Master (Rule) and expands it into Instances.
+    """
+    # 1. Context & Permission Check
+    company_id = request.state.company_id
+    role = request.state.role
     
-    session.add(new_event)
+    # If standard user, force company_id from context
+    if not current_user.is_superadmin:
+        if not company_id:
+            raise HTTPException(400, "Company Context Header (X-Company-ID) required")
+        
+        # Enforce Scope
+        event_data.company_id = company_id
+        # scope is forced to COMPANY for non-admins
+        
+    # 2. Create Master Record
+    master = EventMaster.from_orm(event_data)
+    master.proposer_id = current_user.id
+    master.company_id = company_id # Ensure linkage
     
-    # If auto-approved, promote tags immediately
-    if initial_status == "approved":
-        promote_tags(session, current_user.company_id, new_event.goal, "goal")
-        promote_tags(session, current_user.company_id, new_event.target_audience, "audience")
-        promote_tags(session, current_user.company_id, new_event.organizer, "organizer")
-
+    # Set Initial Status based on Role
+    if role == Role.MANAGER:
+        master.status = EventStatus.APPROVED
+        master.is_locked = True # Auto-lock manager events
+    else:
+        master.status = EventStatus.PENDING
+    
+    session.add(master)
     session.commit()
-    session.refresh(new_event)
-    return new_event
+    session.refresh(master)
+    
+    # 3. Trigger Recurrence Expansion (The Engine)
+    # This generates the instances in the 'EventInstance' table
+    expand_master_to_instances(session, master)
+    session.commit()
+    
+    return master
 
-# 3. UPDATE EVENT
-@router.patch("/{event_id}", response_model=Event)
-def update_event(
-    event_id: int,
-    event_data: EventUpdate,
+# --- 2. READ (The "Instance" Cache) ---
+
+@router.get("/", response_model=List[EventInstance])
+def read_events(
+    request: Request,
+    start: datetime,
+    end: datetime,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    event = session.get(Event, event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="رویداد یافت نشد")
-
-    # Permission Check
-    is_owner = event.proposer_id == current_user.id
-    is_manager = current_user.role in ["manager", "superadmin"]
+    """
+    Reads from the EventInstance cache. 
+    Ultra-fast range query.
+    """
+    company_id = request.state.company_id
     
-    if not (is_owner or is_manager):
-        raise HTTPException(status_code=403, detail="شما اجازه ویرایش این رویداد را ندارید")
+    if not company_id and not current_user.is_superadmin:
+        raise HTTPException(400, "Context required")
 
-    hero_data = event_data.model_dump(exclude_unset=True)
-    for key, value in hero_data.items():
-        setattr(event, key, value)
-
-    session.add(event)
+    # Query Instances directly
+    # This is O(1) complexity relative to recurrence rules
+    query = select(EventInstance).where(
+        EventInstance.start_time >= start,
+        EventInstance.start_time <= end
+    )
     
-    # --- TAG PROMOTION LOGIC ---
-    # If status is changing to approved (or is already approved and we edited fields), check tags
-    if event.status == "approved":
-        promote_tags(session, event.company_id, event.goal, "goal")
-        promote_tags(session, event.company_id, event.target_audience, "audience")
-        promote_tags(session, event.company_id, event.organizer, "organizer")
+    # Filter by Context
+    if company_id:
+        query = query.where(EventInstance.company_id == company_id)
+        
+    # Order by time
+    query = query.order_by(EventInstance.start_time)
+    
+    events = session.exec(query).all()
+    return events
 
+# --- 3. UPDATE (The "Locking" Logic) ---
+
+@router.patch("/{event_id}", response_model=EventMaster)
+def update_event(
+    event_id: int,
+    request: Request,
+    event_update: dict, # Using dict to handle partial updates flexibly
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Fetch Master
+    master = session.get(EventMaster, event_id)
+    if not master:
+        raise HTTPException(404, "Event not found")
+        
+    role = request.state.role
+    
+    # 2. Permission Check
+    if master.proposer_id != current_user.id and role not in [Role.MANAGER, Role.EVALUATOR]:
+        raise HTTPException(403, "Not authorized to edit this event")
+
+    # 3. Locking Logic
+    if master.is_locked:
+        # Only Manager can unlock or edit a locked event
+        if role != Role.MANAGER:
+            raise HTTPException(403, "Event is Locked. Ask a Manager to unlock it.")
+            
+        # If Manager is explicitly unlocking
+        if event_update.get("is_locked") is False:
+            master.is_locked = False
+    
+    # 4. Apply Updates
+    for key, value in event_update.items():
+        if hasattr(master, key):
+            setattr(master, key, value)
+            
+    # 5. Logic: If critical fields changed, reset status & re-expand
+    critical_fields = ["start_time", "end_time", "recurrence_rule"]
+    needs_reexpansion = any(k in event_update for k in critical_fields)
+    
+    if needs_reexpansion:
+        # If non-manager edited it, reset to PENDING
+        if role != Role.MANAGER:
+            master.status = EventStatus.PENDING
+            master.is_locked = False
+            
+        session.add(master)
+        session.commit() # Save Master first
+        
+        # Regenerate Instances
+        expand_master_to_instances(session, master, clear_existing=True)
+    else:
+        session.add(master)
+    
     session.commit()
-    session.refresh(event)
-    return event
+    session.refresh(master)
+    return master
 
-# 4. DELETE EVENT
 @router.delete("/{event_id}")
 def delete_event(
     event_id: int,
+    request: Request,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    event = session.get(Event, event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="رویداد یافت نشد")
-
-    is_owner = event.proposer_id == current_user.id
-    is_manager = current_user.role in ["manager", "superadmin"]
-    
-    if not (is_owner or is_manager):
-        raise HTTPException(status_code=403, detail="شما اجازه حذف این رویداد را ندارید")
-
-    session.delete(event)
+    master = session.get(EventMaster, event_id)
+    if not master:
+        raise HTTPException(404, "Event not found")
+        
+    role = request.state.role
+    if master.proposer_id != current_user.id and role != Role.MANAGER:
+        raise HTTPException(403, "Not authorized")
+        
+    if master.is_locked and role != Role.MANAGER:
+        raise HTTPException(403, "Event is locked")
+        
+    # Cascade delete is handled by DB FKs usually, but we explicit here for safety
+    # Delete instances first
+    instances = session.exec(select(EventInstance).where(EventInstance.master_id == master.id)).all()
+    for i in instances:
+        session.delete(i)
+        
+    session.delete(master)
     session.commit()
     return {"ok": True}
