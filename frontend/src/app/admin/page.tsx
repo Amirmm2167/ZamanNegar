@@ -12,28 +12,16 @@ import AdminIssues from "@/components/admin/AdminIssues"; // NEW
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("companies");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  useEffect(() => {
-    const role = localStorage.getItem("role");
-    if (role !== "superadmin") router.push("/login");
-    else setIsAuthenticated(true);
-  }, [router]);
+  
 
   const handleLogout = () => {
     localStorage.clear();
     router.push("/login");
   };
 
-  if (!isAuthenticated) return null;
-
   return (
     <div className="flex h-screen text-gray-200" dir="rtl">
-      <AdminSidebar 
-        activeTab={activeTab} 
-        onChangeTab={setActiveTab} 
-        onLogout={handleLogout} 
-      />
+      <AdminSidebar/>
       
       <main className="flex-1 p-8 overflow-y-auto custom-scrollbar">
         <div className="max-w-7xl mx-auto">

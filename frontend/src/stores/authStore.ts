@@ -29,8 +29,11 @@ export const useAuthStore = create<AuthState>()(
 
       currentRole: () => {
         const { activeCompanyId, availableContexts, user } = get();
-        // If Superadmin and no company selected, return 'superadmin' context
-        if (user?.is_superadmin && activeCompanyId === null) return 'superadmin';
+        if (user?.is_superadmin) {
+             // If Admin is viewing a specific company, they are a "Manager" of it
+             if (activeCompanyId) return 'manager';
+             return 'superadmin';
+        }
         
         if (!activeCompanyId) return null;
         const context = availableContexts.find(c => c.company_id === activeCompanyId);
@@ -38,8 +41,6 @@ export const useAuthStore = create<AuthState>()(
       },
 
       login: (data: LoginResponse) => {
-        // Auto-select first company IF available. 
-        // If not available (Superadmin case), leave as null.
         const defaultCompanyId = data.available_contexts.length > 0 
           ? data.available_contexts[0].company_id 
           : null;
@@ -51,7 +52,7 @@ export const useAuthStore = create<AuthState>()(
             id: 0, 
             username: data.username,
             display_name: data.username, 
-            is_superadmin: data.is_superadmin // <--- Use value from response
+            is_superadmin: data.is_superadmin
           },
           availableContexts: data.available_contexts,
           activeCompanyId: defaultCompanyId,
@@ -70,10 +71,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       switchCompany: (companyId: number) => {
-        const { availableContexts } = get();
-        if (availableContexts.some(c => c.company_id === companyId)) {
+        const { availableContexts, user } = get();
+        
+        // Allow if user is Superadmin OR if they have the profile
+        if (user?.is_superadmin || availableContexts.some(c => c.company_id === companyId)) {
           set({ activeCompanyId: companyId });
-          window.location.reload();
+          // Force reload to clear React Query caches
+          setTimeout(() => window.location.reload(), 50); 
         }
       },
 
