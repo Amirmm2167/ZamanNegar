@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON, Enum as SaEnum
+from sqlalchemy import Column, JSON
 from enum import Enum
 import uuid
 
@@ -13,8 +13,8 @@ class Role(str, Enum):
     MANAGER = "manager"
 
 class EventScope(str, Enum):
-    COMPANY = "company"  # Standard event
-    SYSTEM = "system"    # System-wide broadcast
+    COMPANY = "company"
+    SYSTEM = "system"
 
 class EventStatus(str, Enum):
     PENDING = "pending"
@@ -22,22 +22,18 @@ class EventStatus(str, Enum):
     REJECTED = "rejected"
     CANCELLED = "cancelled"
 
-class TagType(str, Enum):
-    GOAL = "goal"
-    AUDIENCE = "audience" 
-    ORGANIZER = "organizer"
-
 class IssueStatus(str, Enum):
     NEW = "new"
     IN_PROGRESS = "in_progress"
     RESOLVED = "resolved"
     CLOSED = "closed"
 
-# --- 1. Identity & Session Models (Unchanged) ---
+# --- 1. Identity & Session Models ---
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
+    email: Optional[str] = Field(default=None, index=True)
     display_name: str
     hashed_password: str
     is_superadmin: bool = Field(default=False)
@@ -46,7 +42,7 @@ class User(SQLModel, table=True):
     profiles: List["CompanyProfile"] = Relationship(back_populates="user")
     sessions: List["UserSession"] = Relationship(back_populates="user")
     issues: List["Issue"] = Relationship(back_populates="user")
-    # Updated relationship to point to EventMaster
+    # Relationship to EventMaster (Proposer)
     events_proposed: List["EventMaster"] = Relationship(back_populates="proposer")
 
 class UserSession(SQLModel, table=True):
@@ -82,8 +78,6 @@ class Company(SQLModel, table=True):
     
     departments: List["Department"] = Relationship(back_populates="company")
     profiles: List["CompanyProfile"] = Relationship(back_populates="company")
-    
-    # Relationships to Events
     event_masters: List["EventMaster"] = Relationship(back_populates="company")
     event_instances: List["EventInstance"] = Relationship(back_populates="company")
 
@@ -97,88 +91,73 @@ class Department(SQLModel, table=True):
     company: Optional[Company] = Relationship(back_populates="departments")
     profiles: List["CompanyProfile"] = Relationship(back_populates="department")
 
-# --- 3. The Recurrence Triad (New!) ---
+# --- 3. Recurrence Engine Models ---
 
 class EventMaster(SQLModel, table=True):
-    """
-    The Rule Definition.
-    Stores WHAT the event is and HOW it repeats.
-    """
     id: Optional[int] = Field(default=None, primary_key=True)
-    
-    # Core Details
     title: str
     description: Optional[str] = None
-    goal: Optional[str] = None # Protected field
+    goal: Optional[str] = None
     target_audience: Optional[str] = None
     organizer: Optional[str] = None
     
-    # Recurrence Logic
     is_recurring: bool = False
-    recurrence_rule: Optional[str] = None # RFC 5545 RRULE string
+    recurrence_rule: Optional[str] = None
     
-    # Scope & Broadcasting
     scope: EventScope = Field(default=EventScope.COMPANY)
-    target_rules: Dict[str, Any] = Field(default={}, sa_column=Column(JSON)) 
-    # e.g., {"include_companies": [1, 2]} or {"exclude_companies": [5]}
+    target_rules: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
     
-    # Lifecycle
     status: EventStatus = Field(default=EventStatus.PENDING)
     is_locked: bool = False
     lock_version: int = 0
     rejection_reason: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # Ownership
     proposer_id: int = Field(foreign_key="user.id")
-    company_id: Optional[int] = Field(default=None, foreign_key="company.id") # Null if System Scope
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id")
     department_id: Optional[int] = Field(default=None, foreign_key="department.id")
     
-    # Relationships
     proposer: User = Relationship(back_populates="events_proposed")
     company: Optional[Company] = Relationship(back_populates="event_masters")
     instances: List["EventInstance"] = Relationship(back_populates="master")
     exceptions: List["EventException"] = Relationship(back_populates="master")
 
 class EventInstance(SQLModel, table=True):
-    """
-    The Read Model.
-    Stores actual occurrences for fast querying.
-    """
     id: Optional[int] = Field(default=None, primary_key=True)
     master_id: int = Field(foreign_key="eventmaster.id")
     
-    # Denormalized Fields for Query Speed
     title: str 
     start_time: datetime = Field(index=True)
     end_time: datetime = Field(index=True)
     is_all_day: bool = False
-    
     status: EventStatus = Field(default=EventStatus.PENDING)
     
-    # Link to original date (if moved)
-    original_start_time: Optional[datetime] = None 
-    
-    # Ownership (Denormalized for efficient filtering)
     company_id: int = Field(foreign_key="company.id", index=True)
     department_id: Optional[int] = Field(default=None, foreign_key="department.id")
     
-    # Relationships
     master: EventMaster = Relationship(back_populates="instances")
     company: Company = Relationship(back_populates="event_instances")
 
 class EventException(SQLModel, table=True):
-    """
-    Stores overrides to the rule.
-    """
     id: Optional[int] = Field(default=None, primary_key=True)
     master_id: int = Field(foreign_key="eventmaster.id")
-    
-    original_date: datetime # The date calculated by RRULE
-    new_date: Optional[datetime] = None # If moved
+    original_date: datetime
+    new_date: Optional[datetime] = None
     is_cancelled: bool = False
-    
     master: EventMaster = Relationship(back_populates="exceptions")
+
+class EventCreate(SQLModel):
+    title: str
+    description: Optional[str] = None
+    goal: Optional[str] = None
+    target_audience: Optional[str] = None
+    organizer: Optional[str] = None
+    start_time: datetime
+    end_time: datetime
+    is_all_day: bool = False
+    recurrence_rule: Optional[str] = None
+    company_id: Optional[int] = None
+    department_id: Optional[int] = None
 
 # --- 4. Supporting Models ---
 
@@ -194,7 +173,6 @@ class Issue(SQLModel, table=True):
     description: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
     status: IssueStatus = Field(default=IssueStatus.NEW)
-    
     user_id: int = Field(foreign_key="user.id")
     user: User = Relationship(back_populates="issues")
 

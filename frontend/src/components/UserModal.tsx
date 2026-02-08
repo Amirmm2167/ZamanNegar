@@ -32,7 +32,6 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // Form State
   const [editingId, setEditingId] = useState<number | null>(null);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -142,26 +141,14 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
     }
   };
 
-  // Close on Escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" dir="rtl">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
-
-      {/* Modal */}
+      
       <div className="relative w-full max-w-2xl bg-[#18181b]/95 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
         
-        {/* Header */}
         <div className="px-6 py-5 border-b border-white/5 flex justify-between items-center bg-white/5">
           <h3 className="text-xl font-bold text-white flex items-center gap-2">
             <UserIcon className="text-blue-500" />
@@ -172,10 +159,7 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
-          
-          {/* Form */}
           <form onSubmit={handleSubmit} className="bg-black/20 p-5 rounded-2xl border border-white/5 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
@@ -266,10 +250,8 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
                     </div>
                  </label>
               </div>
-
             </div>
 
-            {/* Form Actions */}
             <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
               {editingId && (
                 <button type="button" onClick={resetForm} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
@@ -287,14 +269,12 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
             </div>
           </form>
 
-          {/* Error Message */}
           {error && (
              <div className="p-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2">
                 <Shield size={16} /> {error}
              </div>
           )}
 
-          {/* List */}
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-gray-400 px-1">لیست کاربران سیستم</h4>
             {loading ? (
@@ -325,7 +305,6 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
                               </div>
                             </div>
                           </div>
-                          
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => handleEdit(u)} className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors">
                               <Edit2 size={16} />
@@ -340,7 +319,6 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
                 </div>
             )}
           </div>
-
         </div>
       </div>
     </div>
