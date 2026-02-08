@@ -5,7 +5,6 @@ export interface User {
   username: string;
   display_name: string;
   is_superadmin: boolean;
-  // Email removed as requested
 }
 
 export interface CompanyProfile {
@@ -23,23 +22,31 @@ export interface LoginResponse {
   available_contexts: CompanyProfile[];
 }
 
-export interface CalendarEvent {
-  id: number;
+// --- NEW: Read Model (The Instance) ---
+export interface EventInstance {
+  id: number;           // This is the Instance ID
+  master_id: number;    // Reference to the Rule
+  title: string;
+  start_time: string;   // ISO String
+  end_time: string;     // ISO String
+  is_all_day: boolean;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  company_id: number;
+  department_id?: number;
+}
+
+// --- NEW: Write Model (The Master) ---
+export interface EventCreatePayload {
   title: string;
   description?: string;
-  goal?: string; // Hidden for Viewers
+  goal?: string;
   target_audience?: string;
-  organizer?: string;
   start_time: string;
   end_time: string;
   is_all_day: boolean;
-  recurrence_rule?: string;
-  status: 'pending' | 'approved' | 'rejected';
-  rejection_reason?: string;
+  recurrence_rule?: string | null; // e.g., "FREQ=WEEKLY"
   company_id: number;
   department_id?: number;
-  proposer_id: number;
-  is_locked?: boolean; // New field for Locking Logic
 }
 
 export interface Department {
