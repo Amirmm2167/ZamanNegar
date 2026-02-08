@@ -97,6 +97,31 @@ def read_events(
     events = session.exec(query).all()
     return events
 
+@router.get("/{event_id}", response_model=EventMaster)
+def read_event_detail(
+    event_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get full details of an Event Master.
+    Used when opening the Edit Modal.
+    """
+    master = session.get(EventMaster, event_id)
+    if not master:
+        raise HTTPException(404, "Event not found")
+        
+    # Permission Check
+    # Users can view events if they are in the same company
+    company_id = request.state.company_id
+    
+    if not current_user.is_superadmin:
+        if master.scope == EventScope.COMPANY and master.company_id != company_id:
+             raise HTTPException(403, "Access denied")
+             
+    return master
+
 # --- 3. UPDATE (The "Locking" Logic) ---
 
 @router.patch("/{event_id}", response_model=EventMaster)

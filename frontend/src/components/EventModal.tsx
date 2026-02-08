@@ -17,7 +17,7 @@ import {
   Ban,
   CalendarDays,
   ChevronDown,
-  Building2 // Added icon
+  Building2
 } from "lucide-react";
 import api from "@/lib/api";
 import clsx from "clsx";
@@ -25,8 +25,8 @@ import { toPersianDigits } from "@/lib/utils";
 import TimePicker from "@/components/TimePicker";
 import DatePicker from "@/components/DatePicker";
 import MultiTagInput from "@/components/MultiTagInput";
-import { Department, EventInstance, EventCreatePayload } from "@/types"; // Updated imports
-import { useAuthStore } from "@/stores/authStore"; // <--- NEW ARCHITECTURE
+import { Department, EventInstance, EventCreatePayload } from "@/types"; 
+import { useAuthStore } from "@/stores/authStore"; 
 
 interface EventModalProps {
   isOpen: boolean;
@@ -35,7 +35,7 @@ interface EventModalProps {
   initialDate?: Date;
   initialStartTime?: string;
   initialEndTime?: string;
-  eventToEdit?: EventInstance | null; // Using new type
+  eventToEdit?: EventInstance | null; 
   currentUserId: number;
 }
 
@@ -51,12 +51,12 @@ export default function EventModal({
   eventToEdit,
   currentUserId,
 }: EventModalProps) {
-  // --- STORE INTEGRATION ---
-  const { currentRole, activeCompanyId } = useAuthStore(); // Get data from Store
+  const { currentRole, activeCompanyId } = useAuthStore(); 
   const userRole = currentRole() || "viewer";
 
   const [activeTab, setActiveTab] = useState<TabType>("general");
   const [loading, setLoading] = useState(false);
+  const [fetchingDetails, setFetchingDetails] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -102,49 +102,82 @@ export default function EventModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose, pickerMode, showStartTimePicker, showEndTimePicker]);
 
-  // --- INITIALIZATION ---
+  // --- INITIALIZATION & FETCHING ---
   useEffect(() => {
     if (isOpen) {
-      // 1. Fetch Departments (if needed)
       if (["manager", "superadmin", "evaluator"].includes(userRole)) {
         fetchDepartments();
       }
 
-      // 2. Permissions Logic (Updated)
+      // Permissions Logic (Frontend Check)
       let editable = true;
       if (eventToEdit) {
         if (userRole === "viewer") editable = false;
         if (userRole === "proposer") {
-           // Note: In new model, we check if eventToEdit.status is approved
-           // Also need to check ownership (eventToEdit.proposer_id not available in Instance view yet, 
-           // usually we pass it or check detail endpoint. For now assuming passed prop is correct)
-           // If we don't have proposer_id in EventInstance, we might need to fetch the Master.
            const isLocked = eventToEdit.status === "approved";
            if (isLocked) editable = false;
         }
       }
       setCanEdit(editable);
 
-      // 3. Populate Form
       if (eventToEdit) {
+        // 1. Initial Populate from Instance (The "Fast" Data)
         setTitle(eventToEdit.title);
-        // Note: Instance might not have full description/goal if we didn't fetch details.
-        // For Phase 2, we assume we might need a separate GET /events/{id} call here
-        // if eventToEdit is just a grid instance. 
-        // For now, we populate what we have.
-        
-        // Date Logic
         const start = new Date(eventToEdit.start_time);
         const end = new Date(eventToEdit.end_time);
         setStartDate(start.toISOString().split("T")[0]);
         setStartTime(start.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
         setEndTime(end.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
         setIsAllDay(eventToEdit.is_all_day);
+        
+        // 2. Fetch Full Details (The "Heavy" Data)
+        // We use master_id to get the rule
+        const fetchDetails = async () => {
+            setFetchingDetails(true);
+            try {
+                // Determine ID to fetch: if eventToEdit has master_id, use it.
+                // If the grid provided an instance, it definitely has master_id.
+                const idToFetch = eventToEdit.master_id;
+                const { data } = await api.get(`/events/${idToFetch}`);
+                
+                // Overwrite with authoritative data
+                setTitle(data.title);
+                setDescription(data.description || "");
+                setGoal(data.goal || "");
+                setTargetAudience(data.target_audience || "");
+                setOrganizer(data.organizer || "");
+                setDepartmentId(data.department_id);
+                
+                // Parse Recurrence
+                if (data.recurrence_rule) {
+                    const rule = data.recurrence_rule;
+                    const freqMatch = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY)/i);
+                    if (freqMatch) setRecurrenceType(freqMatch[1].toLowerCase());
+                    
+                    const countMatch = rule.match(/COUNT=(\d+)/);
+                    if (countMatch) {
+                        setRecurrenceEndMode("count");
+                        setRecurrenceCount(countMatch[1]);
+                    }
+                    
+                    const untilMatch = rule.match(/UNTIL=(\d{8})/);
+                    if (untilMatch) {
+                        setRecurrenceEndMode("date");
+                        const raw = untilMatch[1];
+                        setRecurrenceUntil(`${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch event details", err);
+                setError("خطا در دریافت جزئیات رویداد");
+            } finally {
+                setFetchingDetails(false);
+            }
+        };
+        fetchDetails();
 
-        // TODO: Populate Recurrence/Description from API if missing in Instance
-        // setRecurrenceType(...) 
       } else {
-        // Create New Event
+        // Create Mode
         const targetDate = initialDate || new Date();
         setStartDate(targetDate.toISOString().split("T")[0]);
         setTitle("");
@@ -162,6 +195,7 @@ export default function EventModal({
         setDescription("");
         setActiveTab("general");
         setCanEdit(userRole !== "viewer");
+        setFetchingDetails(false);
       }
       setError("");
     }
@@ -193,12 +227,7 @@ export default function EventModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit) return;
-    
-    // Safety Check for Company ID
-    if (!activeCompanyId) {
-        setError("خطا: سازمان فعال یافت نشد.");
-        return;
-    }
+    if (!activeCompanyId) { setError("خطا: سازمان فعال یافت نشد."); return; }
 
     setLoading(true);
 
@@ -208,7 +237,6 @@ export default function EventModal({
       const startDT = `${startDate}T${sTime}:00`;
       const endDT = `${startDate}T${eTime}:00`;
 
-      // Construct RRULE
       let rrule = null;
       if (recurrenceType !== "none") {
         rrule = `FREQ=${recurrenceType.toUpperCase()}`;
@@ -219,23 +247,23 @@ export default function EventModal({
         }
       }
 
-      // New Payload Structure matching Backend
       const payload: EventCreatePayload = {
         title,
         description,
         goal,
         target_audience: targetAudience,
-        organizer: organizer, // Frontend treats this as string, backend expects string
+        organizer: organizer,
         start_time: startDT,
         end_time: endDT,
         is_all_day: isAllDay,
         recurrence_rule: rrule,
         department_id: departmentId,
-        company_id: activeCompanyId, // <--- INJECTED FROM STORE
+        company_id: activeCompanyId,
       };
 
       if (eventToEdit) {
-        await api.patch(`/events/${eventToEdit.id}`, payload);
+        // UPDATE: Send to master_id to update the rule
+        await api.patch(`/events/${eventToEdit.master_id}`, payload);
       } else {
         await api.post("/events/", payload);
       }
@@ -254,7 +282,7 @@ export default function EventModal({
     if (!eventToEdit || !canEdit || !confirm("آیا از حذف این رویداد اطمینان دارید؟")) return;
     setDeleting(true);
     try {
-      await api.delete(`/events/${eventToEdit.id}`);
+      await api.delete(`/events/${eventToEdit.master_id}`); // Delete Master
       onSuccess();
       onClose();
     } catch (err) {
@@ -267,8 +295,7 @@ export default function EventModal({
   const handleApprove = async () => {
     if (!eventToEdit) return;
     setLoading(true);
-    // Note: This endpoint might need to change to /events/{id}/approve if we want specific logic
-    await api.patch(`/events/${eventToEdit.id}`, { status: "approved", is_locked: true });
+    await api.patch(`/events/${eventToEdit.master_id}`, { status: "approved", is_locked: true });
     onSuccess();
     onClose();
   };
@@ -278,10 +305,10 @@ export default function EventModal({
     const reason = prompt("دلیل رد شدن:");
     if (reason) {
       setLoading(true);
-      await api.patch(`/events/${eventToEdit.id}`, {
+      await api.patch(`/events/${eventToEdit.master_id}`, {
         status: "rejected",
         rejection_reason: reason,
-        is_locked: false // Rejections usually unlock so proposer can fix
+        is_locked: false 
       });
       onSuccess();
       onClose();
@@ -291,10 +318,7 @@ export default function EventModal({
   const getDisplayDate = (isoDate: string) => {
     if (!isoDate) return "";
     return new Date(isoDate).toLocaleDateString("fa-IR", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      weekday: "long",
+      year: "numeric", month: "long", day: "numeric", weekday: "long",
     });
   };
 
@@ -303,10 +327,8 @@ export default function EventModal({
   return (
     <>
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" dir="rtl">
-        {/* Backdrop */}
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
-        {/* Modal Content */}
         <div className="relative w-full max-w-lg bg-[#18181b]/90 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
           
           {/* Header */}
@@ -314,9 +336,7 @@ export default function EventModal({
             <h3 className="text-xl font-bold text-white flex items-center gap-2">
               <CalendarDays className="text-blue-500" />
               {eventToEdit ? "ویرایش رویداد" : "برنامه‌ریزی جدید"}
-              {!canEdit && (
-                <span className="mr-2 text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded border border-red-500/20">فقط مشاهده</span>
-              )}
+              {fetchingDetails && <Loader2 className="animate-spin text-gray-500" size={16} />}
             </h3>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
               <X size={20} />
@@ -357,7 +377,7 @@ export default function EventModal({
               <div className="space-y-2">
                 <label className="text-xs text-gray-400 font-bold block">عنوان رویداد *</label>
                 <input
-                  disabled={!canEdit}
+                  disabled={!canEdit || fetchingDetails}
                   type="text"
                   required
                   value={title}
@@ -375,7 +395,7 @@ export default function EventModal({
                   </label>
                   <div className="relative">
                     <select
-                      disabled={!canEdit}
+                      disabled={!canEdit || fetchingDetails}
                       value={departmentId || ""}
                       onChange={(e) => setDepartmentId(Number(e.target.value))}
                       className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white outline-none focus:border-blue-500/50 appearance-none disabled:opacity-50"
@@ -391,21 +411,19 @@ export default function EventModal({
 
             {/* TAB 2: TIMING */}
             <div className={clsx("space-y-6", activeTab !== "timing" && "hidden")}>
-              {/* ... (Keep existing timing UI exactly as is) ... */}
-              {/* I am preserving your Timing UI structure fully */}
               <label className="flex items-center gap-3 p-3 bg-black/20 border border-white/10 rounded-xl cursor-pointer hover:bg-white/5 transition-colors">
                 <div className={clsx("w-5 h-5 rounded border flex items-center justify-center transition-colors", isAllDay ? "bg-blue-500 border-blue-500" : "border-gray-500")}>
                   {isAllDay && <CheckCircle2 size={12} className="text-white" />}
                 </div>
-                <input disabled={!canEdit} type="checkbox" className="hidden" checked={isAllDay} onChange={(e) => setIsAllDay(e.target.checked)} />
+                <input disabled={!canEdit || fetchingDetails} type="checkbox" className="hidden" checked={isAllDay} onChange={(e) => setIsAllDay(e.target.checked)} />
                 <span className="text-sm text-gray-200">رویداد تمام روز</span>
               </label>
 
               <div className="space-y-2">
                 <label className="text-xs text-gray-400 font-bold">تاریخ برگزاری</label>
                 <div
-                  onClick={() => canEdit && setPickerMode("date")}
-                  className={clsx("w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white cursor-pointer hover:border-blue-500/50 hover:bg-black/60 transition-all flex justify-between items-center", !canEdit && "opacity-50 cursor-not-allowed")}
+                  onClick={() => canEdit && !fetchingDetails && setPickerMode("date")}
+                  className={clsx("w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white cursor-pointer hover:border-blue-500/50 hover:bg-black/60 transition-all flex justify-between items-center", (!canEdit || fetchingDetails) && "opacity-50 cursor-not-allowed")}
                 >
                   <span>{getDisplayDate(startDate) || "انتخاب تاریخ"}</span>
                   <CalendarDays size={18} className="text-gray-500" />
@@ -416,13 +434,13 @@ export default function EventModal({
                 <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1">
                   <div className="space-y-2">
                     <label className="text-xs text-gray-400 font-bold">شروع</label>
-                    <div onClick={() => canEdit && setShowStartTimePicker(true)} className={clsx("w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-center cursor-pointer ltr hover:border-blue-500/50 transition-all", !canEdit && "opacity-50 cursor-not-allowed")}>
+                    <div onClick={() => canEdit && !fetchingDetails && setShowStartTimePicker(true)} className={clsx("w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-center cursor-pointer ltr hover:border-blue-500/50 transition-all", (!canEdit || fetchingDetails) && "opacity-50 cursor-not-allowed")}>
                       {toPersianDigits(startTime)}
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs text-gray-400 font-bold">پایان</label>
-                    <div onClick={() => canEdit && setShowEndTimePicker(true)} className={clsx("w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-center cursor-pointer ltr hover:border-blue-500/50 transition-all", !canEdit && "opacity-50 cursor-not-allowed")}>
+                    <div onClick={() => canEdit && !fetchingDetails && setShowEndTimePicker(true)} className={clsx("w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-center cursor-pointer ltr hover:border-blue-500/50 transition-all", (!canEdit || fetchingDetails) && "opacity-50 cursor-not-allowed")}>
                       {toPersianDigits(endTime)}
                     </div>
                   </div>
@@ -434,18 +452,13 @@ export default function EventModal({
                   <Repeat size={14} /> تکرار رویداد
                 </div>
                 <div className="grid grid-cols-4 gap-2 mb-4">
-                  {[
-                    { id: "none", label: "خیر" },
-                    { id: "daily", label: "روزانه" },
-                    { id: "weekly", label: "هفتگی" },
-                    { id: "monthly", label: "ماهانه" },
-                  ].map((t) => (
+                  {[{ id: "none", label: "خیر" }, { id: "daily", label: "روزانه" }, { id: "weekly", label: "هفتگی" }, { id: "monthly", label: "ماهانه" }].map((t) => (
                     <button
-                      disabled={!canEdit}
+                      disabled={!canEdit || fetchingDetails}
                       key={t.id}
                       type="button"
                       onClick={() => setRecurrenceType(t.id)}
-                      className={clsx("py-2 text-xs rounded-lg border transition-all", recurrenceType === t.id ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/20" : "bg-black/20 border-white/10 text-gray-400 hover:bg-white/5", !canEdit && "opacity-50 cursor-not-allowed")}
+                      className={clsx("py-2 text-xs rounded-lg border transition-all", recurrenceType === t.id ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/20" : "bg-black/20 border-white/10 text-gray-400 hover:bg-white/5", (!canEdit || fetchingDetails) && "opacity-50 cursor-not-allowed")}
                     >
                       {t.label}
                     </button>
@@ -459,22 +472,22 @@ export default function EventModal({
                         <div className={clsx("w-4 h-4 rounded-full border flex items-center justify-center", recurrenceEndMode === "count" ? "border-blue-500" : "border-gray-500")}>
                            {recurrenceEndMode === "count" && <div className="w-2 h-2 rounded-full bg-blue-500" />}
                         </div>
-                        <input disabled={!canEdit} type="radio" className="hidden" checked={recurrenceEndMode === "count"} onChange={() => setRecurrenceEndMode("count")} />
+                        <input disabled={!canEdit || fetchingDetails} type="radio" className="hidden" checked={recurrenceEndMode === "count"} onChange={() => setRecurrenceEndMode("count")} />
                         <span className="text-xs text-gray-300 group-hover:text-white transition-colors">تعداد دفعات</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer group">
                          <div className={clsx("w-4 h-4 rounded-full border flex items-center justify-center", recurrenceEndMode === "date" ? "border-blue-500" : "border-gray-500")}>
                            {recurrenceEndMode === "date" && <div className="w-2 h-2 rounded-full bg-blue-500" />}
                         </div>
-                        <input disabled={!canEdit} type="radio" className="hidden" checked={recurrenceEndMode === "date"} onChange={() => setRecurrenceEndMode("date")} />
+                        <input disabled={!canEdit || fetchingDetails} type="radio" className="hidden" checked={recurrenceEndMode === "date"} onChange={() => setRecurrenceEndMode("date")} />
                         <span className="text-xs text-gray-300 group-hover:text-white transition-colors">تا تاریخ مشخص</span>
                       </label>
                     </div>
                     
                     {recurrenceEndMode === "count" ? (
-                      <input disabled={!canEdit} type="number" value={recurrenceCount} onChange={(e) => setRecurrenceCount(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white text-sm focus:border-blue-500/50 outline-none" placeholder="مثلا: ۱۰ بار" />
+                      <input disabled={!canEdit || fetchingDetails} type="number" value={recurrenceCount} onChange={(e) => setRecurrenceCount(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white text-sm focus:border-blue-500/50 outline-none" placeholder="مثلا: ۱۰ بار" />
                     ) : (
-                      <div onClick={() => canEdit && setPickerMode("until")} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm cursor-pointer hover:border-blue-500/50 transition-colors">
+                      <div onClick={() => canEdit && !fetchingDetails && setPickerMode("until")} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm cursor-pointer hover:border-blue-500/50 transition-colors">
                         {recurrenceUntil ? getDisplayDate(recurrenceUntil) : "انتخاب تاریخ پایان تکرار"}
                       </div>
                     )}
@@ -509,7 +522,7 @@ export default function EventModal({
               )}
               <div className="space-y-2">
                 <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><AlignLeft size={14} /> توضیحات</label>
-                <textarea disabled={!canEdit} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white outline-none resize-none focus:border-blue-500/50 disabled:opacity-50" placeholder="توضیحات تکمیلی..." />
+                <textarea disabled={!canEdit || fetchingDetails} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white outline-none resize-none focus:border-blue-500/50 disabled:opacity-50" placeholder="توضیحات تکمیلی..." />
               </div>
             </div>
           </form>
@@ -532,7 +545,7 @@ export default function EventModal({
             <div className="flex items-center gap-3">
               <button onClick={onClose} className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors border border-transparent">{canEdit ? "انصراف" : "بستن"}</button>
               {canEdit && (
-                <button onClick={handleSubmit} disabled={loading || deleting} className={clsx("px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-all flex items-center gap-2 hover:scale-105 active:scale-95", loading && "opacity-50 cursor-not-allowed")}>
+                <button onClick={handleSubmit} disabled={loading || deleting || fetchingDetails} className={clsx("px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-all flex items-center gap-2 hover:scale-105 active:scale-95", (loading || fetchingDetails) && "opacity-50 cursor-not-allowed")}>
                   {loading ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={18} />}
                   <span>{loading ? "در حال ثبت..." : eventToEdit ? "ذخیره تغییرات" : "ثبت نهایی"}</span>
                 </button>
