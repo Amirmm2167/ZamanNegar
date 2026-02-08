@@ -33,7 +33,6 @@ class IssueStatus(str, Enum):
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
-    email: Optional[str] = Field(default=None, index=True)
     display_name: str
     hashed_password: str
     is_superadmin: bool = Field(default=False)
