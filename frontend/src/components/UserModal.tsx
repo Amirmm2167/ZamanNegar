@@ -1,292 +1,149 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Plus, Trash2, Edit2, Check, User as UserIcon } from "lucide-react";
+import { useState, Fragment } from "react";
+import { Dialog, Transition } from "@headlessui/react";
+import { X, User, Lock, Loader2, Shield } from "lucide-react";
 import api from "@/lib/api";
-
-interface UserData {
-  id: number;
-  username: string;
-  display_name: string;
-  role: string;
-  department_id?: number | null;
-}
-
-interface Department {
-  id: number;
-  name: string;
-}
 
 interface UserModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess: () => void;
 }
 
-export default function UserModal({ isOpen, onClose }: UserModalProps) {
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps) {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  // Form State
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("viewer");
-  const [departmentId, setDepartmentId] = useState<number | null>(null);
-
-  // Roles Definition
-  const ROLES = [
-    { value: "manager", label: "مدیر" },
-    { value: "evaluator", label: "ارزیاب" },
-    { value: "proposer", label: "پیشنهاد دهنده" },
-    { value: "viewer", label: "مشاهده‌گر" },
-  ];
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchData();
-      resetForm();
-    }
-  }, [isOpen]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [usersRes, deptsRes] = await Promise.all([
-        api.get<UserData[]>("/users/"),
-        api.get<Department[]>("/departments/")
-      ]);
-      setUsers(usersRes.data);
-      setDepartments(deptsRes.data);
-    } catch (err) {
-      console.error(err);
-      setError("خطا در دریافت اطلاعات");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetForm = () => {
-    setEditingId(null);
-    setUsername("");
-    setDisplayName("");
-    setPassword("");
-    setRole("viewer");
-    setDepartmentId(null);
-    setError("");
-  };
+  const [formData, setFormData] = useState({
+    username: "",
+    display_name: "",
+    password: "",
+    is_superadmin: false
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !displayName) return;
-
-    // Validate password on create
-    if (!editingId && !password) {
-      setError("رمز عبور برای کاربر جدید الزامی است");
-      return;
-    }
-
+    setLoading(true);
     try {
-      setLoading(true);
-      const payload: any = { 
-        username, 
-        display_name: displayName, 
-        role, 
-        department_id: departmentId 
-      };
-      
-      // Only send password if it's set (for updates) or required (for create)
-      if (password) payload.password = password;
-
-      if (editingId) {
-        // Update
-        // Remove username from payload as we usually don't allow changing IDs/Usernames easily
-        delete payload.username; 
-        await api.patch(`/users/${editingId}`, payload);
-      } else {
-        // Create
-        await api.post("/users/", payload);
-      }
-      await fetchData();
-      resetForm();
-    } catch (err: any) {
-      console.error(err);
-      setError(err.response?.data?.detail || "خطا در ذخیره کاربر");
+      // POST to /auth/signup or /users/ depending on your API structure for admins
+      // Assuming a dedicated create user endpoint for admins exists
+      await api.post("/users/", {
+         ...formData,
+         // email is removed as per requirement
+      });
+      onSuccess();
+      setFormData({ username: "", display_name: "", password: "", is_superadmin: false }); // Reset
+    } catch (error) {
+      console.error(error);
+      alert("خطا در ایجاد کاربر");
     } finally {
       setLoading(false);
     }
   };
-
-  const handleEdit = (user: UserData) => {
-    setEditingId(user.id);
-    setUsername(user.username);
-    setDisplayName(user.display_name);
-    setPassword(""); // Don't fill password
-    setRole(user.role);
-    setDepartmentId(user.department_id || null);
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm("آیا از حذف این کاربر اطمینان دارید؟")) return;
-    try {
-      setLoading(true);
-      await api.delete(`/users/${id}`);
-      await fetchData();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "خطا در حذف کاربر");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-2xl bg-[#252526] border border-gray-700 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" dir="rtl">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-[#2d2d2e]">
-          <h3 className="text-lg font-bold text-gray-100">مدیریت کاربران</h3>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-white rounded-full">
-            <X size={20} />
-          </button>
-        </div>
+    <Transition appear show={isOpen} as={Fragment}>
+      <Dialog as="div" className="relative z-[100]" onClose={onClose} dir="rtl">
+        <Transition.Child
+          as={Fragment}
+          enter="ease-out duration-300"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+        </Transition.Child>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
-          
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="bg-[#1e1e1e] p-4 rounded-lg border border-gray-700 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-[#1a1d24] border border-white/10 p-6 shadow-2xl transition-all">
               
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">نام کاربری (انگلیسی)</label>
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={!!editingId} // Cannot change username when editing
-                  className="w-full px-3 py-2 bg-[#2d2d2e] border border-gray-600 rounded text-white focus:border-blue-500 outline-none disabled:opacity-50"
-                  placeholder="admin"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">نام نمایشی (فارسی)</label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#2d2d2e] border border-gray-600 rounded text-white focus:border-blue-500 outline-none"
-                  placeholder="علی حسینی"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">
-                  {editingId ? "رمز عبور جدید (اختیاری)" : "رمز عبور"}
-                </label>
-                <input
-                  type="password"
-                  dir="ltr"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#2d2d2e] border border-gray-600 rounded text-white focus:border-blue-500 outline-none"
-                  placeholder="******"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">نقش کاربری</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#2d2d2e] border border-gray-600 rounded text-white focus:border-blue-500 outline-none"
-                >
-                  {ROLES.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="text-xs text-gray-500 mb-1 block">دپارتمان</label>
-                <select
-                  value={departmentId || ""}
-                  onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : null)}
-                  className="w-full px-3 py-2 bg-[#2d2d2e] border border-gray-600 rounded text-white focus:border-blue-500 outline-none"
-                >
-                  <option value="">(بدون دپارتمان)</option>
-                  {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
-
-            </div>
-
-            {/* Buttons */}
-            <div className="flex justify-end gap-2 pt-2">
-              {editingId && (
-                <button type="button" onClick={resetForm} className="px-3 py-2 text-sm text-gray-400 hover:text-white">
-                  لغو
+              <div className="flex items-center justify-between mb-6">
+                <Dialog.Title className="text-xl font-bold text-white">
+                  تعریف کاربر جدید
+                </Dialog.Title>
+                <button onClick={onClose} className="text-gray-400 hover:text-white">
+                  <X size={20} />
                 </button>
-              )}
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50"
-              >
-                {editingId ? <Check size={16} /> : <Plus size={16} />}
-                <span>{editingId ? "ذخیره تغییرات" : "افزودن کاربر"}</span>
-              </button>
-            </div>
-          </form>
+              </div>
 
-          {/* Error Message */}
-          {error && <div className="text-red-400 text-sm bg-red-900/20 p-2 rounded">{error}</div>}
-
-          {/* List */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-bold text-gray-400">لیست کاربران</h4>
-            {users.map((u) => {
-              const deptName = departments.find(d => d.id === u.department_id)?.name || "---";
-              const roleLabel = ROLES.find(r => r.value === u.role)?.label || u.role;
-
-              return (
-                <div key={u.id} className="flex items-center justify-between p-3 bg-[#1e1e1e] border border-gray-700 rounded-lg group hover:border-gray-600 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#2d2d2e] rounded-full text-blue-400">
-                      <UserIcon size={18} />
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-200">{u.display_name} <span className="text-xs text-gray-500">({u.username})</span></div>
-                      <div className="text-xs text-gray-500 flex gap-3">
-                        <span>نقش: {roleLabel}</span>
-                        <span>دپارتمان: {deptName}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleEdit(u)} className="p-1.5 text-blue-400 hover:bg-blue-900/30 rounded">
-                      <Edit2 size={16} />
-                    </button>
-                    <button onClick={() => handleDelete(u.id)} className="p-1.5 text-red-400 hover:bg-red-900/30 rounded">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                
+                <div className="space-y-1">
+                   <label className="text-xs text-gray-400">نام نمایشی (فارسی)</label>
+                   <input
+                     type="text"
+                     required
+                     value={formData.display_name}
+                     onChange={(e) => setFormData({...formData, display_name: e.target.value})}
+                     className="w-full bg-[#0a0c10] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none"
+                     placeholder="مثلا: علی محمدی"
+                   />
                 </div>
-              );
-            })}
-          </div>
 
+                <div className="space-y-1">
+                   <label className="text-xs text-gray-400">نام کاربری (انگلیسی)</label>
+                   <div className="relative">
+                     <User className="absolute left-3 top-3 text-gray-500" size={18} />
+                     <input
+                       type="text"
+                       required
+                       value={formData.username}
+                       onChange={(e) => setFormData({...formData, username: e.target.value})}
+                       className="w-full bg-[#0a0c10] border border-white/10 rounded-xl px-4 py-3 pl-10 text-white focus:border-blue-500 outline-none text-left dir-ltr font-mono"
+                       placeholder="username"
+                     />
+                   </div>
+                </div>
+
+                <div className="space-y-1">
+                   <label className="text-xs text-gray-400">رمز عبور</label>
+                   <div className="relative">
+                     <Lock className="absolute left-3 top-3 text-gray-500" size={18} />
+                     <input
+                       type="password"
+                       required
+                       value={formData.password}
+                       onChange={(e) => setFormData({...formData, password: e.target.value})}
+                       className="w-full bg-[#0a0c10] border border-white/10 rounded-xl px-4 py-3 pl-10 text-white focus:border-blue-500 outline-none text-left dir-ltr"
+                       placeholder="••••••••"
+                     />
+                   </div>
+                </div>
+
+                <div className="pt-2">
+                   <label className="flex items-center gap-3 p-3 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        className="w-5 h-5 rounded border-gray-600 text-blue-600 bg-transparent focus:ring-0 focus:ring-offset-0"
+                        checked={formData.is_superadmin}
+                        onChange={(e) => setFormData({...formData, is_superadmin: e.target.checked})}
+                      />
+                      <div className="flex flex-col">
+                         <span className="text-sm font-bold text-white flex items-center gap-2">
+                            <Shield size={14} className="text-purple-400" />
+                            دسترسی مدیر ارشد (Superadmin)
+                         </span>
+                         <span className="text-xs text-gray-500 mt-0.5">دسترسی کامل به تمام تنظیمات سیستم</span>
+                      </div>
+                   </label>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-600/20 mt-4 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 className="animate-spin" /> : "ایجاد کاربر"}
+                </button>
+
+              </form>
+
+            </Dialog.Panel>
+          </div>
         </div>
-      </div>
-    </div>
+      </Dialog>
+    </Transition>
   );
 }
