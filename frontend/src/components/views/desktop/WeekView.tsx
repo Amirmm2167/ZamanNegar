@@ -1,19 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { EventInstance, Department } from "@/types"; // <--- CHANGED
+import { EventInstance, Department } from "@/types"; 
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
 
+// --- NEW: Define the combined type for Layout + Data ---
+interface VisualEvent extends EventInstance {
+  startPercent: number;
+  sizePercent: number;
+  totalLanes: number;
+  laneIndex: number;
+}
+
 interface WeekViewProps {
   currentDate: Date;
-  events: EventInstance[]; // <--- CHANGED
+  events: EventInstance[];
   holidays: any[];
   departments: Department[];
   hiddenDeptIds: number[];
-  onEventClick: (e: EventInstance) => void; // <--- CHANGED
+  onEventClick: (e: EventInstance) => void;
   onEventLongPress: (e: EventInstance) => void;
   onSlotClick: (date: Date, hour: number) => void;
   onEventHover: (e: React.MouseEvent, event: EventInstance) => void;
@@ -100,9 +108,9 @@ export default function WeekView({
                   !e.is_all_day
               );
 
-              // Cast to any for layout calc if types mismatch slightly (EventInstance vs CalendarEvent)
-              // Since structure is similar, it should be fine.
-              const visualEvents = calculateEventLayout(dayEvents as any[], 'horizontal');
+              // FIX: Explicitly cast the layout result to VisualEvent[]
+              // This tells TS: "Trust me, these objects have both ID/Title AND StartPercent/SizePercent"
+              const visualEvents = calculateEventLayout(dayEvents as any[], 'horizontal') as unknown as VisualEvent[];
               const isDraftDay = draftEvent && draftEvent.date.toDateString() === dayDate.toDateString();
 
               return (
@@ -157,17 +165,15 @@ export default function WeekView({
 
                           <div className="absolute inset-0 pointer-events-none w-full h-full">
                               {visualEvents.map((ev) => {
-                                  // Cast back to EventInstance
-                                  const eventInstance = ev as unknown as EventInstance; 
-                                  const styles = getEventStyle(eventInstance);
+                                  const styles = getEventStyle(ev);
                                   const laneHeight = 100 / ev.totalLanes;
                                   
                                   return (
                                       <div
-                                          key={ev.id}
-                                          onClick={(e) => { e.stopPropagation(); onEventClick(eventInstance); }}
-                                          onContextMenu={(e) => { e.preventDefault(); onEventLongPress(eventInstance); }}
-                                          onMouseEnter={(e) => onEventHover(e, eventInstance)}
+                                          key={ev.id} // TS is happy now
+                                          onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
+                                          onContextMenu={(e) => { e.preventDefault(); onEventLongPress(ev); }}
+                                          onMouseEnter={(e) => onEventHover(e, ev)}
                                           onMouseLeave={onEventLeave}
                                           className="absolute z-20 rounded-md shadow-lg cursor-pointer pointer-events-auto flex items-center px-2 overflow-hidden hover:brightness-110 hover:z-30 hover:shadow-xl transition-all group/event"
                                           style={{
@@ -182,7 +188,7 @@ export default function WeekView({
                                           }}
                                       >
                                           <span className="text-[10px] font-bold truncate group-hover/event:whitespace-normal group-hover/event:overflow-visible mix-blend-plus-lighter">
-                                              {ev.title}
+                                              {ev.title} {/* TS is happy now */}
                                           </span>
                                       </div>
                                   );
