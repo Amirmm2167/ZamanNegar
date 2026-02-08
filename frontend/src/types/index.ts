@@ -1,3 +1,7 @@
+// --- VIEW DEFINITIONS ---
+export type ViewMode = 'day' | '3day' | 'week' | 'mobile-week' | 'month' | 'year' | 'agenda';
+
+// --- ROLES & USERS ---
 export type Role = 'viewer' | 'proposer' | 'evaluator' | 'manager' | 'superadmin';
 
 export interface User {
@@ -19,10 +23,11 @@ export interface LoginResponse {
   token_type: string;
   session_id: string;
   username: string;
-  is_superadmin: boolean; // <--- ADDED THIS
+  is_superadmin: boolean;
   available_contexts: CompanyProfile[];
 }
 
+// --- EVENTS ---
 export interface EventInstance {
   id: number;
   master_id: number;

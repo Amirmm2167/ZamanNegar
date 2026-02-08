@@ -1,8 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-// Ensure this path matches where your ViewMode type is defined
-// If ViewMode is not exported from ViewSwitcher, define it here or in types/index.ts
-export type ViewMode = 'day' | '3day' | 'week' | 'month' | 'year' | 'agenda';
+import { ViewMode } from '@/types'; // Import from global types
 
 interface LayoutState {
   // Environment
@@ -16,10 +14,10 @@ interface LayoutState {
   // Desktop Sidebar
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
-  setIsSidebarOpen: (isOpen: boolean) => void; // <--- Fixed: Added missing setter
+  setIsSidebarOpen: (isOpen: boolean) => void;
   
   // Context Rail (The right-side details panel)
-  isContextRailOpen: boolean; // <--- Fixed: Added missing state
+  isContextRailOpen: boolean;
   toggleContextRail: () => void;
   setIsContextRailOpen: (isOpen: boolean) => void;
 
@@ -37,9 +35,10 @@ export const useLayoutStore = create<LayoutState>()(
     (set) => ({
       // Defaults
       isMobile: false,
-      viewMode: 'week',
+      // Default to 'month' as it's the standard desktop view
+      viewMode: 'month', 
       isSidebarOpen: true,
-      isContextRailOpen: true, // Default to open on desktop
+      isContextRailOpen: true, 
       selectedEventId: null,
       isIslandExpanded: false,
 
@@ -49,7 +48,7 @@ export const useLayoutStore = create<LayoutState>()(
       setViewMode: (mode) => set({ viewMode: mode }),
 
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-      setIsSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }), // <--- Implementation
+      setIsSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }),
 
       toggleContextRail: () => set((state) => ({ isContextRailOpen: !state.isContextRailOpen })),
       setIsContextRailOpen: (isOpen) => set({ isContextRailOpen: isOpen }),
@@ -64,7 +63,7 @@ export const useLayoutStore = create<LayoutState>()(
     }),
     {
       name: 'zaman-layout-storage',
-      // Persist user preferences (ViewMode, Sidebar state, Rail state)
+      // Persist these fields so the app feels "Native" (remembers state)
       partialize: (state) => ({ 
         viewMode: state.viewMode, 
         isSidebarOpen: state.isSidebarOpen,
