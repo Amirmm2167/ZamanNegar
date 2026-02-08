@@ -28,11 +28,17 @@ class IssueStatus(str, Enum):
     RESOLVED = "resolved"
     CLOSED = "closed"
 
+class NotificationType(str, Enum):
+    SYSTEM = "system"
+    COMPANY = "company"
+    PERSONAL = "personal"
+
 # --- 1. Identity & Session Models ---
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
+    phone_number: Optional[str] = Field(default=None, index=True)
     display_name: str
     hashed_password: str
     is_superadmin: bool = Field(default=False)
@@ -41,8 +47,8 @@ class User(SQLModel, table=True):
     profiles: List["CompanyProfile"] = Relationship(back_populates="user")
     sessions: List["UserSession"] = Relationship(back_populates="user")
     issues: List["Issue"] = Relationship(back_populates="user")
-    # Relationship to EventMaster (Proposer)
     events_proposed: List["EventMaster"] = Relationship(back_populates="proposer")
+    notifications: List["Notification"] = Relationship(back_populates="recipient") # <--- ADDED
 
 class UserSession(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -157,8 +163,23 @@ class EventCreate(SQLModel):
     recurrence_rule: Optional[str] = None
     company_id: Optional[int] = None
     department_id: Optional[int] = None
+    # --- ADDED FOR SUPERADMIN BROADCAST ---
+    scope: Optional[EventScope] = None 
+    target_rules: Optional[Dict[str, Any]] = None
 
 # --- 4. Supporting Models ---
+
+class Notification(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    recipient_id: int = Field(foreign_key="user.id", index=True)
+    type: NotificationType = Field(default=NotificationType.PERSONAL)
+    title: str
+    message: str
+    is_read: bool = False
+    reference_id: Optional[str] = None # e.g. "event_123"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    recipient: User = Relationship(back_populates="notifications")
 
 class Holiday(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

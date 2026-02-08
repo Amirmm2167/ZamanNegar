@@ -1,30 +1,28 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { 
-  Users, 
-  Building2, 
-  BarChart2, 
-  ShieldCheck, 
-  LogOut, 
-  LayoutDashboard,
-  Calendar,
-  Coffee
+  Users, Building2, BarChart2, ShieldCheck, LogOut, 
+  LayoutDashboard, Calendar, Coffee, Radio, Lock
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 
-export default function AdminSidebar() {
-  const pathname = usePathname();
+interface AdminSidebarProps {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+}
+
+export default function AdminSidebar({ activeTab, setActiveTab }: AdminSidebarProps) {
   const { logout } = useAuthStore();
 
   const menuItems = [
-    { name: "داشبورد", icon: LayoutDashboard, href: "/admin" },
-    { name: "تقویم سازمانی", icon: Calendar, href: "/admin/calendar" },
-    { name: "مدیریت کاربران", icon: Users, href: "/admin/users" },
-    { name: "سازمان‌ها", icon: Building2, href: "/admin/companies" },
-    { name: "تعطیلات سراسری", icon: Coffee, href: "/admin/holidays" },
-    { name: "گزارشات سیستم", icon: BarChart2, href: "/admin/analytics" },
+    { id: "dashboard", name: "داشبورد", icon: LayoutDashboard },
+    { id: "calendar", name: "تقویم سازمانی", icon: Calendar },
+    { id: "broadcasts", name: "رویدادهای سراسری", icon: Radio },
+    { id: "users", name: "مدیریت کاربران", icon: Users },
+    { id: "companies", name: "سازمان‌ها", icon: Building2 },
+    { id: "holidays", name: "تعطیلات سیستم", icon: Coffee },
+    { id: "security", name: "امنیت و نشست‌ها", icon: Lock },
+    { id: "analytics", name: "گزارشات هوشمند", icon: BarChart2 },
   ];
 
   return (
@@ -43,31 +41,24 @@ export default function AdminSidebar() {
       </div>
 
       <div className="flex-1 py-6 px-4 space-y-2 overflow-y-auto custom-scrollbar">
-        {menuItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link 
-              key={item.href}
-              href={item.href}
+        {menuItems.map((item) => (
+            <button 
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
               className={`
-                flex items-center gap-3 p-3 rounded-xl transition-all duration-200
-                ${isActive 
+                w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200
+                ${activeTab === item.id 
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" 
                   : "text-gray-400 hover:bg-white/5 hover:text-gray-200"}
               `}
             >
               <item.icon size={20} />
               <span className="text-sm font-medium">{item.name}</span>
-            </Link>
-          );
-        })}
+            </button>
+        ))}
       </div>
 
       <div className="p-4 border-t border-white/5 space-y-2">
-         <Link href="/" className="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-white/5 transition-colors">
-            <Calendar size={20} />
-            <span className="text-sm">بازگشت به تقویم</span>
-         </Link>
          <button 
            onClick={logout}
            className="w-full flex items-center gap-3 p-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors"

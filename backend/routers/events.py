@@ -1,19 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlmodel import Session, select, or_
+from sqlmodel import Session, select, or_, text
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from database import get_session
 from models import (
     EventMaster, EventInstance, EventCreate, 
-    User, EventScope, EventStatus, Role, Company
+    User, EventScope, EventStatus, Role
 )
 from security import get_current_user
 from utils.recurrence import expand_master_to_instances
 
 router = APIRouter()
 
-# --- 1. CREATE (The "Master" Logic) ---
+# --- 1. CREATE ---
 
 @router.post("/", response_model=EventMaster)
 def create_event(
@@ -22,31 +22,34 @@ def create_event(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Creates an Event Master (Rule) and expands it into Instances.
-    """
     # 1. Context & Permission Check
     company_id = request.state.company_id
     role = request.state.role
     
-    # If standard user, force company_id from context
-    if not current_user.is_superadmin:
-        if not company_id:
-            raise HTTPException(400, "Company Context Header (X-Company-ID) required")
-        
-        # Enforce Scope
-        event_data.company_id = company_id
-        # scope is forced to COMPANY for non-admins
-        
+    # Logic: Only Superadmin can set Scope != COMPANY
+    if event_data.scope and event_data.scope != EventScope.COMPANY:
+        if not current_user.is_superadmin:
+            raise HTTPException(403, "Only Superadmins can create System events.")
+        # System events don't belong to a single company, but we might store the creator's context
+    else:
+        # Force Company Scope for standard users
+        event_data.scope = EventScope.COMPANY
+        if not current_user.is_superadmin:
+            if not company_id:
+                raise HTTPException(400, "Company Context Header required")
+            event_data.company_id = company_id
+
     # 2. Create Master Record
     master = EventMaster.from_orm(event_data)
     master.proposer_id = current_user.id
-    master.company_id = company_id # Ensure linkage
-    
-    # Set Initial Status based on Role
-    if role == Role.MANAGER:
+    # Ensure company_id is set if scope is COMPANY
+    if master.scope == EventScope.COMPANY and not master.company_id:
+        master.company_id = company_id
+
+    # Auto-Approve logic
+    if current_user.is_superadmin or role == Role.MANAGER:
         master.status = EventStatus.APPROVED
-        master.is_locked = True # Auto-lock manager events
+        master.is_locked = True
     else:
         master.status = EventStatus.PENDING
     
@@ -54,14 +57,44 @@ def create_event(
     session.commit()
     session.refresh(master)
     
-    # 3. Trigger Recurrence Expansion (The Engine)
-    # This generates the instances in the 'EventInstance' table
+    # 3. Expansion
     expand_master_to_instances(session, master)
     session.commit()
     
     return master
 
-# --- 2. READ (The "Instance" Cache) ---
+# --- 2. SEARCH (Phase 2.4) ---
+
+@router.get("/search", response_model=List[EventInstance])
+def search_events(
+    request: Request,
+    query: str,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    company_id = request.state.company_id
+    if not company_id and not current_user.is_superadmin:
+        raise HTTPException(400, "Context required")
+
+    # Simple ILIKE search (Upgrade to tsvector in production DB migration)
+    sql_query = select(EventInstance).join(EventMaster).where(
+        or_(
+            EventInstance.title.ilike(f"%{query}%"),
+            EventMaster.description.ilike(f"%{query}%")
+        )
+    )
+    
+    if start: sql_query = sql_query.where(EventInstance.start_time >= start)
+    if end: sql_query = sql_query.where(EventInstance.start_time <= end)
+    
+    if company_id:
+        sql_query = sql_query.where(EventInstance.company_id == company_id)
+
+    return session.exec(sql_query.limit(50)).all()
+
+# --- 3. READ ---
 
 @router.get("/", response_model=List[EventInstance])
 def read_events(
@@ -71,58 +104,19 @@ def read_events(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Reads from the EventInstance cache. 
-    Ultra-fast range query.
-    """
     company_id = request.state.company_id
     
-    if not company_id and not current_user.is_superadmin:
-        raise HTTPException(400, "Context required")
-
-    # Query Instances directly
-    # This is O(1) complexity relative to recurrence rules
+    # Superadmin can see everything if no context is set, or filtered by context
     query = select(EventInstance).where(
         EventInstance.start_time >= start,
         EventInstance.start_time <= end
     )
     
-    # Filter by Context
     if company_id:
         query = query.where(EventInstance.company_id == company_id)
         
-    # Order by time
-    query = query.order_by(EventInstance.start_time)
-    
-    events = session.exec(query).all()
-    return events
+    return session.exec(query.order_by(EventInstance.start_time)).all()
 
-@router.get("/{event_id}", response_model=EventMaster)
-def read_event_detail(
-    event_id: int,
-    request: Request,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get full details of an Event Master.
-    Used when opening the Edit Modal.
-    """
-    master = session.get(EventMaster, event_id)
-    if not master:
-        raise HTTPException(404, "Event not found")
-        
-    # Permission Check
-    # Users can view events if they are in the same company
-    company_id = request.state.company_id
-    
-    if not current_user.is_superadmin:
-        if master.scope == EventScope.COMPANY and master.company_id != company_id:
-             raise HTTPException(403, "Access denied")
-             
-    return master
-
-# --- 3. UPDATE (The "Locking" Logic) ---
 
 @router.patch("/{event_id}", response_model=EventMaster)
 def update_event(

@@ -100,6 +100,30 @@ def login_for_access_token(
         "available_contexts": available_contexts
     }
 
-@router.get("/me", response_model=User)
-def read_users_me(current_user: User = Depends(get_current_user)):
-    return current_user
+@router.get("/me")
+def read_users_me(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """
+    Called by frontend on load to verify session.
+    Must return a shape compatible with the frontend 'User' type.
+    """
+    # Re-calculate role for the current context (or default)
+    role = "viewer"
+    if current_user.is_superadmin:
+        role = "superadmin"
+    else:
+        profile = session.exec(
+            select(CompanyProfile).where(CompanyProfile.user_id == current_user.id)
+        ).first()
+        if profile:
+            role = profile.role
+
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "display_name": current_user.display_name,
+        "is_superadmin": current_user.is_superadmin,
+        "role": role, # Calculated field for UI compatibility
+    }

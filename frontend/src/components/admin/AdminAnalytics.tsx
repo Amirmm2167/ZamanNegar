@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import { 
     Activity, Layers, Terminal, Database, Users, 
     BarChart2, RefreshCw, Smartphone, Wifi, Play, FileDown, History,
-    List, PieChart, FileText // <--- Added FileText here
+    List, PieChart, FileText
 } from "lucide-react";
 import clsx from "clsx";
 import SmartTable, { Column } from "@/components/ui/SmartTable";
@@ -81,7 +81,6 @@ export default function AdminAnalytics() {
   });
 
   // --- DATA TRANSFORMATION ---
-  const { dau = [], actions = [] } = stats || {};
   const safeProfiling = Array.isArray(profiling) ? profiling : [];
   const safeSnapshots = Array.isArray(snapshots) ? snapshots : [];
 
@@ -193,29 +192,33 @@ export default function AdminAnalytics() {
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                     className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-6 overflow-y-auto custom-scrollbar"
                 >
-                    <SmartChart 
-                        title="روند فعالیت سیستم (Data Fusion)"
-                        data={fusionTimeline} 
-                        dataKey="total" 
-                        xAxisKey="date" 
-                        defaultType="area" 
-                        color="#3b82f6"
-                        height={350} 
-                        icon={Activity}
-                        showControls={true}
-                        onRangeChange={(r) => setTimeRange(r)}
-                    />
+                    <div className="h-[400px] w-full bg-[#18181b]/50 rounded-2xl p-4 border border-white/5">
+                        <SmartChart 
+                            title="روند فعالیت سیستم (Data Fusion)"
+                            data={fusionTimeline} 
+                            dataKey="total" 
+                            xAxisKey="date" 
+                            defaultType="area" 
+                            color="#3b82f6"
+                            height={350} 
+                            icon={Activity}
+                            showControls={true}
+                            onRangeChange={(r) => setTimeRange(r)}
+                        />
+                    </div>
 
-                    <SmartChart 
-                        title="تحلیل نوع عملیات (Aggregated)"
-                        data={fusionBreakdown} 
-                        dataKey="value" 
-                        nameKey="name"
-                        defaultType="doughnut" 
-                        height={350} 
-                        icon={PieChart}
-                        showControls={true}
-                    />
+                    <div className="h-[400px] w-full bg-[#18181b]/50 rounded-2xl p-4 border border-white/5">
+                        <SmartChart 
+                            title="تحلیل نوع عملیات (Aggregated)"
+                            data={fusionBreakdown} 
+                            dataKey="value" 
+                            nameKey="name"
+                            defaultType="doughnut" 
+                            height={350} 
+                            icon={PieChart}
+                            showControls={true}
+                        />
+                    </div>
                 </motion.div>
             )}
 
@@ -245,7 +248,9 @@ export default function AdminAnalytics() {
                             <SmartTable title="لیست جامع کاربران" data={safeProfiling} columns={userColumns} icon={Users} />
                         )}
                         {intelView === 'users_chart' && (
-                            <SmartChart title="مقایسه فعالیت کاربران (Top 10)" data={userChartData} dataKey="actions" xAxisKey="name" color="#f59e0b" type="bar" height={400} icon={Activity} />
+                            <div className="h-[400px] w-full">
+                                <SmartChart title="مقایسه فعالیت کاربران (Top 10)" data={userChartData} dataKey="actions" xAxisKey="name" color="#f59e0b" type="bar" height={400} icon={Activity} />
+                            </div>
                         )}
                         {intelView === 'system_depts' && (
                             <SmartTable title="توزیع رویدادها در دپارتمان‌ها" data={system?.events_distribution || []} columns={[{ key: 'name', label: 'دپارتمان' }, { key: 'count', label: 'تعداد رویداد' }]} icon={Layers} />
@@ -334,16 +339,18 @@ export default function AdminAnalytics() {
                             />
                         )}
                         {timeView === 'timeline' && (
-                            <SmartChart 
-                                title="تاریخچه سلامت سیستم (Total Logs vs Errors)" 
-                                data={snapshotTimelineData} 
-                                dataKey="total" 
-                                xAxisKey="date" 
-                                color="#ea580c" 
-                                type="area" 
-                                height={400} 
-                                icon={History} 
-                            />
+                            <div className="h-[400px] w-full">
+                                <SmartChart 
+                                    title="تاریخچه سلامت سیستم (Total Logs vs Errors)" 
+                                    data={snapshotTimelineData} 
+                                    dataKey="total" 
+                                    xAxisKey="date" 
+                                    color="#ea580c" 
+                                    type="area" 
+                                    height={400} 
+                                    icon={History} 
+                                />
+                            </div>
                         )}
                     </div>
                 </motion.div>

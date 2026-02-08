@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select, func, desc
-from typing import Optional
+from sqlmodel import Session, select, func, desc, or_
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from database import get_session
-from models import AnalyticsLog, User, EventMaster, Department # <--- UPDATED IMPORT
+from models import AnalyticsLog, User, EventMaster, EventInstance, Department, EventStatus
 from security import get_current_user, get_current_user_optional
 from pydantic import BaseModel
 from utils.snapshot_engine import SnapshotEngine
+
 # from utils.data_fusion import DataFusionEngine # Comment out if not implemented yet
 
 router = APIRouter()
@@ -44,12 +45,12 @@ def get_analytics_stats(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "superadmin":
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
-    # 1. DAU
+    # 1. DAU (Daily Active Users)
     dau_query = select(
         func.date(AnalyticsLog.created_at).label("date"),
         func.count(func.distinct(AnalyticsLog.user_id))
@@ -60,9 +61,15 @@ def get_analytics_stats(
     actions_query = select(AnalyticsLog.event_type, func.count(AnalyticsLog.id)).where(AnalyticsLog.created_at >= cutoff_date).group_by(AnalyticsLog.event_type)
     actions_results = session.exec(actions_query).all()
 
+    # 3. Totals
+    total_users = session.exec(select(func.count(User.id))).one()
+    total_events = session.exec(select(func.count(EventInstance.id))).one()
+
     return {
         "dau": [{"date": str(r[0]), "count": r[1]} for r in dau_results],
-        "actions": [{"action": r[0], "count": r[1]} for r in actions_results]
+        "actions": [{"action": r[0], "count": r[1]} for r in actions_results],
+        "total_events": total_events,
+        "active_users": total_users
     }
 
 @router.get("/health")
@@ -70,7 +77,7 @@ def get_system_health(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "superadmin":
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
         
     cutoff = datetime.utcnow() - timedelta(hours=24)
@@ -93,14 +100,97 @@ def get_recent_logs(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "superadmin":
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
         
     query = select(AnalyticsLog).order_by(desc(AnalyticsLog.created_at)).limit(limit).offset(offset)
     logs = session.exec(query).all()
     return logs
 
-# --- ADVANCED INTELLIGENCE ---
+# --- ADVANCED INTELLIGENCE (FUSION ENGINE) ---
+
+@router.get("/fusion/breakdown")
+def get_fusion_breakdown(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """Returns event distribution by status for Pie Charts"""
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    results = session.exec(
+        select(EventInstance.status, func.count(EventInstance.id))
+        .group_by(EventInstance.status)
+    ).all()
+    
+    # Format for Recharts: [{name: 'approved', value: 10}, ...]
+    data = [{"name": r[0] or "Unknown", "value": r[1]} for r in results]
+    
+    # Prevent empty chart crash
+    if not data:
+        data = [
+            {"name": "Approved", "value": 0},
+            {"name": "Pending", "value": 0},
+            {"name": "Rejected", "value": 0}
+        ]
+    return data
+
+@router.get("/fusion/timeline")
+def get_fusion_timeline(
+    range: str = "24h",
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """Returns activity over time for Area Charts"""
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Determine time window
+    now = datetime.utcnow()
+    if range == "7d":
+        start_date = now - timedelta(days=7)
+        interval = "day" # Group by day logic needed
+    else:
+        start_date = now - timedelta(hours=24)
+        interval = "hour"
+
+    # In SQLite, date truncation is tricky. We'll fetch raw logs and process in Python for simplicity
+    # (For PostgreSQL use func.date_trunc)
+    
+    logs = session.exec(
+        select(AnalyticsLog.created_at, AnalyticsLog.event_type)
+        .where(AnalyticsLog.created_at >= start_date)
+        .order_by(AnalyticsLog.created_at)
+    ).all()
+
+    # Bucketing Logic (Simple hourly bucket)
+    buckets = {}
+    
+    # Initialize last 24h buckets
+    for i in range(24):
+        h_key = (now - timedelta(hours=i)).strftime("%H:00")
+        buckets[h_key] = {"total": 0, "error": 0}
+
+    for log in logs:
+        key = log.created_at.strftime("%H:00")
+        if key in buckets:
+            buckets[key]["total"] += 1
+            if log.event_type == "ERROR":
+                buckets[key]["error"] += 1
+    
+    # Convert to List sorted by time
+    # Note: To sort correctly we rely on the loop order or sort by keys if using dict
+    sorted_data = []
+    # Re-iterate to respect time order (23 hours ago -> now)
+    for i in range(23, -1, -1):
+        h_key = (now - timedelta(hours=i)).strftime("%H:00")
+        sorted_data.append({
+            "date": h_key,
+            "total": buckets[h_key]["total"],
+            "error": buckets[h_key]["error"]
+        })
+
+    return sorted_data
 
 @router.get("/system")
 def get_system_snapshot(
@@ -108,28 +198,32 @@ def get_system_snapshot(
     current_user: User = Depends(get_current_user)
 ):
     """Req #4 & #7: Events per Department, Users per Role"""
-    if current_user.role != "superadmin":
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # 1. Events by Department (Updated to use EventMaster)
+    # 1. Events by Department
     events_by_dept = session.exec(
-        select(Department.name, func.count(EventMaster.id))
-        .join(EventMaster, isouter=True)
+        select(Department.name, func.count(EventInstance.id))
+        .join(EventInstance, isouter=True)
         .group_by(Department.name)
     ).all()
     
-    # 2. Users by Role
-    users_by_role = session.exec(
-        select(User.role, func.count(User.id))
-        .group_by(User.role)
-    ).all()
+    # 2. Users by Role (Using Profiles now, since roles are in CompanyProfile)
+    # If using simplified User.is_superadmin logic:
+    superadmins = session.exec(select(func.count(User.id)).where(User.is_superadmin == True)).one()
+    regular_users = session.exec(select(func.count(User.id)).where(User.is_superadmin == False)).one()
+    
+    users_data = [
+        {"role": "SuperAdmin", "count": superadmins},
+        {"role": "User", "count": regular_users}
+    ]
 
-    # 3. Total Storage (Approx Rows)
+    # 3. Total Logs
     total_logs = session.exec(select(func.count(AnalyticsLog.id))).one()
 
     return {
         "events_distribution": [{"name": r[0] or "No Dept", "count": r[1]} for r in events_by_dept],
-        "user_demographics": [{"role": r[0] or "Unknown", "count": r[1]} for r in users_by_role],
+        "user_demographics": users_data,
         "db_row_count": total_logs
     }
 
@@ -138,14 +232,14 @@ def get_user_profiling(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "superadmin":
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     query = (
         select(
             User.display_name,
             User.username,
-            User.role,
+            User.is_superadmin,
             func.count(AnalyticsLog.id).label("total_actions"),
             func.max(AnalyticsLog.created_at).label("last_active")
         )
@@ -160,7 +254,7 @@ def get_user_profiling(
         {
             "name": r[0],
             "username": r[1],
-            "role": r[2],
+            "role": "SuperAdmin" if r[2] else "User",
             "total_actions": r[3],
             "last_active": r[4], 
             "status": "Active" if r[4] and r[4] > datetime.utcnow() - timedelta(days=30) else "Inactive"
@@ -174,7 +268,7 @@ def get_user_profiling(
 def run_manual_snapshot(
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "superadmin":
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     result = snapshot_engine.take_hourly_snapshot()
@@ -188,6 +282,6 @@ def run_manual_snapshot(
 def get_snapshot_history(
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "superadmin":
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
     return snapshot_engine.get_snapshots()
