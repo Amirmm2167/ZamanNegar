@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ViewMode } from '@/components/views/shared/ViewSwitcher';
+// Ensure this path matches where your ViewMode type is defined
+// If ViewMode is not exported from ViewSwitcher, define it here or in types/index.ts
+export type ViewMode = 'day' | '3day' | 'week' | 'month' | 'year' | 'agenda';
 
 interface LayoutState {
   // Environment
@@ -11,40 +13,63 @@ interface LayoutState {
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
   
-  // Desktop State
+  // Desktop Sidebar
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
+  setIsSidebarOpen: (isOpen: boolean) => void; // <--- Fixed: Added missing setter
   
-  // Context Rail (The new Event Details view)
+  // Context Rail (The right-side details panel)
+  isContextRailOpen: boolean; // <--- Fixed: Added missing state
+  toggleContextRail: () => void;
+  setIsContextRailOpen: (isOpen: boolean) => void;
+
+  // Event Selection (Drives the Context Rail content)
   selectedEventId: number | null;
   setSelectedEventId: (id: number | null) => void;
   
-  // Mobile State
-  isIslandExpanded: boolean; // For the "Manager Dock" expansion
+  // Mobile Floating Island
+  isIslandExpanded: boolean;
   toggleIsland: () => void;
 }
 
 export const useLayoutStore = create<LayoutState>()(
   persist(
     (set) => ({
-      isMobile: false, // Will be updated by AppShell
-      setIsMobile: (val) => set({ isMobile: val }),
-
+      // Defaults
+      isMobile: false,
       viewMode: 'week',
+      isSidebarOpen: true,
+      isContextRailOpen: true, // Default to open on desktop
+      selectedEventId: null,
+      isIslandExpanded: false,
+
+      // Actions
+      setIsMobile: (val) => set({ isMobile: val }),
+      
       setViewMode: (mode) => set({ viewMode: mode }),
 
-      isSidebarOpen: true,
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+      setIsSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }), // <--- Implementation
 
-      selectedEventId: null,
-      setSelectedEventId: (id) => set({ selectedEventId: id }),
+      toggleContextRail: () => set((state) => ({ isContextRailOpen: !state.isContextRailOpen })),
+      setIsContextRailOpen: (isOpen) => set({ isContextRailOpen: isOpen }),
 
-      isIslandExpanded: false,
+      setSelectedEventId: (id) => set((state) => ({ 
+        selectedEventId: id,
+        // Auto-open rail on desktop when an event is selected
+        isContextRailOpen: id !== null && !state.isMobile ? true : state.isContextRailOpen
+      })),
+
       toggleIsland: () => set((state) => ({ isIslandExpanded: !state.isIslandExpanded })),
     }),
     {
-      name: 'zaman-layout-storage', // Persist view preferences
-      partialize: (state) => ({ viewMode: state.viewMode, isSidebarOpen: state.isSidebarOpen }),
+      name: 'zaman-layout-storage',
+      // Persist user preferences (ViewMode, Sidebar state, Rail state)
+      partialize: (state) => ({ 
+        viewMode: state.viewMode, 
+        isSidebarOpen: state.isSidebarOpen,
+        isContextRailOpen: state.isContextRailOpen 
+      }),
     }
   )
 );
