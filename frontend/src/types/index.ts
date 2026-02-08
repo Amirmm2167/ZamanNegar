@@ -19,32 +19,32 @@ export interface LoginResponse {
   token_type: string;
   session_id: string;
   username: string;
+  is_superadmin: boolean; // <--- ADDED THIS
   available_contexts: CompanyProfile[];
 }
 
-// --- NEW: Read Model (The Instance) ---
 export interface EventInstance {
-  id: number;           // This is the Instance ID
-  master_id: number;    // Reference to the Rule
+  id: number;
+  master_id: number;
   title: string;
-  start_time: string;   // ISO String
-  end_time: string;     // ISO String
+  start_time: string;
+  end_time: string;
   is_all_day: boolean;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   company_id: number;
   department_id?: number;
 }
 
-// --- NEW: Write Model (The Master) ---
 export interface EventCreatePayload {
   title: string;
   description?: string;
   goal?: string;
   target_audience?: string;
+  organizer?: string;
   start_time: string;
   end_time: string;
   is_all_day: boolean;
-  recurrence_rule?: string | null; // e.g., "FREQ=WEEKLY"
+  recurrence_rule?: string | null;
   company_id: number;
   department_id?: number;
 }

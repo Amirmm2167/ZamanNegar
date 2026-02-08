@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import Session, select, desc
+from sqlmodel import Session, select
 from datetime import timedelta
 import uuid
 
@@ -51,7 +51,6 @@ def login_for_access_token(
     ).all()
     
     if len(active_sessions) >= 5:
-        # Remove the oldest session to make room
         session.delete(active_sessions[0])
     
     # 3. Create New Session
@@ -62,27 +61,26 @@ def login_for_access_token(
     new_session = UserSession(
         id=new_session_id,
         user_id=user.id,
-        token_hash="embedded-in-jwt", # Simplified for now
-        device_fingerprint=f"{user_agent[:50]}...", # Simple fingerprint
+        token_hash="embedded-in-jwt",
+        device_fingerprint=f"{user_agent[:50]}...",
         ip_address=client_ip,
         preferences={}
     )
     session.add(new_session)
     session.commit()
     
-    # 4. Generate Token with Session ID
+    # 4. Generate Token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username, "session_id": str(new_session_id)}, 
         expires_delta=access_token_expires
     )
     
-    # 5. Get Available Profiles (Contexts) for the Workspace Switcher
+    # 5. Get Available Profiles
     profiles = session.exec(
         select(CompanyProfile).where(CompanyProfile.user_id == user.id)
     ).all()
     
-    # Format profiles for frontend
     available_contexts = [
         {
             "company_id": p.company_id, 
@@ -98,6 +96,7 @@ def login_for_access_token(
         "token_type": "bearer",
         "session_id": str(new_session_id),
         "username": user.username,
+        "is_superadmin": user.is_superadmin,  # <--- ADDED THIS
         "available_contexts": available_contexts
     }
 
