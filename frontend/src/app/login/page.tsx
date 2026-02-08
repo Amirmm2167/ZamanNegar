@@ -4,11 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AxiosError } from "axios";
 import api from "@/lib/api";
+import { useAuthStore } from "@/stores/authStore"; // <--- NEW IMPORT
 import { Lock, User as UserIcon, Loader2 } from "lucide-react";
 import GlassPane from "@/components/ui/GlassPane";
 
 export default function LoginPage() {
   const router = useRouter();
+  const login = useAuthStore((state) => state.login); // <--- Get Action from Store
+  
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,28 +23,40 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // 1. Prepare Form Data (OAuth2 Standard)
       const formData = new URLSearchParams();
       formData.append("username", username);
       formData.append("password", password);
 
+      // 2. Call API
       const response = await api.post("/auth/token", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
-      localStorage.setItem("token", response.data.access_token);
-      localStorage.setItem("role", response.data.role);
-      localStorage.setItem("username", response.data.username);
-      
-      if (response.data.role === 'superadmin') {
-        router.push("/admin");
-      } else {
-        router.push("/");
+      // 3. Validate Response Structure
+      if (!response.data.available_contexts || response.data.available_contexts.length === 0) {
+        // Edge Case: User exists but has no company memberships
+        setError("حساب کاربری شما به هیچ سازمانی متصل نیست. لطفا با پشتیبانی تماس بگیرید.");
+        setLoading(false);
+        return;
       }
-    } catch (err) {
+
+      // 4. Update Global Store (Saves Token, Session, & Selects Default Company)
+      login(response.data);
+      
+      // 5. Redirect
+      // We don't need to check role here anymore because the 
+      // AppShell will render the correct view based on the context.
+      router.push("/");
+      
+    } catch (err: any) {
       if (err instanceof AxiosError) {
-        setError(err.response?.data?.detail || "نام کاربری یا رمز عبور اشتباه است");
+        // Handle 400/401 errors from backend
+        const detail = err.response?.data?.detail;
+        setError(detail || "نام کاربری یا رمز عبور اشتباه است");
       } else {
-        setError("خطای ناشناخته");
+        setError("خطای ارتباط با سرور");
+        console.error("Login Error:", err);
       }
     } finally {
       setLoading(false);
@@ -50,7 +65,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen p-4 relative z-10">
-      <GlassPane intensity="login" className="w-full max-w-[400px] p-10 rounded-[30px]">
+      <GlassPane intensity="medium" className="w-full max-w-[400px] p-10 rounded-[30px]">
+        
+        {/* Header Icon */}
         <div className="flex flex-col items-center mb-10">
            <div className="w-20 h-20 bg-[#1e293b] rounded-full flex items-center justify-center mb-6 border border-white/5 shadow-inner">
               <UserIcon className="text-blue-500" size={36} />
@@ -58,15 +75,19 @@ export default function LoginPage() {
            <h2 className="text-2xl font-bold text-white tracking-wide">ورود به زمان‌نگار</h2>
         </div>
         
+        {/* Error Message */}
         {error && (
           <div className="p-3 mb-6 text-sm text-red-200 bg-red-500/10 border border-red-500/20 rounded-xl text-center animate-in fade-in slide-in-from-top-2">
             {error}
           </div>
         )}
 
+        {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-6">
+          
+          {/* Username Input */}
           <div className="relative group">
-            <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 group-focus-within:text-blue-500 transition-colors">
+            <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 group-focus-within:text-blue-500 transition-colors pointer-events-none">
               <UserIcon size={20} />
             </span>
             <input
@@ -80,8 +101,9 @@ export default function LoginPage() {
             />
           </div>
 
+          {/* Password Input */}
           <div className="relative group">
-            <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 group-focus-within:text-blue-500 transition-colors">
+            <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 group-focus-within:text-blue-500 transition-colors pointer-events-none">
               <Lock size={20} />
             </span>
             <input
@@ -95,6 +117,7 @@ export default function LoginPage() {
             />
           </div>
 
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
