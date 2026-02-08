@@ -1,17 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select, func, desc, delete
-from typing import Optional, List
+from sqlmodel import Session, select, func, desc
+from typing import Optional
 from datetime import datetime, timedelta
 from database import get_session
-from models import AnalyticsLog, User, Event, Department
+from models import AnalyticsLog, User, EventMaster, Department # <--- UPDATED IMPORT
 from security import get_current_user, get_current_user_optional
 from pydantic import BaseModel
 from utils.snapshot_engine import SnapshotEngine
-from utils.data_fusion import DataFusionEngine
+# from utils.data_fusion import DataFusionEngine # Comment out if not implemented yet
 
 router = APIRouter()
 snapshot_engine = SnapshotEngine()
-fusion_engine = DataFusionEngine()
+# fusion_engine = DataFusionEngine()
 
 # --- DTOs ---
 class LogCreate(BaseModel):
@@ -27,7 +27,6 @@ def log_event(
     current_user: Optional[User] = Depends(get_current_user_optional) 
 ):
     user_id = current_user.id if current_user else None
-    # Ensure details is stored as a string even if pydantic validation missed it
     details_str = log_data.details if log_data.details else "{}"
     
     log = AnalyticsLog(
@@ -76,7 +75,6 @@ def get_system_health(
         
     cutoff = datetime.utcnow() - timedelta(hours=24)
     
-    # Error Rate (Last 24h)
     total_reqs = session.exec(select(func.count(AnalyticsLog.id)).where(AnalyticsLog.created_at >= cutoff)).one()
     total_errors = session.exec(select(func.count(AnalyticsLog.id)).where(AnalyticsLog.created_at >= cutoff, AnalyticsLog.event_type == "ERROR")).one()
     
@@ -113,10 +111,10 @@ def get_system_snapshot(
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # 1. Events by Department
+    # 1. Events by Department (Updated to use EventMaster)
     events_by_dept = session.exec(
-        select(Department.name, func.count(Event.id))
-        .join(Event, isouter=True)
+        select(Department.name, func.count(EventMaster.id))
+        .join(EventMaster, isouter=True)
         .group_by(Department.name)
     ).all()
     
@@ -131,7 +129,7 @@ def get_system_snapshot(
 
     return {
         "events_distribution": [{"name": r[0] or "No Dept", "count": r[1]} for r in events_by_dept],
-        "user_demographics": [{"role": r[0], "count": r[1]} for r in users_by_role],
+        "user_demographics": [{"role": r[0] or "Unknown", "count": r[1]} for r in users_by_role],
         "db_row_count": total_logs
     }
 
@@ -140,12 +138,9 @@ def get_user_profiling(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """Req #5 & #6: Rich User Activity Table"""
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # We want: User Name, Role, Total Logs, Last Active Time
-    # Left Join ensures we see users even if they have 0 logs
     query = (
         select(
             User.display_name,
@@ -167,7 +162,7 @@ def get_user_profiling(
             "username": r[1],
             "role": r[2],
             "total_actions": r[3],
-            "last_active": r[4], # Can be None if never logged in
+            "last_active": r[4], 
             "status": "Active" if r[4] and r[4] > datetime.utcnow() - timedelta(days=30) else "Inactive"
         }
         for r in results
@@ -185,7 +180,6 @@ def run_manual_snapshot(
     result = snapshot_engine.take_hourly_snapshot()
     
     if result["status"] == "error":
-        # Return 500 but with the specific message so frontend knows WHY
         raise HTTPException(status_code=500, detail=result["message"])
         
     return result
@@ -197,17 +191,3 @@ def get_snapshot_history(
     if current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
     return snapshot_engine.get_snapshots()
-
-@router.get("/fusion/timeline")
-def get_fusion_timeline(range: str = '24h', current_user: User = Depends(get_current_user)):
-    """Returns combined historical + live time-series data"""
-    if current_user.role != "superadmin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    return fusion_engine.get_time_series(range)
-
-@router.get("/fusion/breakdown")
-def get_fusion_breakdown(current_user: User = Depends(get_current_user)):
-    """Returns combined historical + live breakdown for Pie/Doughnut charts"""
-    if current_user.role != "superadmin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    return fusion_engine.get_aggregated_analysis()
