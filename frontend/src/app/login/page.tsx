@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"; // <--- ADDED BACK
 import { AxiosError } from "axios";
 import api from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -10,7 +10,7 @@ import GlassPane from "@/components/ui/GlassPane";
 import { LoginResponse } from "@/types";
 
 export default function LoginPage() {
-  const router = useRouter();
+  const router = useRouter(); // <--- ADDED BACK
   const login = useAuthStore((state) => state.login);
   
   const [username, setUsername] = useState("");
@@ -34,46 +34,38 @@ export default function LoginPage() {
 
       const data = response.data;
 
-      // --- LOGIC FIX START ---
       const hasContexts = data.available_contexts && data.available_contexts.length > 0;
       const isSuperAdmin = data.is_superadmin;
 
       if (!hasContexts && !isSuperAdmin) {
-        // Only block if NOT a superadmin
-        setError("حساب کاربری شما به هیچ سازمانی متصل نیست. لطفا با پشتیبانی تماس بگیرید.");
+        setError("حساب کاربری شما به هیچ سازمانی متصل نیست.");
         setLoading(false);
         return;
       }
-      // --- LOGIC FIX END ---
 
       login(data);
       
-      // Redirect Logic:
-      // If Superadmin, go to /admin
-      // If Regular User, go to / (Dashboard)
+      // FORCE REDIRECT - No waiting for AppShell
       if (isSuperAdmin) {
-          router.push("/admin");
+          router.replace("/admin");
       } else {
-          router.push("/");
+          router.replace("/");
       }
       
     } catch (err: any) {
+      setLoading(false);
       if (err instanceof AxiosError) {
         const detail = err.response?.data?.detail;
         setError(detail || "نام کاربری یا رمز عبور اشتباه است");
       } else {
         setError("خطای ارتباط با سرور");
-        console.error("Login Error:", err);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen p-4 relative z-10">
       <GlassPane intensity="medium" className="w-full max-w-[400px] p-10 rounded-[30px]">
-        
         <div className="flex flex-col items-center mb-10">
            <div className="w-20 h-20 bg-[#1e293b] rounded-full flex items-center justify-center mb-6 border border-white/5 shadow-inner">
               <UserIcon className="text-blue-500" size={36} />

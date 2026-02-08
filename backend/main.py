@@ -1,9 +1,12 @@
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware # <--- IMPORT THIS
+from fastapi.middleware.cors import CORSMiddleware
 from database import create_db_and_tables
 from routers import auth, events, users, companies, departments, holidays, tags, analytics, superadmin
+
+# 1. IMPORT YOUR CUSTOM MIDDLEWARE
+from middleware import ContextMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -12,7 +15,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# --- FIX: ADD CORS MIDDLEWARE ---
+# 2. ADD CORS MIDDLEWARE (Must be last to wrap everything)
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -26,7 +29,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Session-ID", "X-Company-ID"]
 )
-# --------------------------------
+
+# 3. ADD CONTEXT MIDDLEWARE (Register this!)
+app.add_middleware(ContextMiddleware)
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(users.router, prefix="/users", tags=["Users"])

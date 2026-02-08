@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlmodel import Session, select, or_, text
+from sqlmodel import Session, select, or_, col
 from typing import List, Optional
 from datetime import datetime
 
@@ -13,8 +13,48 @@ from utils.recurrence import expand_master_to_instances
 
 router = APIRouter()
 
-# --- 1. CREATE ---
+# --- 1. READ EVENTS ---
+@router.get("/", response_model=List[EventInstance])
+def read_events(
+    request: Request,
+    start: datetime,
+    end: datetime,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Base Query: Filter by date range
+    query = select(EventInstance).where(
+        EventInstance.start_time >= start,
+        EventInstance.start_time <= end
+    )
+    
+    # 2. Context Filtering
+    # The middleware now guarantees this attribute exists (even if None)
+    requested_company_id = request.state.company_id
+    
+    if current_user.is_superadmin:
+        # Admin: If context is set, filter by it. If not, show EVERYTHING.
+        if requested_company_id:
+            query = query.where(EventInstance.company_id == requested_company_id)
+    else:
+        # Standard User: MUST be restricted to their allowed companies
+        allowed_company_ids = [p.company_id for p in current_user.profiles]
+        
+        if not allowed_company_ids:
+            return []
 
+        if requested_company_id:
+            # Verify they belong to this specific company context
+            if requested_company_id not in allowed_company_ids:
+                raise HTTPException(403, "Access denied to this company context")
+            query = query.where(EventInstance.company_id == requested_company_id)
+        else:
+            # No specific context? Show events from ALL their companies
+            query = query.where(col(EventInstance.company_id).in_(allowed_company_ids))
+        
+    return session.exec(query.order_by(EventInstance.start_time)).all()
+
+# --- 2. CREATE EVENT ---
 @router.post("/", response_model=EventMaster)
 def create_event(
     request: Request,
@@ -22,32 +62,30 @@ def create_event(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Context & Permission Check
     company_id = request.state.company_id
-    role = request.state.role
+    role = request.state.role 
     
     # Logic: Only Superadmin can set Scope != COMPANY
     if event_data.scope and event_data.scope != EventScope.COMPANY:
         if not current_user.is_superadmin:
             raise HTTPException(403, "Only Superadmins can create System events.")
-        # System events don't belong to a single company, but we might store the creator's context
     else:
         # Force Company Scope for standard users
         event_data.scope = EventScope.COMPANY
         if not current_user.is_superadmin:
             if not company_id:
-                raise HTTPException(400, "Company Context Header required")
+                raise HTTPException(400, "Active Company Context required to create event")
             event_data.company_id = company_id
 
-    # 2. Create Master Record
+    # Create Master Record
     master = EventMaster.from_orm(event_data)
     master.proposer_id = current_user.id
-    # Ensure company_id is set if scope is COMPANY
     if master.scope == EventScope.COMPANY and not master.company_id:
         master.company_id = company_id
 
     # Auto-Approve logic
-    if current_user.is_superadmin or role == Role.MANAGER:
+    # Superadmin OR Manager of THIS company
+    if current_user.is_superadmin or role == Role.MANAGER or role == "manager":
         master.status = EventStatus.APPROVED
         master.is_locked = True
     else:
@@ -57,14 +95,13 @@ def create_event(
     session.commit()
     session.refresh(master)
     
-    # 3. Expansion
+    # Expand
     expand_master_to_instances(session, master)
     session.commit()
     
     return master
 
-# --- 2. SEARCH (Phase 2.4) ---
-
+# --- 3. SEARCH ---
 @router.get("/search", response_model=List[EventInstance])
 def search_events(
     request: Request,
@@ -74,11 +111,9 @@ def search_events(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    company_id = request.state.company_id
-    if not company_id and not current_user.is_superadmin:
-        raise HTTPException(400, "Context required")
-
-    # Simple ILIKE search (Upgrade to tsvector in production DB migration)
+    # Security: Filter by allowed companies
+    allowed_ids = [p.company_id for p in current_user.profiles]
+    
     sql_query = select(EventInstance).join(EventMaster).where(
         or_(
             EventInstance.title.ilike(f"%{query}%"),
@@ -86,37 +121,17 @@ def search_events(
         )
     )
     
+    if not current_user.is_superadmin:
+        sql_query = sql_query.where(col(EventInstance.company_id).in_(allowed_ids))
+
     if start: sql_query = sql_query.where(EventInstance.start_time >= start)
     if end: sql_query = sql_query.where(EventInstance.start_time <= end)
     
-    if company_id:
-        sql_query = sql_query.where(EventInstance.company_id == company_id)
+    # Optional context refinement
+    if request.state.company_id:
+        sql_query = sql_query.where(EventInstance.company_id == request.state.company_id)
 
     return session.exec(sql_query.limit(50)).all()
-
-# --- 3. READ ---
-
-@router.get("/", response_model=List[EventInstance])
-def read_events(
-    request: Request,
-    start: datetime,
-    end: datetime,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
-    company_id = request.state.company_id
-    
-    # Superadmin can see everything if no context is set, or filtered by context
-    query = select(EventInstance).where(
-        EventInstance.start_time >= start,
-        EventInstance.start_time <= end
-    )
-    
-    if company_id:
-        query = query.where(EventInstance.company_id == company_id)
-        
-    return session.exec(query.order_by(EventInstance.start_time)).all()
-
 
 @router.patch("/{event_id}", response_model=EventMaster)
 def update_event(

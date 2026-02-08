@@ -105,25 +105,27 @@ def read_users_me(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    """
-    Called by frontend on load to verify session.
-    Must return a shape compatible with the frontend 'User' type.
-    """
-    # Re-calculate role for the current context (or default)
-    role = "viewer"
-    if current_user.is_superadmin:
-        role = "superadmin"
-    else:
-        profile = session.exec(
-            select(CompanyProfile).where(CompanyProfile.user_id == current_user.id)
-        ).first()
-        if profile:
-            role = profile.role
+    # 1. Get Profiles (Contexts) - EXACTLY like the login endpoint
+    profiles = session.exec(
+        select(CompanyProfile).where(CompanyProfile.user_id == current_user.id)
+    ).all()
+    
+    available_contexts = [
+        {
+            "company_id": p.company_id, 
+            "company_name": p.company.name if p.company else "Unknown",
+            "role": p.role,
+            "department_id": p.department_id
+        } 
+        for p in profiles
+    ]
 
+    # 2. Return the full session shape
     return {
         "id": current_user.id,
         "username": current_user.username,
         "display_name": current_user.display_name,
         "is_superadmin": current_user.is_superadmin,
-        "role": role, # Calculated field for UI compatibility
+        # We include this so the frontend can rebuild its state
+        "available_contexts": available_contexts 
     }

@@ -1,21 +1,26 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User, CompanyProfile, LoginResponse } from '@/types';
+import api from '@/lib/api';
 
 interface AuthState {
   token: string | null;
   sessionId: string | null;
-  user: User | null;
+  user: User | null;              
+  activeCompanyId: number | null; 
+  availableContexts: CompanyProfile[]; 
   
-  activeCompanyId: number | null;
-  availableContexts: CompanyProfile[];
-  
-  currentRole: () => string | null;
-  
+  isHydrated: boolean;
+  isSynced: boolean;
+
   login: (data: LoginResponse) => void;
   logout: () => void;
+  fetchSession: () => Promise<void>;
   switchCompany: (companyId: number) => void;
+  setHydrated: () => void;
+  
   isAuthenticated: () => boolean;
+  currentRole: () => string | null;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -26,19 +31,9 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       activeCompanyId: null,
       availableContexts: [],
-
-      currentRole: () => {
-        const { activeCompanyId, availableContexts, user } = get();
-        if (user?.is_superadmin) {
-             // If Admin is viewing a specific company, they are a "Manager" of it
-             if (activeCompanyId) return 'manager';
-             return 'superadmin';
-        }
-        
-        if (!activeCompanyId) return null;
-        const context = availableContexts.find(c => c.company_id === activeCompanyId);
-        return context ? context.role : null;
-      },
+      
+      isHydrated: false,
+      isSynced: false,
 
       login: (data: LoginResponse) => {
         const defaultCompanyId = data.available_contexts.length > 0 
@@ -56,6 +51,7 @@ export const useAuthStore = create<AuthState>()(
           },
           availableContexts: data.available_contexts,
           activeCompanyId: defaultCompanyId,
+          isSynced: true 
         });
       },
 
@@ -65,26 +61,75 @@ export const useAuthStore = create<AuthState>()(
           sessionId: null,
           user: null,
           activeCompanyId: null,
-          availableContexts: []
+          availableContexts: [],
+          isSynced: false
         });
-        localStorage.clear();
+        localStorage.removeItem('zaman-auth-storage'); 
+        // REMOVED: window.location.href = '/login'; 
+        // We let the AppShell detect the state change and redirect naturally.
+      },
+
+      fetchSession: async () => {
+        const { token } = get();
+        if (!token) return;
+
+        try {
+          const { data } = await api.get('/auth/me');
+          
+          set({
+            user: {
+                id: data.id,
+                username: data.username,
+                display_name: data.display_name,
+                is_superadmin: data.is_superadmin
+            },
+            availableContexts: data.available_contexts || [],
+            isSynced: true
+          });
+        } catch (error) {
+          console.error("Session sync failed", error);
+          get().logout();
+        }
       },
 
       switchCompany: (companyId: number) => {
         const { availableContexts, user } = get();
-        
-        // Allow if user is Superadmin OR if they have the profile
         if (user?.is_superadmin || availableContexts.some(c => c.company_id === companyId)) {
           set({ activeCompanyId: companyId });
-          // Force reload to clear React Query caches
-          setTimeout(() => window.location.reload(), 50); 
+          // REMOVED: window.location.reload(); 
+          // React will automatically re-render components dependent on companyId.
         }
       },
 
+      setHydrated: () => set({ isHydrated: true }),
+      
       isAuthenticated: () => !!get().token,
+
+      currentRole: () => {
+        const { activeCompanyId, availableContexts, user } = get();
+        
+        if (!user) return null;
+
+        if (user.is_superadmin) {
+             if (activeCompanyId) return 'manager';
+             return 'superadmin';
+        }
+        
+        if (!activeCompanyId) return null;
+        const context = availableContexts.find(c => c.company_id === activeCompanyId);
+        return context ? context.role : null;
+      },
     }),
     {
       name: 'zaman-auth-storage',
+      partialize: (state) => ({ 
+        token: state.token,
+        sessionId: state.sessionId,
+        activeCompanyId: state.activeCompanyId,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHydrated();
+      },
     }
   )
 );

@@ -21,13 +21,23 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   
   const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore();
-  const { user, currentRole, isAuthenticated } = useAuthStore();
+  const { 
+    user, 
+    currentRole, 
+    isAuthenticated,
+    token,
+    isHydrated, 
+    isSynced, 
+    fetchSession 
+  } = useAuthStore();
   
   const role = currentRole();
   const isAuthPage = pathname === "/login" || pathname === "/register";
-  // 1. DETECT ADMIN PAGE
   const isAdminPage = pathname?.startsWith("/admin");
   
+  // Flag: Are we logged in but waiting for server verification?
+  const isRestoringSession = !!token && !isSynced; 
+
   const [showEventModal, setShowEventModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [isClient, setIsClient] = useState(false);
@@ -40,21 +50,38 @@ export default function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("resize", checkMobile);
   }, [setIsMobile]);
 
+  // 1. Session Sync
   useEffect(() => {
-    if (isClient && !isAuthenticated() && !isAuthPage) {
-      router.push('/login');
+    if (!isHydrated) return;
+    if (token && !isSynced) {
+      fetchSession();
     }
-  }, [isClient, isAuthenticated, isAuthPage, router]);
+  }, [isHydrated, token, isSynced, fetchSession]);
 
-  if (!isClient) return null;
+  // 2. Auth Protection
+  useEffect(() => {
+    if (!isClient || !isHydrated || isRestoringSession) return;
 
-  if (!isAuthenticated() && !isAuthPage) {
+    if (!isAuthenticated() && !isAuthPage) {
+      router.replace('/login');
+    }
+    
+    // We REMOVE the "already logged in" redirect from here to prevent fighting
+    // The Login Page will handle the forward redirect explicitly.
+    
+  }, [isClient, isHydrated, isRestoringSession, isAuthenticated, isAuthPage, router]);
+
+  // 3. Loading State
+  if (!isClient || !isHydrated || isRestoringSession) {
      return (
-        <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
-           <Loader2 className="animate-spin" size={32} />
+        <div className="flex h-screen w-full items-center justify-center bg-[#020205] text-blue-500">
+           <Loader2 className="animate-spin" size={40} />
         </div>
      );
   }
+
+  // If redirecting, return null to avoid flash
+  if (!isAuthenticated() && !isAuthPage) return null;
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden flex flex-col md:flex-row" dir="rtl">
@@ -63,26 +90,20 @@ export default function AppShell({ children }: AppShellProps) {
          <ModernBackground />
       </div>
 
-      {/* 2. HIDE USER SIDEBAR ON ADMIN PAGES */}
       {!isAuthPage && !isAdminPage && <Sidebar />}
-
-      {/* 3. HIDE CONTEXT RAIL ON ADMIN PAGES */}
       {!isMobile && !isAuthPage && !isAdminPage && <ContextRail />}
 
-      {/* Main Content Area */}
       <main 
         className={`
           relative z-10 flex-1 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
           flex flex-col min-h-0
           ${isMobile && !isAuthPage ? 'pb-28' : ''} 
-          /* Only apply margin if standard sidebar is present */
           ${!isMobile && !isAuthPage && !isAdminPage ? (isSidebarOpen ? 'mr-[240px]' : 'mr-[80px]') : ''}
         `}
       >
         {children}
       </main>
 
-      {/* 4. HIDE MOBILE MENU ON ADMIN PAGES */}
       {!isAuthPage && !isAdminPage && isMobile && (
         <FloatingIsland 
            role={role || 'viewer'} 
@@ -91,7 +112,6 @@ export default function AppShell({ children }: AppShellProps) {
         />
       )}
 
-      {/* Global Modals (Keep these available everywhere) */}
       <EventModal 
         isOpen={showEventModal} 
         onClose={() => setShowEventModal(false)}

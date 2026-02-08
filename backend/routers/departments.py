@@ -1,43 +1,54 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select #type:ignore
+from sqlmodel import Session, select, col
 
 from database import get_session
-from models import Department, User
+from models import Department, User, CompanyProfile
 from security import get_current_user
 
 router = APIRouter()
 
-# Schema for input validation (Pydantic)
 from pydantic import BaseModel
 
 class DepartmentCreate(BaseModel):
     name: str
     color: str = "#cccccc"
     parent_id: Optional[int] = None
+    company_id: Optional[int] = None # Added this field
 
 class DepartmentUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
     parent_id: Optional[int] = None
 
-# 1. GET ALL DEPARTMENTS (Updated for Superadmin filtering)
+# 1. GET ALL DEPARTMENTS
 @router.get("/", response_model=List[Department])
 def read_departments(
-    company_id: Optional[int] = None, # <--- New Query Parameter
+    company_id: Optional[int] = None,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     statement = select(Department)
 
-    if current_user.role == "superadmin":
-        # If Admin sends a specific company_id, filter by it
+    if current_user.is_superadmin:
+        # Superadmin can see everything, or filter by specific company if requested
         if company_id:
             statement = statement.where(Department.company_id == company_id)
-        # Otherwise return all (or handle as needed)
     else:
-        # Regular users ALWAYS filtered by their own company
-        statement = statement.where(Department.company_id == current_user.company_id)
+        # Regular users: Find all company IDs they belong to
+        user_company_ids = [p.company_id for p in current_user.profiles]
+        
+        if not user_company_ids:
+            return []
+
+        if company_id:
+            # If they requested a specific company, verify they have access
+            if company_id not in user_company_ids:
+                raise HTTPException(status_code=403, detail="Access denied to this company")
+            statement = statement.where(Department.company_id == company_id)
+        else:
+            # Otherwise, return departments from ALL their companies
+            statement = statement.where(col(Department.company_id).in_(user_company_ids))
     
     return session.exec(statement).all()
 
@@ -49,13 +60,28 @@ def create_department(
     current_user: User = Depends(get_current_user)
 ):
     # Determine Company ID
-    company_id = current_user.company_id if current_user.company_id else 1
+    target_company_id = dept_data.company_id
     
+    # If not provided, try to guess from user's first profile (Fallback)
+    if not target_company_id:
+        if current_user.profiles:
+            target_company_id = current_user.profiles[0].company_id
+        elif current_user.is_superadmin:
+            raise HTTPException(status_code=400, detail="Superadmins must specify company_id")
+        else:
+             raise HTTPException(status_code=400, detail="User not associated with any company")
+
+    # Permission Check
+    if not current_user.is_superadmin:
+        user_company_ids = [p.company_id for p in current_user.profiles]
+        if target_company_id not in user_company_ids:
+             raise HTTPException(status_code=403, detail="You cannot create departments in this company")
+
     new_dept = Department(
         name=dept_data.name,
         color=dept_data.color,
         parent_id=dept_data.parent_id,
-        company_id=company_id
+        company_id=target_company_id
     )
     
     session.add(new_dept)
@@ -75,13 +101,18 @@ def update_department(
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
     
-    # Update fields if provided
+    # Permission Check
+    if not current_user.is_superadmin:
+        user_company_ids = [p.company_id for p in current_user.profiles]
+        if dept.company_id not in user_company_ids:
+             raise HTTPException(status_code=403, detail="Access denied")
+
+    # Update fields
     if dept_data.name is not None:
         dept.name = dept_data.name
     if dept_data.color is not None:
         dept.color = dept_data.color
     if dept_data.parent_id is not None:
-        # Prevent circular reference (a dept cannot be its own parent)
         if dept_data.parent_id == dept_id:
             raise HTTPException(status_code=400, detail="Cannot set parent to self")
         dept.parent_id = dept_data.parent_id
@@ -101,6 +132,11 @@ def delete_department(
     dept = session.get(Department, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
+    
+    if not current_user.is_superadmin:
+        user_company_ids = [p.company_id for p in current_user.profiles]
+        if dept.company_id not in user_company_ids:
+             raise HTTPException(status_code=403, detail="Access denied")
     
     session.delete(dept)
     session.commit()

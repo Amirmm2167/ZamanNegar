@@ -3,26 +3,24 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
-import ModernBackground from "@/components/ui/ModernBackground";
 import { Loader2 } from "lucide-react";
 
-// NOTE: We REMOVED AdminSidebar from here because page.tsx now handles it.
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isHydrated, isSynced } = useAuthStore();
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
-      return;
-    }
+    // Wait for AppShell to finish its work
+    if (!isHydrated || !isSynced) return;
+
     if (user && user.is_superadmin) {
       setIsAuthorized(true);
     } else {
-      router.push("/");
+      // If not admin, kick them out
+      router.replace("/");
     }
-  }, [user, isAuthenticated, router]);
+  }, [user, isHydrated, isSynced, router]);
 
   if (!isAuthorized) {
     return (
@@ -32,19 +30,5 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  return (
-    <div className="min-h-screen w-full bg-[#020205] text-gray-100 font-sans relative" dir="rtl">
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-50">
-         <ModernBackground />
-      </div>
-      
-      {/* We render children directly. 
-         The 'AdminDashboard' component in page.tsx will provide the Sidebar 
-         and the main content area layout.
-      */}
-      <div className="relative z-10 h-full">
-        {children}
-      </div>
-    </div>
-  );
+  return <>{children}</>;
 }

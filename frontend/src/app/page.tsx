@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BellOff, LogOut, Download, User, Users, RefreshCw, Menu, X, Calendar, Smartphone, Grid, Briefcase, Flag, AlertTriangle } from "lucide-react";
+import { Bell, LogOut, RefreshCw, X, Calendar, Smartphone, Grid, Briefcase, Flag, AlertTriangle, User as UserIcon, Users } from "lucide-react";
 import { motion, AnimatePresence, Variants } from "framer-motion"; 
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
@@ -13,10 +13,16 @@ import IssueModal from "@/components/IssueModal";
 import SkeletonGrid from "@/components/views/mobile/SkeletonGrid"; 
 import { ViewMode } from "@/components/views/shared/ViewSwitcher";
 import clsx from "clsx";
+// 1. Import the Store
+import { useAuthStore } from "@/stores/authStore";
 
 export default function Dashboard() {
   const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  
+  // 2. Connect to the Store
+  // We use the store's state instead of manual localStorage checks
+  const { user, logout, isAuthenticated: isAuthCheck } = useAuthStore();
+  
   const [username, setUsername] = useState("");
   
   // Modals
@@ -34,21 +40,21 @@ export default function Dashboard() {
   const calendarRef = useRef<CalendarGridHandle>(null);
 
   useEffect(() => {
-    // 1. Auth Check
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-    } else {
-      setIsAuthenticated(true);
-      setUsername(localStorage.getItem("username") || "کاربر");
+    // 3. Sync User Info from Store
+    if (user) {
+        setUsername(user.display_name || user.username || "کاربر");
     }
+    
+    // NOTE: We do NOT need to check auth here. 
+    // The 'AppShell' handles protection globally.
+    // If we are here, we are already logged in.
 
-    // 2. Check Notification Permission
+    // Check Notification Permission
     if ("Notification" in window) {
       setNotificationsEnabled(Notification.permission === "granted");
     }
 
-    // 3. Listen for PWA Install Prompt
+    // Listen for PWA Install Prompt
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
@@ -58,7 +64,7 @@ export default function Dashboard() {
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     };
-  }, [router]);
+  }, [user]);
 
   const toggleNotifications = async () => {
     if (!("Notification" in window)) return;
@@ -77,8 +83,8 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.clear();
-    router.push("/login");
+    logout(); // Use store action
+    // router.push("/login"); // Handled by store/AppShell
   };
 
   const handleHardRefresh = async () => {
@@ -97,24 +103,7 @@ export default function Dashboard() {
     setIsMobileMenuOpen(false);
   };
 
-  // Loading State -> Show Skeleton
-  if (!isAuthenticated) {
-    return (
-      <div className="h-screen bg-black flex flex-col">
-         {/* Fake Header for smooth transition */}
-         <div className="h-16 border-b border-white/10 bg-black/60 backdrop-blur-md flex items-center justify-between px-6">
-             <div className="w-8 h-8 bg-white/10 rounded-xl animate-pulse"/>
-             <div className="w-24 h-6 bg-white/10 rounded animate-pulse"/>
-         </div>
-         {/* Skeleton Grid */}
-         <div className="flex-1 overflow-hidden">
-             <SkeletonGrid daysToShow={3} />
-         </div>
-      </div>
-    );
-  }
-
-  // Animation Variants (Typed Correctly)
+  // Animation Variants
   const sidebarVariants: Variants = {
     closed: { 
         x: "120%", 
@@ -162,7 +151,7 @@ export default function Dashboard() {
 
           <div className="hidden sm:flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
-              <User size={16} className="text-gray-400" />
+              <UserIcon size={16} className="text-gray-400" />
               <span className="text-sm text-gray-200">{username}</span>
             </div>
             <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors">
@@ -187,7 +176,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* --- NEW: Mobile Feedback Button (Restored Tunnel) --- */}
+      {/* --- Mobile Feedback Button --- */}
       <div className="md:hidden fixed bottom-6 left-6 z-[50]">
         <button 
             onClick={() => setIsIssueModalOpen(true)}
