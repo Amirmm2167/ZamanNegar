@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarEvent, Department } from "@/types";
+import { EventInstance, Department } from "@/types"; // <--- CHANGED
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { calculateEventLayout } from "@/lib/eventLayout";
@@ -9,14 +9,14 @@ import { Plus } from "lucide-react";
 
 interface WeekViewProps {
   currentDate: Date;
-  events: CalendarEvent[];
+  events: EventInstance[]; // <--- CHANGED
   holidays: any[];
   departments: Department[];
   hiddenDeptIds: number[];
-  onEventClick: (e: CalendarEvent) => void;
-  onEventLongPress: (e: CalendarEvent) => void;
+  onEventClick: (e: EventInstance) => void; // <--- CHANGED
+  onEventLongPress: (e: EventInstance) => void;
   onSlotClick: (date: Date, hour: number) => void;
-  onEventHover: (e: React.MouseEvent, event: CalendarEvent) => void;
+  onEventHover: (e: React.MouseEvent, event: EventInstance) => void;
   onEventLeave: () => void;
   draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
@@ -38,7 +38,6 @@ export default function WeekView({
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
   
-  // Calculate Start of Week
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay(); 
@@ -53,7 +52,7 @@ export default function WeekView({
     return d;
   });
 
-  const getEventStyle = (event: CalendarEvent) => {
+  const getEventStyle = (event: EventInstance) => {
     const dept = departments.find(d => d.id === event.department_id);
     const color = dept?.color || "#6b7280";
     
@@ -74,8 +73,7 @@ export default function WeekView({
   return (
     <div className="flex flex-col h-full bg-[#020205] overflow-hidden select-none">
       
-      {/* 1. Time Header (X-Axis) */}
-      {/* Reduced padding-right (mr-24) to match the sidebar width below */}
+      {/* 1. Time Header */}
       <div className="flex flex-row h-10 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 shrink-0 mr-24">
          <div className="flex-1 relative flex">
             {Array.from({ length: 24 }).map((_, i) => (
@@ -88,7 +86,7 @@ export default function WeekView({
          </div>
       </div>
 
-      {/* 2. Main Body (Rows = Days) */}
+      {/* 2. Main Body */}
       <div className="flex-1 overflow-y-auto custom-scrollbar relative">
           
           {weekDays.map((dayDate, dayIndex) => {
@@ -96,15 +94,15 @@ export default function WeekView({
               const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
               const isToday = new Date().toDateString() === dayDate.toDateString();
 
-              // Filter Events for this Day
               const dayEvents = events.filter(e => 
                   !hiddenDeptIds.includes(e.department_id || 0) &&
                   new Date(e.start_time).toDateString() === dayDate.toDateString() &&
                   !e.is_all_day
               );
 
-              // Calculate Layout (Horizontal)
-              const visualEvents = calculateEventLayout(dayEvents, 'horizontal');
+              // Cast to any for layout calc if types mismatch slightly (EventInstance vs CalendarEvent)
+              // Since structure is similar, it should be fine.
+              const visualEvents = calculateEventLayout(dayEvents as any[], 'horizontal');
               const isDraftDay = draftEvent && draftEvent.date.toDateString() === dayDate.toDateString();
 
               return (
@@ -117,8 +115,7 @@ export default function WeekView({
                     onMouseEnter={() => setHoveredDayIndex(dayIndex)}
                     onMouseLeave={() => setHoveredDayIndex(null)}
                   >
-                      
-                      {/* Y-Axis Label (Day) - Sticky Right */}
+                      {/* Y-Axis Label */}
                       <div className="sticky right-0 w-24 shrink-0 bg-[#09090b] border-l border-white/10 z-30 flex flex-col items-center justify-center p-2 transition-colors shadow-[-5px_0_20px_rgba(0,0,0,0.5)]">
                           <span className={clsx("text-sm font-bold", isToday ? "text-blue-400" : "text-gray-300")}>
                               {WEEK_DAYS[dayIndex]}
@@ -133,10 +130,8 @@ export default function WeekView({
                           )}
                       </div>
 
-                      {/* Grid Cells (24 Hours) & Events Container */}
+                      {/* Grid & Events */}
                       <div className="flex-1 relative flex z-0">
-                          
-                          {/* Background Grid & Click Handlers */}
                           <div className="absolute inset-0 flex">
                             {Array.from({ length: 24 }).map((_, h) => (
                                 <div 
@@ -148,13 +143,10 @@ export default function WeekView({
                             ))}
                           </div>
 
-                          {/* Draft Indicator */}
                           {isDraftDay && draftEvent && (
                              <div 
                                 className="absolute top-2 bottom-2 z-10 bg-emerald-500/20 border-2 border-dashed border-emerald-500 rounded-md flex items-center justify-center animate-pulse pointer-events-none"
                                 style={{
-                                   // In Horizontal (RTL): 00:00 is Right. 
-                                   // StartHour / 24 * 100 = Right Position %
                                    right: `${(draftEvent.startHour / 24) * 100}%`,
                                    width: `${((draftEvent.endHour - draftEvent.startHour) / 24) * 100}%`
                                 }}
@@ -163,29 +155,26 @@ export default function WeekView({
                              </div>
                           )}
 
-                          {/* Events Overlay */}
                           <div className="absolute inset-0 pointer-events-none w-full h-full">
                               {visualEvents.map((ev) => {
-                                  const styles = getEventStyle(ev);
-                                  // In Horizontal mode: 
-                                  // startPercent -> Right position (Time)
-                                  // sizePercent -> Width (Duration)
-                                  // laneIndex -> Top position (Stacking)
+                                  // Cast back to EventInstance
+                                  const eventInstance = ev as unknown as EventInstance; 
+                                  const styles = getEventStyle(eventInstance);
                                   const laneHeight = 100 / ev.totalLanes;
                                   
                                   return (
                                       <div
                                           key={ev.id}
-                                          onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
-                                          onContextMenu={(e) => { e.preventDefault(); onEventLongPress(ev); }}
-                                          onMouseEnter={(e) => onEventHover(e, ev)}
+                                          onClick={(e) => { e.stopPropagation(); onEventClick(eventInstance); }}
+                                          onContextMenu={(e) => { e.preventDefault(); onEventLongPress(eventInstance); }}
+                                          onMouseEnter={(e) => onEventHover(e, eventInstance)}
                                           onMouseLeave={onEventLeave}
                                           className="absolute z-20 rounded-md shadow-lg cursor-pointer pointer-events-auto flex items-center px-2 overflow-hidden hover:brightness-110 hover:z-30 hover:shadow-xl transition-all group/event"
                                           style={{
                                               right: `${ev.startPercent}%`, 
                                               width: `${ev.sizePercent}%`,
                                               top: `${ev.laneIndex * laneHeight}%`,
-                                              height: `calc(${laneHeight}% - 2px)`, // -2px gap
+                                              height: `calc(${laneHeight}% - 2px)`,
                                               backgroundColor: styles.backgroundColor,
                                               borderRight: styles.borderRight,
                                               border: styles.border,
@@ -200,7 +189,6 @@ export default function WeekView({
                               })}
                           </div>
                       </div>
-
                   </div>
               );
           })}

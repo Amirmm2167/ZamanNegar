@@ -1,17 +1,17 @@
 "use client";
 
-import { CalendarEvent, Department } from "@/types";
+import { EventInstance, Department } from "@/types"; // <--- CHANGED
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { Plus } from "lucide-react";
 
 interface MonthViewProps {
   currentDate: Date;
-  events: CalendarEvent[];
+  events: EventInstance[]; // <--- CHANGED
   holidays: any[];
   departments: Department[];
-  onEventClick: (e: CalendarEvent) => void;
-  onEventLongPress: (e: CalendarEvent) => void;
+  onEventClick: (e: EventInstance) => void;
+  onEventLongPress: (e: EventInstance) => void;
   onSlotClick: (date: Date, hour: number) => void;
 }
 
@@ -27,30 +27,25 @@ export default function MonthView({
   
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
 
-  // Generate Month Grid
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     
-    // Fill previous month days to align start of week
     const days = [];
-    const firstDayIndex = (firstDay.getDay() + 1) % 7; // Align to Saturday
+    const firstDayIndex = (firstDay.getDay() + 1) % 7; 
     
-    // Prev Month Filler
     for (let i = firstDayIndex; i > 0; i--) {
       const d = new Date(firstDay);
       d.setDate(d.getDate() - i);
       days.push({ date: d, isCurrentMonth: false });
     }
     
-    // Current Month
     for (let i = 1; i <= lastDay.getDate(); i++) {
       days.push({ date: new Date(year, month, i), isCurrentMonth: true });
     }
     
-    // Next Month Filler (to complete 42 grid)
     const remaining = 42 - days.length;
     for (let i = 1; i <= remaining; i++) {
       const d = new Date(lastDay);
@@ -64,7 +59,7 @@ export default function MonthView({
   const days = getDaysInMonth(currentDate);
   const today = new Date();
 
-  const getEventStyle = (event: CalendarEvent) => {
+  const getEventStyle = (event: EventInstance) => {
     const dept = departments.find(d => d.id === event.department_id);
     const color = dept?.color || "#6b7280";
     if (event.status === 'pending') {
@@ -86,7 +81,7 @@ export default function MonthView({
   return (
     <div className="flex flex-col h-full bg-[#020205] select-none">
       
-      {/* Header (Days of Week) */}
+      {/* Header */}
       <div className="flex border-b border-white/10 bg-black/40 backdrop-blur-md z-10">
         {WEEK_DAYS.map((day, i) => (
           <div key={i} className="flex-1 py-3 text-center text-xs font-bold text-gray-400 border-l border-white/5 last:border-l-0">
@@ -102,7 +97,6 @@ export default function MonthView({
           const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
           const isToday = dayObj.date.toDateString() === today.toDateString();
           
-          // Filter events for this day
           const dayEvents = events.filter(e => 
              new Date(e.start_time).toDateString() === dayObj.date.toDateString()
           ).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
@@ -115,10 +109,10 @@ export default function MonthView({
                 !dayObj.isCurrentMonth && "bg-white/[0.01] opacity-50 text-gray-600 grayscale",
                 dayObj.isCurrentMonth && "hover:bg-white/[0.02]"
               )}
-              onClick={() => onSlotClick(dayObj.date, 9)} // Default to 9am click
+              onClick={() => onSlotClick(dayObj.date, 9)} 
             >
               
-              {/* Date Number */}
+              {/* Date & Holiday */}
               <div className="flex justify-between items-start px-1">
                  <span className={clsx(
                     "text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all",
