@@ -6,7 +6,7 @@ from security import get_password_hash
 def create_super_user():
     with Session(engine) as session:
         # 1. Check if superadmin exists
-        statement = select(User).where(User.role == "superadmin")
+        statement = select(User).where(User.is_superadmin == True)
         user = session.exec(statement).first()
         
         if user:
@@ -19,9 +19,7 @@ def create_super_user():
             username="admin",
             display_name="مدیر کل سیستم", # System Superadmin
             hashed_password=get_password_hash("123456"), # Change this in production!
-            role="superadmin",
-            company_id=None, 
-            department_id=None
+            is_superadmin=True
         )
         
         session.add(super_user)

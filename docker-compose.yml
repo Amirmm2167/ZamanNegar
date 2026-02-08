@@ -73,3 +73,14 @@ services:
     depends_on:
       - frontend
       - backend
+
+  adminer:
+    image: adminer:latest
+    container_name: zaman_adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Tehran
+    depends_on:
+      - db
