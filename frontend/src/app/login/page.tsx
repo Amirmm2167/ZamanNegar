@@ -92,6 +92,7 @@ export default function LoginPage() {
               className="w-full py-3.5 pr-12 pl-4 bg-[#0a0c10]/50 border border-white/5 rounded-xl text-white focus:border-blue-500/50 focus:bg-black/40 outline-none transition-all placeholder:text-gray-700 text-right dir-rtl"
               placeholder="نام کاربری"
               style={{ direction: 'rtl' }}
+              autoFocus
             />
           </div>
 
