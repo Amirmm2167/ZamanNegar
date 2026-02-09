@@ -20,7 +20,8 @@ export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   
-  const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore();
+  // Get ContextRail State
+  const { setIsMobile, isMobile, isSidebarOpen, isContextRailOpen } = useLayoutStore();
   const { 
     user, 
     currentRole, 
@@ -34,8 +35,6 @@ export default function AppShell({ children }: AppShellProps) {
   const role = currentRole();
   const isAuthPage = pathname === "/login" || pathname === "/register";
   const isAdminPage = pathname?.startsWith("/admin");
-  
-  // Flag: Are we logged in but waiting for server verification?
   const isRestoringSession = !!token && !isSynced; 
 
   const [showEventModal, setShowEventModal] = useState(false);
@@ -50,7 +49,6 @@ export default function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("resize", checkMobile);
   }, [setIsMobile]);
 
-  // 1. Session Sync
   useEffect(() => {
     if (!isHydrated) return;
     if (token && !isSynced) {
@@ -58,20 +56,13 @@ export default function AppShell({ children }: AppShellProps) {
     }
   }, [isHydrated, token, isSynced, fetchSession]);
 
-  // 2. Auth Protection
   useEffect(() => {
     if (!isClient || !isHydrated || isRestoringSession) return;
-
     if (!isAuthenticated() && !isAuthPage) {
       router.replace('/login');
     }
-    
-    // We REMOVE the "already logged in" redirect from here to prevent fighting
-    // The Login Page will handle the forward redirect explicitly.
-    
   }, [isClient, isHydrated, isRestoringSession, isAuthenticated, isAuthPage, router]);
 
-  // 3. Loading State
   if (!isClient || !isHydrated || isRestoringSession) {
      return (
         <div className="flex h-screen w-full items-center justify-center bg-[#020205] text-blue-500">
@@ -80,7 +71,6 @@ export default function AppShell({ children }: AppShellProps) {
      );
   }
 
-  // If redirecting, return null to avoid flash
   if (!isAuthenticated() && !isAuthPage) return null;
 
   return (
@@ -91,6 +81,8 @@ export default function AppShell({ children }: AppShellProps) {
       </div>
 
       {!isAuthPage && !isAdminPage && <Sidebar />}
+      
+      {/* Context Rail is Fixed Left */}
       {!isMobile && !isAuthPage && !isAdminPage && <ContextRail />}
 
       <main 
@@ -98,7 +90,12 @@ export default function AppShell({ children }: AppShellProps) {
           relative z-10 flex-1 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
           flex flex-col min-h-0
           ${isMobile && !isAuthPage ? 'pb-28' : ''} 
+          
+          /* Sidebar Logic (Right Margin) */
           ${!isMobile && !isAuthPage && !isAdminPage ? (isSidebarOpen ? 'mr-[240px]' : 'mr-[80px]') : ''}
+          
+          /* Context Rail Logic (Left Margin) - FIX for Blocking Content */
+          ${!isMobile && !isAuthPage && !isAdminPage && isContextRailOpen ? 'ml-[300px]' : ''}
         `}
       >
         {children}

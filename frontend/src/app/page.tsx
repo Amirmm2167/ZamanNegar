@@ -12,27 +12,27 @@ import HolidayModal from "@/components/HolidayModal";
 import IssueModal from "@/components/IssueModal";
 import clsx from "clsx";
 
-// 1. Fixed Imports
 import { useAuthStore } from "@/stores/authStore";
 import { useLayoutStore } from "@/stores/layoutStore";
-import { ViewMode } from "@/types"; // <--- Fixed: Import from types
+import { ViewMode } from "@/types"; 
+
+// IMPORT THE SWITCHER
+import ViewSwitcher from "@/components/views/shared/ViewSwitcher"; 
 
 export default function Dashboard() {
   const router = useRouter();
   
-  // 2. Connect to Stores
   const { user, logout } = useAuthStore();
-  const { setViewMode } = useLayoutStore(); // <--- Get setter from store
+  // Get viewMode and setter from store to pass to Switcher
+  const { setViewMode, viewMode, isMobile } = useLayoutStore(); 
   
   const [username, setUsername] = useState("");
   
-  // Modals
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   
-  // Features
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -91,13 +91,11 @@ export default function Dashboard() {
     window.location.reload();
   };
 
-  // --- LOGIC FIX: Update Store instead of Ref ---
   const handleViewChange = (view: ViewMode) => {
-    setViewMode(view); // Updates global state
+    setViewMode(view); 
     setIsMobileMenuOpen(false);
   };
 
-  // Animation Variants
   const sidebarVariants: Variants = {
     closed: { 
         x: "120%", 
@@ -129,12 +127,22 @@ export default function Dashboard() {
 
   return (
     <div className="h-screen bg-transparent flex flex-col overflow-hidden text-gray-200 relative z-10">
+      
       {/* --- GLOBAL APP HEADER --- */}
       <header className="flex items-center justify-between px-6 py-3 bg-black/60 backdrop-blur-md border-b border-white/10 shrink-0 z-50 h-16">
         
         {/* RIGHT SIDE (RTL Start) */}
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-white tracking-tight">زمان‌نگار</h1>
+          
+          {/* VIEW SWITCHER: Placed here for Desktop */}
+          {!isMobile && (
+             <ViewSwitcher 
+                currentView={viewMode} 
+                onChange={handleViewChange} 
+                isMobile={false} 
+             />
+          )}
         </div>
         
         {/* LEFT SIDE (RTL End) */}
@@ -217,31 +225,14 @@ export default function Dashboard() {
                     
                     <div className="space-y-3">
                         <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">نمای تقویم</h3>
-                        <div className="grid grid-cols-1 gap-2">
-                            {[
-                                { id: '1day', label: 'روزانه', icon: Smartphone, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-                                { id: '3day', label: '۳ روزه', icon: Calendar, color: 'text-purple-400', bg: 'bg-purple-500/10' },
-                                { id: 'mobile-week', label: 'هفتگی', icon: Grid, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-                                { id: 'month', label: 'ماهانه', icon: Calendar, color: 'text-orange-400', bg: 'bg-orange-500/10' },
-                            ].map((item, i) => (
-                                <motion.button
-                                    key={item.id}
-                                    custom={i}
-                                    variants={itemVariants}
-                                    initial="closed"
-                                    animate="open"
-                                    onClick={() => handleViewChange(item.id as ViewMode)}
-                                    className="flex items-center justify-between w-full p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all active:scale-[0.98] group"
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className={clsx("p-2 rounded-xl", item.bg, item.color)}>
-                                            <item.icon size={18} />
-                                        </div>
-                                        <span className="font-medium text-gray-200 group-hover:text-white transition-colors">{item.label}</span>
-                                    </div>
-                                </motion.button>
-                            ))}
-                        </div>
+                        
+                        {/* Mobile View Switcher embedded in menu */}
+                        <ViewSwitcher 
+                            currentView={viewMode} 
+                            onChange={handleViewChange} 
+                            isMobile={true} 
+                            variant="embedded"
+                        />
                     </div>
 
                     <div className="space-y-3">
@@ -299,7 +290,7 @@ export default function Dashboard() {
       <IssueModal 
         isOpen={isIssueModalOpen} 
         onClose={() => setIsIssueModalOpen(false)} 
-        onSubmit={() => setIsIssueModalOpen(false)} // <--- Fix: Added missing prop
+        onSubmit={() => setIsIssueModalOpen(false)}
       />
     </div>
   );
