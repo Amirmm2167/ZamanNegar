@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, RefreshCw, X, Calendar, Smartphone, Grid, Briefcase, Flag, AlertTriangle, User as UserIcon, Users } from "lucide-react";
+import { LogOut, RefreshCw, X, Calendar, Smartphone, Grid, Briefcase, Flag, AlertTriangle, User as UserIcon, Users } from "lucide-react";
 import { motion, AnimatePresence, Variants } from "framer-motion"; 
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
@@ -10,18 +10,19 @@ import DepartmentModal from "@/components/DepartmentModal";
 import UserModal from "@/components/UserModal";
 import HolidayModal from "@/components/HolidayModal";
 import IssueModal from "@/components/IssueModal";
-import SkeletonGrid from "@/components/views/mobile/SkeletonGrid"; 
-import { ViewMode } from "@/components/views/shared/ViewSwitcher";
 import clsx from "clsx";
-// 1. Import the Store
+
+// 1. Fixed Imports
 import { useAuthStore } from "@/stores/authStore";
+import { useLayoutStore } from "@/stores/layoutStore";
+import { ViewMode } from "@/types"; // <--- Fixed: Import from types
 
 export default function Dashboard() {
   const router = useRouter();
   
-  // 2. Connect to the Store
-  // We use the store's state instead of manual localStorage checks
-  const { user, logout, isAuthenticated: isAuthCheck } = useAuthStore();
+  // 2. Connect to Stores
+  const { user, logout } = useAuthStore();
+  const { setViewMode } = useLayoutStore(); // <--- Get setter from store
   
   const [username, setUsername] = useState("");
   
@@ -40,21 +41,14 @@ export default function Dashboard() {
   const calendarRef = useRef<CalendarGridHandle>(null);
 
   useEffect(() => {
-    // 3. Sync User Info from Store
     if (user) {
         setUsername(user.display_name || user.username || "کاربر");
     }
-    
-    // NOTE: We do NOT need to check auth here. 
-    // The 'AppShell' handles protection globally.
-    // If we are here, we are already logged in.
 
-    // Check Notification Permission
     if ("Notification" in window) {
       setNotificationsEnabled(Notification.permission === "granted");
     }
 
-    // Listen for PWA Install Prompt
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
@@ -83,8 +77,7 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    logout(); // Use store action
-    // router.push("/login"); // Handled by store/AppShell
+    logout(); 
   };
 
   const handleHardRefresh = async () => {
@@ -98,8 +91,9 @@ export default function Dashboard() {
     window.location.reload();
   };
 
+  // --- LOGIC FIX: Update Store instead of Ref ---
   const handleViewChange = (view: ViewMode) => {
-    calendarRef.current?.setView(view);
+    setViewMode(view); // Updates global state
     setIsMobileMenuOpen(false);
   };
 
@@ -302,7 +296,11 @@ export default function Dashboard() {
       <DepartmentModal isOpen={isDeptModalOpen} onClose={() => setIsDeptModalOpen(false)} />
       <UserModal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} />
       <HolidayModal isOpen={isHolidayModalOpen} onClose={() => setIsHolidayModalOpen(false)} onUpdate={() => {}} />
-      <IssueModal isOpen={isIssueModalOpen} onClose={() => setIsIssueModalOpen(false)} />
+      <IssueModal 
+        isOpen={isIssueModalOpen} 
+        onClose={() => setIsIssueModalOpen(false)} 
+        onSubmit={() => setIsIssueModalOpen(false)} // <--- Fix: Added missing prop
+      />
     </div>
   );
 }
