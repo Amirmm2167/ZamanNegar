@@ -1,13 +1,13 @@
 "use client";
 
-import { EventInstance, Department } from "@/types"; // <--- CHANGED
+import { EventInstance, Department } from "@/types";
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
 import { Plus } from "lucide-react";
 
 interface MonthViewProps {
   currentDate: Date;
-  events: EventInstance[]; // <--- CHANGED
+  events: EventInstance[];
   holidays: any[];
   departments: Department[];
   onEventClick: (e: EventInstance) => void;
@@ -36,16 +36,19 @@ export default function MonthView({
     const days = [];
     const firstDayIndex = (firstDay.getDay() + 1) % 7; 
     
+    // Previous Month Padding
     for (let i = firstDayIndex; i > 0; i--) {
       const d = new Date(firstDay);
       d.setDate(d.getDate() - i);
       days.push({ date: d, isCurrentMonth: false });
     }
     
+    // Current Month
     for (let i = 1; i <= lastDay.getDate(); i++) {
       days.push({ date: new Date(year, month, i), isCurrentMonth: true });
     }
     
+    // Next Month Padding (fill up to 42 grid cells)
     const remaining = 42 - days.length;
     for (let i = 1; i <= remaining; i++) {
       const d = new Date(lastDay);
@@ -59,15 +62,17 @@ export default function MonthView({
   const days = getDaysInMonth(currentDate);
   const today = new Date();
 
+  // Helper to determine styling
   const getEventStyle = (event: EventInstance) => {
     const dept = departments.find(d => d.id === event.department_id);
     const color = dept?.color || "#6b7280";
+    
     if (event.status === 'pending') {
         return { 
-            bg: `${color}20`, 
+            bg: `${color}30`, // 30% Opacity for background
             border: color, 
             text: color, 
-            opacity: 0.8 
+            opacity: 0.9 
         };
     }
     return { 
@@ -79,7 +84,7 @@ export default function MonthView({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#020205] select-none">
+    <div className="flex flex-col h-full bg-[#020205] select-none text-right dir-rtl">
       
       {/* Header */}
       <div className="flex border-b border-white/10 bg-black/40 backdrop-blur-md z-10">
@@ -94,7 +99,8 @@ export default function MonthView({
       <div className="flex-1 grid grid-cols-7 grid-rows-6">
         {days.map((dayObj, i) => {
           const dateStr = dayObj.date.toISOString().split('T')[0];
-          const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
+          // Use substring matching for holidays to handle potential timezone diffs in string comparison
+          const holiday = holidays.find(h => h.holiday_date.startsWith(dateStr));
           const isToday = dayObj.date.toDateString() === today.toDateString();
           
           const dayEvents = events.filter(e => 
@@ -105,34 +111,38 @@ export default function MonthView({
             <div 
               key={i} 
               className={clsx(
-                "border-b border-l border-white/5 relative group transition-colors flex flex-col p-1 gap-1 overflow-hidden",
+                "border-b border-l border-white/5 relative group transition-colors flex flex-col p-1 gap-1 overflow-hidden min-h-0",
                 !dayObj.isCurrentMonth && "bg-white/[0.01] opacity-50 text-gray-600 grayscale",
                 dayObj.isCurrentMonth && "hover:bg-white/[0.02]"
               )}
+              // Default click creates event at 9 AM
               onClick={() => onSlotClick(dayObj.date, 9)} 
             >
               
-              {/* Date & Holiday */}
-              <div className="flex justify-between items-start px-1">
-                 <span className={clsx(
-                    "text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all",
-                    isToday 
-                        ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)]" 
-                        : "text-gray-400"
-                 )}>
-                    {toPersianDigits(dayObj.date.getDate())}
-                 </span>
+              {/* Date & Holiday Indicator */}
+              <div className="flex justify-between items-start px-1 shrink-0">
                  {holiday && (
                     <span className="text-[9px] text-red-400 truncate max-w-[70%] leading-tight bg-red-500/10 px-1.5 py-0.5 rounded">
                        {holiday.occasion}
                     </span>
                  )}
+                 <span className={clsx(
+                    "text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all mr-auto",
+                    isToday 
+                        ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)]" 
+                        : "text-gray-400",
+                    holiday && !isToday && "text-red-400"
+                 )}>
+                    {toPersianDigits(dayObj.date.getDate())}
+                 </span>
               </div>
 
               {/* Events List */}
               <div className="flex-1 flex flex-col gap-1 overflow-hidden">
                  {dayEvents.slice(0, 4).map(event => {
                     const style = getEventStyle(event);
+                    const isPending = event.status === 'pending';
+
                     return (
                         <div 
                            key={event.id}
@@ -140,7 +150,8 @@ export default function MonthView({
                            onContextMenu={(e) => { e.preventDefault(); onEventLongPress(event); }}
                            className={clsx(
                                "text-[10px] px-2 py-1 rounded truncate cursor-pointer transition-all hover:scale-[1.02] shadow-sm flex items-center gap-1",
-                               event.status === 'pending' && "border border-dashed"
+                               // Apply Hatched Pattern if Pending
+                               isPending && "bg-hatched border border-dashed"
                            )}
                            style={{ 
                                backgroundColor: style.bg, 
@@ -155,14 +166,16 @@ export default function MonthView({
                         </div>
                     );
                  })}
+                 
+                 {/* "Show More" Indicator */}
                  {dayEvents.length > 4 && (
-                    <div className="text-[10px] text-center text-gray-500 hover:text-white cursor-pointer transition-colors">
+                    <div className="text-[10px] text-center text-gray-500 hover:text-white cursor-pointer transition-colors mt-auto">
                        {toPersianDigits(dayEvents.length - 4)}+ بیشتر
                     </div>
                  )}
               </div>
 
-              {/* Hover Add Button */}
+              {/* Hover Add Button (Desktop interaction hint) */}
               {dayObj.isCurrentMonth && (
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                       <div className="bg-emerald-600/90 text-white p-2 rounded-full shadow-xl transform scale-75 group-hover:scale-100 transition-transform">
