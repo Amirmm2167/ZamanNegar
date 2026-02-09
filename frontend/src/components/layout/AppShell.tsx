@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useLayoutStore } from "@/stores/layoutStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useHotkeys } from "@/hooks/useHotkeys"; 
 import FloatingIsland from "./FloatingIsland";
 import ContextRail from "./ContextRail";
 import Sidebar from "./Sidebar";
+import DesktopHeader from "./DesktopHeader";
+import ContextMenu from "@/components/ui/ContextMenu";
 import ModernBackground from "@/components/ui/ModernBackground";
 import EventModal from "@/components/EventModal";
 import IssueModal from "@/components/IssueModal";
@@ -20,26 +23,69 @@ export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   
-  // Get ContextRail State
-  const { setIsMobile, isMobile, isSidebarOpen, isContextRailOpen } = useLayoutStore();
-  const { 
-    user, 
-    currentRole, 
-    isAuthenticated,
-    token,
-    isHydrated, 
-    isSynced, 
-    fetchSession 
-  } = useAuthStore();
+  useHotkeys();
+
+  const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore();
+  const { user, isAuthenticated, currentRole } = useAuthStore();
   
   const role = currentRole();
   const isAuthPage = pathname === "/login" || pathname === "/register";
   const isAdminPage = pathname?.startsWith("/admin");
-  const isRestoringSession = !!token && !isSynced; 
-
+  
+  // Modal States
   const [showEventModal, setShowEventModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<number | undefined>(undefined);
+  
   const [isClient, setIsClient] = useState(false);
+
+  // --- 1. Global Event Listeners (Hotkeys & Context Menu) ---
+  useEffect(() => {
+    // A. Open New Event
+    const handleOpenNew = () => {
+      setEditingEventId(undefined);
+      setShowEventModal(true);
+    };
+
+    // B. Open Edit Event (from Context Menu)
+    const handleOpenEdit = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.eventId) {
+        setEditingEventId(detail.eventId);
+        setShowEventModal(true);
+      }
+    };
+
+    // C. Close All Modals (Esc Key)
+    const handleCloseAll = () => {
+      setShowEventModal(false);
+      setShowIssueModal(false);
+    };
+
+    window.addEventListener('open-new-event', handleOpenNew);
+    window.addEventListener('open-event-modal', handleOpenEdit);
+    window.addEventListener('close-modals', handleCloseAll);
+
+    return () => {
+      window.removeEventListener('open-new-event', handleOpenNew);
+      window.removeEventListener('open-event-modal', handleOpenEdit);
+      window.removeEventListener('close-modals', handleCloseAll);
+    };
+  }, []);
+
+  // --- 2. Button Focus Management (The "Prevent Stickiness" Fix) ---
+  useEffect(() => {
+    const handleMouseUp = (e: MouseEvent) => {
+      // Find the closest button element if the user clicked an icon/span inside a button
+      const button = (e.target as HTMLElement).closest('button');
+      if (button) {
+        // Force blur immediately so Space/Enter hotkeys don't re-trigger the button
+        button.blur();
+      }
+    };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
 
   useEffect(() => {
     setIsClient(true);
@@ -50,55 +96,41 @@ export default function AppShell({ children }: AppShellProps) {
   }, [setIsMobile]);
 
   useEffect(() => {
-    if (!isHydrated) return;
-    if (token && !isSynced) {
-      fetchSession();
+    if (isClient && !isAuthenticated() && !isAuthPage) {
+      router.push('/login');
     }
-  }, [isHydrated, token, isSynced, fetchSession]);
+  }, [isClient, isAuthenticated, isAuthPage, router]);
 
-  useEffect(() => {
-    if (!isClient || !isHydrated || isRestoringSession) return;
-    if (!isAuthenticated() && !isAuthPage) {
-      router.replace('/login');
-    }
-  }, [isClient, isHydrated, isRestoringSession, isAuthenticated, isAuthPage, router]);
+  if (!isClient) return null;
 
-  if (!isClient || !isHydrated || isRestoringSession) {
+  if (!isAuthenticated() && !isAuthPage) {
      return (
-        <div className="flex h-screen w-full items-center justify-center bg-[#020205] text-blue-500">
-           <Loader2 className="animate-spin" size={40} />
+        <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
+           <Loader2 className="animate-spin" size={32} />
         </div>
      );
   }
 
-  if (!isAuthenticated() && !isAuthPage) return null;
-
   return (
-    <div className="relative min-h-screen w-full overflow-hidden flex flex-col md:flex-row" dir="rtl">
-      
+    <div className="relative h-screen w-full overflow-hidden flex flex-col md:flex-row bg-black" dir="rtl">
       <div className="fixed inset-0 z-0 pointer-events-none">
          <ModernBackground />
       </div>
+      <ContextMenu />
 
       {!isAuthPage && !isAdminPage && <Sidebar />}
-      
-      {/* Context Rail is Fixed Left */}
       {!isMobile && !isAuthPage && !isAdminPage && <ContextRail />}
 
       <main 
         className={`
-          relative z-10 flex-1 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-          flex flex-col min-h-0
-          ${isMobile && !isAuthPage ? 'pb-28' : ''} 
-          
-          /* Sidebar Logic (Right Margin) */
+          relative z-10 flex-1 flex flex-col h-full overflow-hidden transition-all duration-300
           ${!isMobile && !isAuthPage && !isAdminPage ? (isSidebarOpen ? 'mr-[240px]' : 'mr-[80px]') : ''}
-          
-          /* Context Rail Logic (Left Margin) - FIX for Blocking Content */
-          ${!isMobile && !isAuthPage && !isAdminPage && isContextRailOpen ? 'ml-[300px]' : ''}
         `}
       >
-        {children}
+        {!isMobile && !isAuthPage && !isAdminPage && <DesktopHeader />}
+        <div className="flex-1 relative overflow-hidden flex flex-col">
+           {children}
+        </div>
       </main>
 
       {!isAuthPage && !isAdminPage && isMobile && (
@@ -109,11 +141,14 @@ export default function AppShell({ children }: AppShellProps) {
         />
       )}
 
+      {/* Passing editId allows the modal to fetch data if needed, or pass null for new */}
       <EventModal 
         isOpen={showEventModal} 
         onClose={() => setShowEventModal(false)}
         onSuccess={() => setShowEventModal(false)}
         currentUserId={user?.id || 0}
+        // If your EventModal supports editing by ID, pass it here
+        // eventId={editingEventId} 
       />
 
       <IssueModal 

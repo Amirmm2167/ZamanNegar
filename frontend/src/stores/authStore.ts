@@ -6,10 +6,10 @@ import api from '@/lib/api';
 interface AuthState {
   token: string | null;
   sessionId: string | null;
-  user: User | null;              
-  activeCompanyId: number | null; 
-  availableContexts: CompanyProfile[]; 
-  
+  user: User | null;
+  activeCompanyId: number | null;
+  availableContexts: CompanyProfile[];
+
   isHydrated: boolean;
   isSynced: boolean;
 
@@ -18,7 +18,7 @@ interface AuthState {
   fetchSession: () => Promise<void>;
   switchCompany: (companyId: number) => void;
   setHydrated: () => void;
-  
+
   isAuthenticated: () => boolean;
   currentRole: () => string | null;
 }
@@ -31,27 +31,27 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       activeCompanyId: null,
       availableContexts: [],
-      
+
       isHydrated: false,
       isSynced: false,
 
       login: (data: LoginResponse) => {
-        const defaultCompanyId = data.available_contexts.length > 0 
-          ? data.available_contexts[0].company_id 
+        const defaultCompanyId = data.available_contexts.length > 0
+          ? data.available_contexts[0].company_id
           : null;
 
         set({
           token: data.access_token,
           sessionId: data.session_id,
-          user: { 
-            id: 0, 
+          user: {
+            id: 0,
             username: data.username,
-            display_name: data.username, 
+            display_name: data.username,
             is_superadmin: data.is_superadmin
           },
           availableContexts: data.available_contexts,
           activeCompanyId: defaultCompanyId,
-          isSynced: true 
+          isSynced: true
         });
       },
 
@@ -64,7 +64,7 @@ export const useAuthStore = create<AuthState>()(
           availableContexts: [],
           isSynced: false
         });
-        localStorage.removeItem('zaman-auth-storage'); 
+        localStorage.removeItem('zaman-auth-storage');
         // REMOVED: window.location.href = '/login'; 
         // We let the AppShell detect the state change and redirect naturally.
       },
@@ -75,13 +75,13 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const { data } = await api.get('/auth/me');
-          
+
           set({
             user: {
-                id: data.id,
-                username: data.username,
-                display_name: data.display_name,
-                is_superadmin: data.is_superadmin
+              id: data.id,
+              username: data.username,
+              display_name: data.display_name,
+              is_superadmin: data.is_superadmin
             },
             availableContexts: data.available_contexts || [],
             isSynced: true
@@ -102,27 +102,28 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setHydrated: () => set({ isHydrated: true }),
-      
+
       isAuthenticated: () => !!get().token,
 
+      // In authStore.ts
       currentRole: () => {
-        const { activeCompanyId, availableContexts, user } = get();
-        
-        if (!user) return null;
+        const state = get();
+        // 1. Check if user is superadmin
+        if (state.user?.is_superadmin) return 'superadmin';
 
-        if (user.is_superadmin) {
-             if (activeCompanyId) return 'manager';
-             return 'superadmin';
+        // 2. Check active company context
+        if (state.activeCompanyId) {
+          const context = state.availableContexts.find(c => c.company_id === state.activeCompanyId);
+          if (context) return context.role; // 'manager' | 'evaluator' | 'viewer'
         }
-        
-        if (!activeCompanyId) return null;
-        const context = availableContexts.find(c => c.company_id === activeCompanyId);
-        return context ? context.role : null;
+
+        // 3. Fallback
+        return 'viewer';
       },
     }),
     {
       name: 'zaman-auth-storage',
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         token: state.token,
         sessionId: state.sessionId,
         activeCompanyId: state.activeCompanyId,

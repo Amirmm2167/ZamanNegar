@@ -1,12 +1,42 @@
 // frontend/src/lib/jalali.ts
 
-// Converts 0-9 to Persian digits
+// 1. Core Converter (English Digits -> Persian Digits)
 export const toPersianDigits = (str: string | number): string => {
   const s = String(str);
   return s.replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[parseInt(d)]);
 };
 
-// Returns standard Jalali format: "1403/02/15"
+// 2. Extract Parts [Year, Month, Day] in Jalali
+// Returns real integers: [1403, 11, 19]
+export const getJalaliParts = (date: Date): [number, number, number] => {
+  // force 'en-US' with 'persian' calendar to get clean ASCII digits for parsing
+  const parts = new Intl.DateTimeFormat("en-US-u-ca-persian", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(date);
+
+  const y = parseInt(parts.find((p) => p.type === "year")?.value || "0");
+  const m = parseInt(parts.find((p) => p.type === "month")?.value || "0");
+  const d = parseInt(parts.find((p) => p.type === "day")?.value || "0");
+
+  return [y, m, d];
+};
+
+// 3. New Helpers for Views (Fixes "Gregorian Disguise" bugs)
+export const getJalaliDay = (date: Date): number => {
+  return getJalaliParts(date)[2];
+};
+
+export const getJalaliMonth = (date: Date): number => {
+  return getJalaliParts(date)[1];
+};
+
+export const getJalaliYear = (date: Date): number => {
+  return getJalaliParts(date)[0];
+};
+
+// 4. Formatting
 export const formatJalaliDate = (date: Date): string => {
   return new Intl.DateTimeFormat("fa-IR", {
     calendar: "persian",
@@ -16,32 +46,6 @@ export const formatJalaliDate = (date: Date): string => {
   }).format(date);
 };
 
-// Returns array of Jalali parts [1403, 2, 15]
-export const getJalaliParts = (date: Date): [number, number, number] => {
-  const parts = new Intl.DateTimeFormat("fa-IR", {
-    calendar: "persian",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-  }).formatToParts(date);
-
-  const y = parseInt(parts.find((p) => p.type === "year")?.value || "0");
-  const m = parseInt(parts.find((p) => p.type === "month")?.value || "0");
-  const d = parseInt(parts.find((p) => p.type === "day")?.value || "0");
-  // Note: Intl returns Persian digits by default for "fa-IR", so we might need to parse them back if we want math
-  // For simplicity, let's trust the browser's ability to handle the date object itself for addition/subtraction
-  // and only format for display.
-  return [y, m, d];
-};
-
-// Get Weekday Name (Shanbe, Yekshanbe...)
-export const getPersianWeekday = (date: Date, short = false): string => {
-  return new Intl.DateTimeFormat("fa-IR", {
-    weekday: short ? "short" : "long",
-  }).format(date);
-};
-
-// Get Month Name (Farvardin...)
 export const getPersianMonth = (date: Date): string => {
   return new Intl.DateTimeFormat("fa-IR", {
     calendar: "persian",
@@ -49,21 +53,48 @@ export const getPersianMonth = (date: Date): string => {
   }).format(date);
 };
 
-// Check if two dates are same Jalali Day
+export const getPersianWeekday = (date: Date, short = false): string => {
+  return new Intl.DateTimeFormat("fa-IR", {
+    weekday: short ? "short" : "long",
+  }).format(date);
+};
+
+// 5. Logic Helpers
 export const isSameJalaliDay = (d1: Date, d2: Date): boolean => {
   return formatJalaliDate(d1) === formatJalaliDate(d2);
 };
 
-// Get Start of Jalali Month
-// This is tricky with pure JS Date. We approximate by finding the day 1.
-// A simpler hack is to iterate back until day becomes '۱'.
+// Returns the FIRST day of the current Jalali Month
 export const getStartOfJalaliMonth = (date: Date): Date => {
-    let d = new Date(date);
-    // Safety break after 31 days
-    for(let i=0; i<32; i++) {
-        const parts = new Intl.DateTimeFormat("fa-IR-u-nu-latn", { calendar: "persian", day: "numeric" }).format(d);
-        if(parts === "1") return d;
-        d.setDate(d.getDate() - 1);
-    }
+    const dayOfMonth = getJalaliDay(date);
+    const d = new Date(date);
+    d.setDate(d.getDate() - (dayOfMonth - 1));
     return d;
+};
+
+// Returns the SATURDAY of the current week
+// Standard JS getDay(): Sun=0, Mon=1... Sat=6
+// Jalali Week: Sat=0, Sun=1... Fri=6
+export const getStartOfJalaliWeek = (date: Date): Date => {
+  const d = new Date(date);
+  const day = d.getDay(); // 0(Sun) to 6(Sat)
+  
+  // Calculate days since Saturday
+  // Sat(6) -> 0 days ago
+  // Sun(0) -> 1 day ago
+  // Mon(1) -> 2 days ago
+  // ...
+  // Fri(5) -> 6 days ago
+  const diff = (day + 1) % 7;
+  
+  d.setDate(d.getDate() - diff);
+  // Reset time to start of day for accurate comparison
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+export const addJalaliDays = (date: Date, days: number): Date => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
 };

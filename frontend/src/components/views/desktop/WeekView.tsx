@@ -1,13 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { EventInstance, Department } from "@/types"; 
-import { toPersianDigits } from "@/lib/utils";
-import clsx from "clsx";
+import { useState, useEffect } from "react";
+import { useLayoutStore } from "@/stores/layoutStore";
+import { useContextMenuStore } from "@/stores/contextMenuStore";
+import { 
+  getJalaliDay, 
+  getStartOfJalaliWeek, 
+  toPersianDigits, 
+  isSameJalaliDay 
+} from "@/lib/jalali";
+import { EventInstance, Department } from "@/types";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
+import clsx from "clsx";
 
-// --- NEW: Define the combined type for Layout + Data ---
 interface VisualEvent extends EventInstance {
   startPercent: number;
   sizePercent: number;
@@ -16,7 +22,7 @@ interface VisualEvent extends EventInstance {
 }
 
 interface WeekViewProps {
-  currentDate: Date;
+  currentDate?: Date;
   events: EventInstance[];
   holidays: any[];
   departments: Department[];
@@ -30,7 +36,6 @@ interface WeekViewProps {
 }
 
 export default function WeekView({
-  currentDate,
   events,
   holidays,
   departments,
@@ -43,17 +48,31 @@ export default function WeekView({
   draftEvent
 }: WeekViewProps) {
   
-  const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
-  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+  const { currentDate } = useLayoutStore();
+  const { openMenu } = useContextMenuStore();
   
-  const getStartOfWeek = (date: Date) => {
-    const d = new Date(date);
-    const day = d.getDay(); 
-    const diff = (day + 1) % 7;
-    d.setDate(d.getDate() - diff);
-    return d;
-  };
-  const startOfWeek = getStartOfWeek(currentDate);
+  const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
+  
+  // State for Crosshair
+  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+  const [hoveredHour, setHoveredHour] = useState<number | null>(null);
+
+  // State for Red Pin (Current Time)
+  const [now, setNow] = useState(new Date());
+
+  // Update "Now" every minute
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Calculate Red Pin Position (0% to 100% of the day width)
+  // Horizontal Axis = Time (24h)
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentPercent = ((currentHour * 60 + currentMinute) / 1440) * 100;
+
+  const startOfWeek = getStartOfJalaliWeek(currentDate);
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(startOfWeek);
     d.setDate(d.getDate() + i);
@@ -63,30 +82,27 @@ export default function WeekView({
   const getEventStyle = (event: EventInstance) => {
     const dept = departments.find(d => d.id === event.department_id);
     const color = dept?.color || "#6b7280";
-    
     if (event.status === 'pending') {
-      return { 
-        backgroundColor: `${color}30`, 
-        border: `1px dashed ${color}`, 
-        color: '#fef08a' 
-      };
+      return { backgroundColor: `${color}30`, border: `1px dashed ${color}`, color: '#fef08a' };
     }
-    return { 
-      backgroundColor: `${color}90`, 
-      borderRight: `3px solid ${color}`,
-      color: '#fff' 
-    };
+    return { backgroundColor: `${color}90`, borderRight: `3px solid ${color}`, color: '#fff' };
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#020205] overflow-hidden select-none">
+    <div className="flex flex-col h-full w-full bg-[#020205] overflow-hidden select-none">
       
       {/* 1. Time Header */}
       <div className="flex flex-row h-10 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 shrink-0 mr-24">
          <div className="flex-1 relative flex">
             {Array.from({ length: 24 }).map((_, i) => (
-               <div key={i} className="flex-1 border-l border-white/5 text-[10px] text-gray-500 flex items-center justify-center relative group">
-                  <span className="z-10 bg-[#020205]/50 px-1 rounded transition-colors group-hover:text-white">
+               <div 
+                  key={i} 
+                  className={clsx(
+                     "flex-1 border-l border-white/5 text-[10px] text-gray-500 flex items-center justify-center relative transition-colors",
+                     hoveredHour === i && "bg-white/5 text-blue-400 font-bold" // Highlight Header Column
+                  )}
+               >
+                  <span className="z-10 bg-[#020205]/50 px-1 rounded">
                     {toPersianDigits(i)}:۰۰
                   </span>
                </div>
@@ -94,42 +110,44 @@ export default function WeekView({
          </div>
       </div>
 
-      {/* 2. Main Body */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+      {/* 2. Main Body (Full Height) */}
+      <div className="flex-1 overflow-y-auto scrollbar-hide relative flex flex-col min-h-0">
           
           {weekDays.map((dayDate, dayIndex) => {
               const dateStr = dayDate.toISOString().split('T')[0];
               const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
-              const isToday = new Date().toDateString() === dayDate.toDateString();
+              const isToday = isSameJalaliDay(new Date(), dayDate);
+              const isHoveredRow = hoveredDayIndex === dayIndex;
 
               const dayEvents = events.filter(e => 
                   !hiddenDeptIds.includes(e.department_id || 0) &&
-                  new Date(e.start_time).toDateString() === dayDate.toDateString() &&
+                  isSameJalaliDay(new Date(e.start_time), dayDate) &&
                   !e.is_all_day
               );
 
-              // FIX: Explicitly cast the layout result to VisualEvent[]
-              // This tells TS: "Trust me, these objects have both ID/Title AND StartPercent/SizePercent"
               const visualEvents = calculateEventLayout(dayEvents as any[], 'horizontal') as unknown as VisualEvent[];
-              const isDraftDay = draftEvent && draftEvent.date.toDateString() === dayDate.toDateString();
+              const isDraftDay = draftEvent && isSameJalaliDay(draftEvent.date, dayDate);
 
               return (
                   <div 
                     key={dayIndex} 
                     className={clsx(
-                        "flex border-b border-white/5 min-h-[84px] relative transition-colors",
-                        hoveredDayIndex === dayIndex ? "bg-white/[0.03]" : ""
+                        "flex border-b border-white/5 min-h-[84px] flex-1 relative transition-colors group/row",
+                        isHoveredRow ? "bg-white/[0.02]" : ""
                     )}
                     onMouseEnter={() => setHoveredDayIndex(dayIndex)}
-                    onMouseLeave={() => setHoveredDayIndex(null)}
+                    onMouseLeave={() => { setHoveredDayIndex(null); setHoveredHour(null); }}
                   >
-                      {/* Y-Axis Label */}
-                      <div className="sticky right-0 w-24 shrink-0 bg-[#09090b] border-l border-white/10 z-30 flex flex-col items-center justify-center p-2 transition-colors shadow-[-5px_0_20px_rgba(0,0,0,0.5)]">
+                      {/* Y-Axis Label (Day) */}
+                      <div className={clsx(
+                          "sticky right-0 w-24 shrink-0 bg-[#09090b] border-l border-white/10 z-30 flex flex-col items-center justify-center p-2 transition-colors shadow-[-5px_0_20px_rgba(0,0,0,0.5)]",
+                          isToday && "bg-blue-900/10"
+                      )}>
                           <span className={clsx("text-sm font-bold", isToday ? "text-blue-400" : "text-gray-300")}>
                               {WEEK_DAYS[dayIndex]}
                           </span>
-                          <div className={clsx("text-[10px] px-2 py-0.5 rounded-full mt-1 font-mono", isToday ? "bg-blue-900/30 text-blue-200" : "text-gray-500")}>
-                              {toPersianDigits(dayDate.getDate())}
+                          <div className={clsx("text-[10px] px-2 py-0.5 rounded-full mt-1 font-mono", isToday ? "bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]" : "text-gray-500")}>
+                              {toPersianDigits(getJalaliDay(dayDate))}
                           </div>
                           {holiday && (
                               <span className="text-[9px] text-red-400 text-center mt-1 leading-tight line-clamp-1">
@@ -138,19 +156,49 @@ export default function WeekView({
                           )}
                       </div>
 
-                      {/* Grid & Events */}
+                      {/* Grid Cells (Columns) */}
                       <div className="flex-1 relative flex z-0">
+                          {/* Render Grid Background */}
                           <div className="absolute inset-0 flex">
-                            {Array.from({ length: 24 }).map((_, h) => (
-                                <div 
-                                  key={h} 
-                                  className="flex-1 border-l border-white/5 cursor-pointer hover:bg-white/5 transition-colors"
-                                  onClick={() => onSlotClick(dayDate, h)}
-                                  title={`افزودن رویداد: ${toPersianDigits(h)}:۰۰`}
-                                />
-                            ))}
+                            {Array.from({ length: 24 }).map((_, h) => {
+                                const isCrosshair = isHoveredRow && hoveredHour === h;
+                                const isColHover = hoveredHour === h;
+                                
+                                return (
+                                    <div 
+                                      key={h} 
+                                      className={clsx(
+                                         "flex-1 border-l border-white/5 cursor-pointer transition-colors relative",
+                                         // Crosshair Highlight Logic
+                                         isCrosshair ? "bg-white/10" : isColHover ? "bg-white/[0.03]" : "hover:bg-white/5"
+                                      )}
+                                      onMouseEnter={() => setHoveredHour(h)}
+                                      onClick={() => onSlotClick(dayDate, h)}
+                                      onContextMenu={(e) => openMenu(e, 'empty-slot', { date: dayDate, hour: h })}
+                                    >
+                                        {/* Optional: Add a subtle text hint on hover */}
+                                        {isCrosshair && (
+                                            <span className="absolute top-1 right-1 text-[9px] text-gray-500 font-mono opacity-50">
+                                                {toPersianDigits(h)}:۰۰
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
                           </div>
 
+                          {/* RED PULSATING PIN (Only show if Today) */}
+                          {isToday && (
+                             <div 
+                                className="absolute top-0 bottom-0 z-40 w-0.5 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] pointer-events-none transition-all duration-[60000ms] ease-linear"
+                                style={{ right: `${currentPercent}%` }}
+                             >
+                                <div className="absolute -top-1 -right-[3px] w-2 h-2 bg-red-500 rounded-full animate-ping opacity-75" />
+                                <div className="absolute -top-1 -right-[3px] w-2 h-2 bg-red-500 rounded-full" />
+                             </div>
+                          )}
+
+                          {/* Draft Event Placeholder */}
                           {isDraftDay && draftEvent && (
                              <div 
                                 className="absolute top-2 bottom-2 z-10 bg-emerald-500/20 border-2 border-dashed border-emerald-500 rounded-md flex items-center justify-center animate-pulse pointer-events-none"
@@ -163,6 +211,7 @@ export default function WeekView({
                              </div>
                           )}
 
+                          {/* Events */}
                           <div className="absolute inset-0 pointer-events-none w-full h-full">
                               {visualEvents.map((ev) => {
                                   const styles = getEventStyle(ev);
@@ -170,9 +219,9 @@ export default function WeekView({
                                   
                                   return (
                                       <div
-                                          key={ev.id} // TS is happy now
+                                          key={ev.id}
                                           onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
-                                          onContextMenu={(e) => { e.preventDefault(); onEventLongPress(ev); }}
+                                          onContextMenu={(e) => openMenu(e, 'event', ev)}
                                           onMouseEnter={(e) => onEventHover(e, ev)}
                                           onMouseLeave={onEventLeave}
                                           className="absolute z-20 rounded-md shadow-lg cursor-pointer pointer-events-auto flex items-center px-2 overflow-hidden hover:brightness-110 hover:z-30 hover:shadow-xl transition-all group/event"
@@ -188,7 +237,7 @@ export default function WeekView({
                                           }}
                                       >
                                           <span className="text-[10px] font-bold truncate group-hover/event:whitespace-normal group-hover/event:overflow-visible mix-blend-plus-lighter">
-                                              {ev.title} {/* TS is happy now */}
+                                              {ev.title}
                                           </span>
                                       </div>
                                   );

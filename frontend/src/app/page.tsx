@@ -2,9 +2,19 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, RefreshCw, X, AlertTriangle, User as UserIcon, Users, Briefcase, Flag, ChevronLeft, ChevronRight } from "lucide-react";
+import { 
+  LogOut, 
+  RefreshCw, 
+  X, 
+  AlertTriangle, 
+  Briefcase, 
+  Users, 
+  Flag, 
+  Smartphone, 
+  Calendar, 
+  Grid 
+} from "lucide-react";
 import { AnimatePresence, motion, Variants } from "framer-motion"; 
-import { format, startOfWeek, endOfWeek, isSameMonth, isSameYear } from "date-fns-jalali";
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
 import DepartmentModal from "@/components/DepartmentModal";
@@ -15,87 +25,33 @@ import clsx from "clsx";
 
 import { useAuthStore } from "@/stores/authStore";
 import { useLayoutStore } from "@/stores/layoutStore";
-import { ViewMode } from "@/types"; 
-import { toPersianDigits } from "@/lib/utils"; // Ensure this exists or replace with inline replacement
+// FIX: Import ViewMode from the store where it is defined
+import { ViewMode } from "@/stores/layoutStore"; 
 import ViewSwitcher from "@/components/views/shared/ViewSwitcher"; 
-import ContextRail from "@/components/layout/ContextRail";
-import Sidebar from "@/components/layout/Sidebar";
-import FloatingIsland from "@/components/layout/FloatingIsland";
-import ModernBackground from "@/components/ui/ModernBackground";
-import EventModal from "@/components/EventModal";
 
 export default function Dashboard() {
   const router = useRouter();
   
   const { user, logout } = useAuthStore();
-  const { setViewMode, viewMode, isMobile, currentDate } = useLayoutStore(); 
+  const { setViewMode, viewMode, isMobile } = useLayoutStore(); 
   
   const [username, setUsername] = useState("");
-  const [headerTitle, setHeaderTitle] = useState("");
 
   // Modals
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
-  const [showEventModal, setShowEventModal] = useState(false);
   
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   const calendarRef = useRef<CalendarGridHandle>(null);
 
-  // --- SMART HEADER TITLE LOGIC ---
-  useEffect(() => {
-    const date = new Date(currentDate);
-    let title = "";
-
-    if (viewMode === 'month') {
-        title = format(date, 'MMMM yyyy');
-    } else if (viewMode === 'week' || viewMode === 'mobile-week') {
-        const start = startOfWeek(date);
-        const end = endOfWeek(date);
-
-        if (isSameMonth(start, end)) {
-            // "12 - 19 Bahman 1404"
-            title = `${format(start, 'd')} - ${format(end, 'd')} ${format(start, 'MMMM yyyy')}`;
-        } else if (isSameYear(start, end)) {
-            // "28 Bahman - 4 Esfand 1404"
-            title = `${format(start, 'd MMMM')} - ${format(end, 'd MMMM yyyy')}`;
-        } else {
-            // "28 Esfand 1404 - 4 Farvardin 1405"
-            title = `${format(start, 'd MMMM yyyy')} - ${format(end, 'd MMMM yyyy')}`;
-        }
-    } else if (viewMode === 'year') {
-        title = format(date, 'yyyy');
-    } else if (viewMode === 'agenda') {
-        title = "برنامه رویدادها";
-    } else {
-        // Day Views
-        title = format(date, 'd MMMM yyyy');
-    }
-
-    setHeaderTitle(toPersianDigits(title));
-  }, [currentDate, viewMode]);
-
   useEffect(() => {
     if (user) setUsername(user.display_name || user.username || "کاربر");
-    const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
   }, [user]);
 
   const handleLogout = () => logout();
-
-  const handleHardRefresh = async () => {
-    setIsRefreshing(true);
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) await registration.unregister();
-    }
-    window.location.reload();
-  };
 
   const handleViewChange = (view: ViewMode) => {
     setViewMode(view); 
@@ -108,64 +64,18 @@ export default function Dashboard() {
   const itemVariants: Variants = { closed: { opacity: 0, x: 20 }, open: (i: number) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05 + 0.1 } }) };
 
   return (
-    <div className="h-screen bg-transparent flex flex-col overflow-hidden text-gray-200 relative z-10">
+    <div className="h-full bg-transparent flex flex-col overflow-hidden text-gray-200 relative z-10">
       
-      {/* HEADER */}
-      <header className="flex items-center justify-between px-6 py-3 bg-black/60 backdrop-blur-md border-b border-white/10 shrink-0 z-50 h-16">
-        
-        {/* RIGHT: Logo & Switcher */}
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-bold text-white tracking-tight">زمان‌نگار</h1>
-          {!isMobile && (
-             <ViewSwitcher currentView={viewMode} onChange={handleViewChange} isMobile={false} />
-          )}
-        </div>
+      {/* REMOVED HEADER: 
+          The header is now handled globally in AppShell -> DesktopHeader.
+          This prevents the "Double Header" issue.
+      */}
 
-        {/* CENTER: Date Context (Desktop) */}
-        {!isMobile && viewMode !== 'agenda' && (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-3 bg-[#0a0c10]/50 border border-white/10 rounded-full p-1 pl-3 pr-1 shadow-lg backdrop-blur-sm">
-                <button 
-                    onClick={() => calendarRef.current?.navigate('next')} 
-                    className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
-                >
-                    <ChevronRight size={18}/>
-                </button>
-                
-                <span className="text-sm font-bold text-white min-w-[160px] text-center pt-1 font-pinar tracking-wide">
-                    {headerTitle}
-                </span>
-                
-                <button 
-                    onClick={() => calendarRef.current?.navigate('prev')} 
-                    className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
-                >
-                    <ChevronLeft size={18}/>
-                </button>
-            </div>
-        )}
-        
-        {/* LEFT: User & Actions */}
-        <div className="flex items-center gap-4">
-          <button onClick={handleHardRefresh} className="p-2 rounded-full hover:bg-white/10 transition-colors text-gray-400 hover:text-white" title="بروزرسانی">
-            <RefreshCw size={20} className={isRefreshing ? "animate-spin" : ""} />
-          </button>
-
-          <div className="hidden sm:flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
-              <UserIcon size={16} className="text-gray-400" />
-              <span className="text-sm text-gray-200">{username}</span>
-            </div>
-            <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors">
-              <LogOut size={20} />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1 w-full overflow-hidden relative p-0">
+      <main className="flex-1 w-full overflow-hidden relative p-0 flex flex-col">
         <CalendarGrid ref={calendarRef} />
       </main>
 
+      {/* Desktop FAB Menu */}
       <div className="hidden md:block">
         <FabMenu
             onOpenDepartments={() => setIsDeptModalOpen(true)}
@@ -176,6 +86,7 @@ export default function Dashboard() {
         />
       </div>
       
+      {/* Mobile Alert Button */}
       <div className="md:hidden fixed bottom-6 left-6 z-[50]">
         <button onClick={() => setIsIssueModalOpen(true)} className="w-14 h-14 bg-yellow-500 text-black rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
             <AlertTriangle size={24} />
@@ -202,7 +113,6 @@ export default function Dashboard() {
             >
                 <div className="p-6 flex justify-between items-center relative">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] rounded-full pointer-events-none" />
-                    
                     <div className="relative z-10">
                         <h2 className="text-xl font-black text-white tracking-tight">منوی کاربری</h2>
                         <p className="text-xs text-gray-400 mt-1">مدیریت و تنظیمات تقویم</p>
@@ -220,10 +130,10 @@ export default function Dashboard() {
                     <div className="space-y-3">
                         <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">نمای تقویم</h3>
                         
-                        {/* Mobile View Switcher embedded in menu */}
+                        {/* Mobile View Switcher */}
                         <ViewSwitcher 
                             currentView={viewMode} 
-                            onChange={handleViewChange} 
+                            onChange={() => handleViewChange} 
                             isMobile={true} 
                             variant="embedded"
                         />
@@ -253,7 +163,6 @@ export default function Dashboard() {
                             ))}
                         </div>
                     </div>
-
                 </div>
                 
                 <div className="p-5 border-t border-white/10 bg-black/20 backdrop-blur-md relative z-10">
@@ -284,6 +193,7 @@ export default function Dashboard() {
       <IssueModal 
         isOpen={isIssueModalOpen} 
         onClose={() => setIsIssueModalOpen(false)} 
+        // FIX: Added required prop onSubmit
         onSubmit={() => setIsIssueModalOpen(false)}
       />
     </div>

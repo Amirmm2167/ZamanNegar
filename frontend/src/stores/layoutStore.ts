@@ -1,19 +1,23 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { ViewMode } from '@/types';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+// FIX: Added 'mobile-week' to the type definition so ViewSwitcher works correctly
+export type ViewMode = 'day' | '3day' | 'week' | 'month' | 'year' | 'agenda' | 'mobile-week';
 
 interface LayoutState {
   // Environment
   isMobile: boolean;
   setIsMobile: (val: boolean) => void;
 
-  // Navigation & Date State
+  // Navigation State
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
-  
-  currentDate: Date; // <--- NEW: Global Date State
-  setCurrentDate: (date: Date) => void;
 
+  // Time State
+  currentDate: Date;
+  setCurrentDate: (date: Date) => void;
+  jumpToToday: () => void;
+  
   // Desktop Sidebar
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
@@ -28,7 +32,7 @@ interface LayoutState {
   selectedEventId: number | null;
   setSelectedEventId: (id: number | null) => void;
   
-  // Mobile
+  // Mobile Floating Island
   isIslandExpanded: boolean;
   toggleIsland: () => void;
 }
@@ -38,17 +42,24 @@ export const useLayoutStore = create<LayoutState>()(
     (set) => ({
       // Defaults
       isMobile: false,
-      viewMode: 'month',
-      currentDate: new Date(), // Default to today
+      viewMode: 'week',
+      
+      // Time Defaults
+      currentDate: new Date(), 
+      
       isSidebarOpen: true,
-      isContextRailOpen: true, 
+      isContextRailOpen: true,
       selectedEventId: null,
       isIslandExpanded: false,
 
       // Actions
       setIsMobile: (val) => set({ isMobile: val }),
+      
       setViewMode: (mode) => set({ viewMode: mode }),
-      setCurrentDate: (date) => set({ currentDate: date }), // <--- Setter
+
+      // Time Actions
+      setCurrentDate: (date) => set({ currentDate: date }),
+      jumpToToday: () => set({ currentDate: new Date() }),
 
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       setIsSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }),
@@ -65,12 +76,21 @@ export const useLayoutStore = create<LayoutState>()(
     }),
     {
       name: 'zaman-layout-storage',
+      // Persist these fields
       partialize: (state) => ({ 
         viewMode: state.viewMode, 
         isSidebarOpen: state.isSidebarOpen,
         isContextRailOpen: state.isContextRailOpen,
-        // We generally DON'T persist currentDate so user starts on "Today" when they return, 
-        // but you can add it here if you want sticky dates.
+        currentDate: state.currentDate, 
+      }),
+      // Custom storage to handle Date object hydration
+      storage: createJSONStorage(() => localStorage, {
+        reviver: (key, value) => {
+          if (key === 'currentDate') {
+            return new Date(value as string);
+          }
+          return value;
+        },
       }),
     }
   )
