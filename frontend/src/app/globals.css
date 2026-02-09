@@ -45,6 +45,18 @@ body {
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
   }
+
+  /* --- NEW: Hatched Pattern for Pending Events --- */
+  /* Creates a subtle diagonal stripe effect overlay */
+  .bg-hatched {
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(0, 0, 0, 0.15),
+      rgba(0, 0, 0, 0.15) 8px,
+      transparent 8px,
+      transparent 16px
+    );
+  }
 }
 
 .scrollbar-hide::-webkit-scrollbar {
