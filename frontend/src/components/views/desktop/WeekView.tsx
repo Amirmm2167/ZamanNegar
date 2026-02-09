@@ -1,10 +1,19 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { EventInstance, Department } from "@/types";
+import { useState } from "react";
+import { EventInstance, Department } from "@/types"; 
 import { toPersianDigits } from "@/lib/utils";
 import clsx from "clsx";
-import { startOfWeek, addDays, isSameDay } from "date-fns-jalali";
+import { calculateEventLayout } from "@/lib/eventLayout";
+import { Plus } from "lucide-react";
+
+// --- NEW: Define the combined type for Layout + Data ---
+interface VisualEvent extends EventInstance {
+  startPercent: number;
+  sizePercent: number;
+  totalLanes: number;
+  laneIndex: number;
+}
 
 interface WeekViewProps {
   currentDate: Date;
@@ -17,7 +26,7 @@ interface WeekViewProps {
   onSlotClick: (date: Date, hour: number) => void;
   onEventHover: (e: React.MouseEvent, event: EventInstance) => void;
   onEventLeave: () => void;
-  draftEvent: any;
+  draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
 
 export default function WeekView({
@@ -25,180 +34,170 @@ export default function WeekView({
   events,
   holidays,
   departments,
+  hiddenDeptIds,
   onEventClick,
   onEventLongPress,
-  onSlotClick
+  onSlotClick,
+  onEventHover,
+  onEventLeave,
+  draftEvent
 }: WeekViewProps) {
   
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [now, setNow] = useState(new Date());
-
-  // 1. Calculate Week Days
-  const weekStart = startOfWeek(currentDate);
-  const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
-
-  // 2. Auto-scroll to 8 AM on mount
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = 8 * 60; // 8 AM * 60px/hr
-    }
-    // Update "Current Time" line every minute
-    const interval = setInterval(() => setNow(new Date()), 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // 3. Helper: Calculate Event Position
-  const getEventPosition = (event: EventInstance) => {
-    const start = new Date(event.start_time);
-    const end = new Date(event.end_time);
-    
-    const startMinutes = start.getHours() * 60 + start.getMinutes();
-    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    
-    return {
-        top: startMinutes, // 1px = 1min
-        height: durationMinutes
-    };
+  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+  
+  const getStartOfWeek = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay(); 
+    const diff = (day + 1) % 7;
+    d.setDate(d.getDate() - diff);
+    return d;
   };
+  const startOfWeek = getStartOfWeek(currentDate);
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(startOfWeek);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
 
   const getEventStyle = (event: EventInstance) => {
     const dept = departments.find(d => d.id === event.department_id);
     const color = dept?.color || "#6b7280";
-    const isPending = event.status === 'pending';
-
-    return {
-        backgroundColor: isPending ? `${color}30` : `${color}90`,
-        borderLeft: `3px solid ${color}`, // Persian uses RTL, so Border Left is the "Start" side visually? Actually Border Right is better for RTL
-        borderRight: `3px solid ${color}`,
-        color: '#fff',
-        border: isPending ? `1px dashed ${color}` : undefined
+    
+    if (event.status === 'pending') {
+      return { 
+        backgroundColor: `${color}30`, 
+        border: `1px dashed ${color}`, 
+        color: '#fef08a' 
+      };
+    }
+    return { 
+      backgroundColor: `${color}90`, 
+      borderRight: `3px solid ${color}`,
+      color: '#fff' 
     };
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#020205] select-none text-right dir-rtl">
+    <div className="flex flex-col h-full bg-[#020205] overflow-hidden select-none">
       
-      {/* 1. Header (Days) */}
-      <div className="flex pl-4 pr-16 py-3 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 shrink-0">
-         {weekDays.map((day, i) => {
-             const isToday = isSameDay(day, now);
-             const dateStr = day.toISOString().split('T')[0];
-             const holiday = holidays.find(h => h.holiday_date.startsWith(dateStr));
-
-             return (
-                 <div key={i} className="flex-1 flex flex-col items-center justify-center border-l border-white/5 last:border-l-0">
-                     <span className={clsx("text-xs font-bold mb-1", isToday ? "text-blue-400" : "text-gray-400")}>
-                        {WEEK_DAYS[i]}
-                     </span>
-                     <div className={clsx(
-                        "w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold transition-all",
-                        isToday ? "bg-blue-600 text-white shadow-lg shadow-blue-900/50" : "text-gray-300",
-                        holiday && !isToday && "text-red-400 bg-red-500/10"
-                     )}>
-                        {toPersianDigits(day.getDate())}
-                     </div>
-                     {holiday && (
-                        <span className="text-[9px] text-red-400 mt-1 truncate max-w-[80px]">{holiday.occasion}</span>
-                     )}
-                 </div>
-             );
-         })}
-      </div>
-
-      {/* 2. Scrollable Grid */}
-      <div 
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto custom-scrollbar relative flex"
-      >
-         {/* Time Sidebar (Sticky Right) */}
-         <div className="w-16 shrink-0 border-l border-white/10 bg-[#09090b] z-10 sticky right-0 top-0 flex flex-col pointer-events-none">
-            {Array.from({ length: 24 }).map((_, h) => (
-                <div key={h} className="h-[60px] relative">
-                    <span className="absolute -top-2 left-2 text-[10px] text-gray-500 font-mono">
-                        {toPersianDigits(h)}:00
-                    </span>
-                </div>
+      {/* 1. Time Header */}
+      <div className="flex flex-row h-10 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 shrink-0 mr-24">
+         <div className="flex-1 relative flex">
+            {Array.from({ length: 24 }).map((_, i) => (
+               <div key={i} className="flex-1 border-l border-white/5 text-[10px] text-gray-500 flex items-center justify-center relative group">
+                  <span className="z-10 bg-[#020205]/50 px-1 rounded transition-colors group-hover:text-white">
+                    {toPersianDigits(i)}:۰۰
+                  </span>
+               </div>
             ))}
          </div>
+      </div>
 
-         {/* Columns Container */}
-         <div className="flex-1 flex relative min-h-[1440px]"> 
-             {/* Background Grid Lines */}
-             <div className="absolute inset-0 flex flex-col z-0">
-                {Array.from({ length: 24 }).map((_, h) => (
-                    <div key={h} className="h-[60px] border-b border-white/5 w-full" />
-                ))}
-             </div>
+      {/* 2. Main Body */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+          
+          {weekDays.map((dayDate, dayIndex) => {
+              const dateStr = dayDate.toISOString().split('T')[0];
+              const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
+              const isToday = new Date().toDateString() === dayDate.toDateString();
 
-             {/* Current Time Line */}
-             {weekDays.some(d => isSameDay(d, now)) && (
-                 <div 
-                    className="absolute z-30 left-0 right-0 border-t-2 border-red-500 pointer-events-none flex items-center"
-                    style={{ top: now.getHours() * 60 + now.getMinutes() }}
-                 >
-                    <div className="absolute right-[-6px] w-3 h-3 bg-red-500 rounded-full" />
-                 </div>
-             )}
+              const dayEvents = events.filter(e => 
+                  !hiddenDeptIds.includes(e.department_id || 0) &&
+                  new Date(e.start_time).toDateString() === dayDate.toDateString() &&
+                  !e.is_all_day
+              );
 
-             {/* Day Columns */}
-             {weekDays.map((day, colIndex) => {
-                 const dayEvents = events.filter(e => 
-                     !hiddenDeptIds.includes(e.department_id || 0) &&
-                     isSameDay(new Date(e.start_time), day) &&
-                     !e.is_all_day
-                 );
+              // FIX: Explicitly cast the layout result to VisualEvent[]
+              // This tells TS: "Trust me, these objects have both ID/Title AND StartPercent/SizePercent"
+              const visualEvents = calculateEventLayout(dayEvents as any[], 'horizontal') as unknown as VisualEvent[];
+              const isDraftDay = draftEvent && draftEvent.date.toDateString() === dayDate.toDateString();
 
-                 return (
-                     <div key={colIndex} className="flex-1 relative border-l border-white/5 z-10 hover:bg-white/[0.01] transition-colors group">
-                         
-                         {/* Click Targets (Slots) */}
-                         {Array.from({ length: 24 }).map((_, h) => (
+              return (
+                  <div 
+                    key={dayIndex} 
+                    className={clsx(
+                        "flex border-b border-white/5 min-h-[84px] relative transition-colors",
+                        hoveredDayIndex === dayIndex ? "bg-white/[0.03]" : ""
+                    )}
+                    onMouseEnter={() => setHoveredDayIndex(dayIndex)}
+                    onMouseLeave={() => setHoveredDayIndex(null)}
+                  >
+                      {/* Y-Axis Label */}
+                      <div className="sticky right-0 w-24 shrink-0 bg-[#09090b] border-l border-white/10 z-30 flex flex-col items-center justify-center p-2 transition-colors shadow-[-5px_0_20px_rgba(0,0,0,0.5)]">
+                          <span className={clsx("text-sm font-bold", isToday ? "text-blue-400" : "text-gray-300")}>
+                              {WEEK_DAYS[dayIndex]}
+                          </span>
+                          <div className={clsx("text-[10px] px-2 py-0.5 rounded-full mt-1 font-mono", isToday ? "bg-blue-900/30 text-blue-200" : "text-gray-500")}>
+                              {toPersianDigits(dayDate.getDate())}
+                          </div>
+                          {holiday && (
+                              <span className="text-[9px] text-red-400 text-center mt-1 leading-tight line-clamp-1">
+                                {holiday.occasion}
+                              </span>
+                          )}
+                      </div>
+
+                      {/* Grid & Events */}
+                      <div className="flex-1 relative flex z-0">
+                          <div className="absolute inset-0 flex">
+                            {Array.from({ length: 24 }).map((_, h) => (
+                                <div 
+                                  key={h} 
+                                  className="flex-1 border-l border-white/5 cursor-pointer hover:bg-white/5 transition-colors"
+                                  onClick={() => onSlotClick(dayDate, h)}
+                                  title={`افزودن رویداد: ${toPersianDigits(h)}:۰۰`}
+                                />
+                            ))}
+                          </div>
+
+                          {isDraftDay && draftEvent && (
                              <div 
-                                key={h} 
-                                className="absolute w-full h-[60px] cursor-pointer"
-                                style={{ top: h * 60 }}
-                                onClick={() => onSlotClick(day, h)}
-                                title={`افزودن رویداد: ${toPersianDigits(h)}:00`}
-                             />
-                         ))}
+                                className="absolute top-2 bottom-2 z-10 bg-emerald-500/20 border-2 border-dashed border-emerald-500 rounded-md flex items-center justify-center animate-pulse pointer-events-none"
+                                style={{
+                                   right: `${(draftEvent.startHour / 24) * 100}%`,
+                                   width: `${((draftEvent.endHour - draftEvent.startHour) / 24) * 100}%`
+                                }}
+                             >
+                                <Plus className="text-emerald-400" size={20} />
+                             </div>
+                          )}
 
-                         {/* Render Events */}
-                         {dayEvents.map(event => {
-                             const pos = getEventPosition(event);
-                             const style = getEventStyle(event);
-                             
-                             return (
-                                 <div
-                                    key={event.id}
-                                    onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                                    onContextMenu={(e) => { e.preventDefault(); onEventLongPress(event); }}
-                                    className={clsx(
-                                        "absolute inset-x-1 rounded-md px-2 py-1 text-xs cursor-pointer shadow-md hover:z-50 hover:scale-[1.02] transition-all overflow-hidden flex flex-col",
-                                        event.status === 'pending' && "bg-hatched"
-                                    )}
-                                    style={{
-                                        top: pos.top,
-                                        height: Math.max(pos.height, 20), // Min height 20px
-                                        backgroundColor: style.backgroundColor,
-                                        borderRight: style.borderRight,
-                                        border: style.border,
-                                        color: style.color
-                                    }}
-                                 >
-                                     <span className="font-bold truncate">{event.title}</span>
-                                     <span className="text-[10px] opacity-80 truncate">
-                                        {new Date(event.start_time).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})} 
-                                        {' - '}
-                                        {new Date(event.end_time).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}
-                                     </span>
-                                 </div>
-                             );
-                         })}
-                     </div>
-                 );
-             })}
-         </div>
+                          <div className="absolute inset-0 pointer-events-none w-full h-full">
+                              {visualEvents.map((ev) => {
+                                  const styles = getEventStyle(ev);
+                                  const laneHeight = 100 / ev.totalLanes;
+                                  
+                                  return (
+                                      <div
+                                          key={ev.id} // TS is happy now
+                                          onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
+                                          onContextMenu={(e) => { e.preventDefault(); onEventLongPress(ev); }}
+                                          onMouseEnter={(e) => onEventHover(e, ev)}
+                                          onMouseLeave={onEventLeave}
+                                          className="absolute z-20 rounded-md shadow-lg cursor-pointer pointer-events-auto flex items-center px-2 overflow-hidden hover:brightness-110 hover:z-30 hover:shadow-xl transition-all group/event"
+                                          style={{
+                                              right: `${ev.startPercent}%`, 
+                                              width: `${ev.sizePercent}%`,
+                                              top: `${ev.laneIndex * laneHeight}%`,
+                                              height: `calc(${laneHeight}% - 2px)`,
+                                              backgroundColor: styles.backgroundColor,
+                                              borderRight: styles.borderRight,
+                                              border: styles.border,
+                                              color: styles.color
+                                          }}
+                                      >
+                                          <span className="text-[10px] font-bold truncate group-hover/event:whitespace-normal group-hover/event:overflow-visible mix-blend-plus-lighter">
+                                              {ev.title} {/* TS is happy now */}
+                                          </span>
+                                      </div>
+                                  );
+                              })}
+                          </div>
+                      </div>
+                  </div>
+              );
+          })}
       </div>
     </div>
   );
