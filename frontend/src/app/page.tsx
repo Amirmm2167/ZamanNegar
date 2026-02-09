@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, RefreshCw, X, Calendar, Smartphone, Grid, Briefcase, Flag, AlertTriangle, User as UserIcon, Users } from "lucide-react";
-import { motion, AnimatePresence, Variants } from "framer-motion"; 
+import { LogOut, RefreshCw, X, AlertTriangle, User as UserIcon, Users, Briefcase, Flag, ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatePresence, motion, Variants } from "framer-motion"; 
+import { format, startOfWeek, endOfWeek, isSameMonth, isSameYear } from "date-fns-jalali";
 import CalendarGrid, { CalendarGridHandle } from "@/components/CalendarGrid";
 import FabMenu from "@/components/FabMenu";
 import DepartmentModal from "@/components/DepartmentModal";
@@ -15,78 +16,83 @@ import clsx from "clsx";
 import { useAuthStore } from "@/stores/authStore";
 import { useLayoutStore } from "@/stores/layoutStore";
 import { ViewMode } from "@/types"; 
-
-// IMPORT THE SWITCHER
+import { toPersianDigits } from "@/lib/utils"; // Ensure this exists or replace with inline replacement
 import ViewSwitcher from "@/components/views/shared/ViewSwitcher"; 
+import ContextRail from "@/components/layout/ContextRail";
+import Sidebar from "@/components/layout/Sidebar";
+import FloatingIsland from "@/components/layout/FloatingIsland";
+import ModernBackground from "@/components/ui/ModernBackground";
+import EventModal from "@/components/EventModal";
 
 export default function Dashboard() {
   const router = useRouter();
   
   const { user, logout } = useAuthStore();
-  // Get viewMode and setter from store to pass to Switcher
-  const { setViewMode, viewMode, isMobile } = useLayoutStore(); 
+  const { setViewMode, viewMode, isMobile, currentDate } = useLayoutStore(); 
   
   const [username, setUsername] = useState("");
-  
+  const [headerTitle, setHeaderTitle] = useState("");
+
+  // Modals
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [showEventModal, setShowEventModal] = useState(false);
   
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   const calendarRef = useRef<CalendarGridHandle>(null);
 
+  // --- SMART HEADER TITLE LOGIC ---
   useEffect(() => {
-    if (user) {
-        setUsername(user.display_name || user.username || "کاربر");
+    const date = new Date(currentDate);
+    let title = "";
+
+    if (viewMode === 'month') {
+        title = format(date, 'MMMM yyyy');
+    } else if (viewMode === 'week' || viewMode === 'mobile-week') {
+        const start = startOfWeek(date);
+        const end = endOfWeek(date);
+
+        if (isSameMonth(start, end)) {
+            // "12 - 19 Bahman 1404"
+            title = `${format(start, 'd')} - ${format(end, 'd')} ${format(start, 'MMMM yyyy')}`;
+        } else if (isSameYear(start, end)) {
+            // "28 Bahman - 4 Esfand 1404"
+            title = `${format(start, 'd MMMM')} - ${format(end, 'd MMMM yyyy')}`;
+        } else {
+            // "28 Esfand 1404 - 4 Farvardin 1405"
+            title = `${format(start, 'd MMMM yyyy')} - ${format(end, 'd MMMM yyyy')}`;
+        }
+    } else if (viewMode === 'year') {
+        title = format(date, 'yyyy');
+    } else if (viewMode === 'agenda') {
+        title = "برنامه رویدادها";
+    } else {
+        // Day Views
+        title = format(date, 'd MMMM yyyy');
     }
 
-    if ("Notification" in window) {
-      setNotificationsEnabled(Notification.permission === "granted");
-    }
+    setHeaderTitle(toPersianDigits(title));
+  }, [currentDate, viewMode]);
 
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-    };
+  useEffect(() => {
+    if (user) setUsername(user.display_name || user.username || "کاربر");
+    const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    };
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
   }, [user]);
 
-  const toggleNotifications = async () => {
-    if (!("Notification" in window)) return;
-    const permission = await Notification.requestPermission();
-    setNotificationsEnabled(permission === "granted");
-  };
-
-  const handleInstallClick = () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    installPrompt.userChoice.then((choiceResult: any) => {
-      if (choiceResult.outcome === "accepted") {
-        setInstallPrompt(null);
-      }
-    });
-  };
-
-  const handleLogout = () => {
-    logout(); 
-  };
+  const handleLogout = () => logout();
 
   const handleHardRefresh = async () => {
     setIsRefreshing(true);
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        await registration.unregister();
-      }
+      for (const registration of registrations) await registration.unregister();
     }
     window.location.reload();
   };
@@ -96,56 +102,49 @@ export default function Dashboard() {
     setIsMobileMenuOpen(false);
   };
 
-  const sidebarVariants: Variants = {
-    closed: { 
-        x: "120%", 
-        opacity: 0,
-        scale: 0.95,
-        transition: { type: "spring", stiffness: 400, damping: 40 } 
-    },
-    open: { 
-        x: 0, 
-        opacity: 1,
-        scale: 1,
-        transition: { type: "spring", stiffness: 300, damping: 30 } 
-    }
-  };
-
-  const overlayVariants: Variants = {
-    closed: { opacity: 0 },
-    open: { opacity: 1 }
-  };
-
-  const itemVariants: Variants = {
-    closed: { opacity: 0, x: 20 },
-    open: (i: number) => ({ 
-        opacity: 1, 
-        x: 0, 
-        transition: { delay: i * 0.05 + 0.1 } 
-    })
-  };
+  // Variants
+  const sidebarVariants: Variants = { closed: { x: "120%", opacity: 0 }, open: { x: 0, opacity: 1 } };
+  const overlayVariants: Variants = { closed: { opacity: 0 }, open: { opacity: 1 } };
+  const itemVariants: Variants = { closed: { opacity: 0, x: 20 }, open: (i: number) => ({ opacity: 1, x: 0, transition: { delay: i * 0.05 + 0.1 } }) };
 
   return (
     <div className="h-screen bg-transparent flex flex-col overflow-hidden text-gray-200 relative z-10">
       
-      {/* --- GLOBAL APP HEADER --- */}
+      {/* HEADER */}
       <header className="flex items-center justify-between px-6 py-3 bg-black/60 backdrop-blur-md border-b border-white/10 shrink-0 z-50 h-16">
         
-        {/* RIGHT SIDE (RTL Start) */}
-        <div className="flex items-center gap-4">
+        {/* RIGHT: Logo & Switcher */}
+        <div className="flex items-center gap-6">
           <h1 className="text-xl font-bold text-white tracking-tight">زمان‌نگار</h1>
-          
-          {/* VIEW SWITCHER: Placed here for Desktop */}
           {!isMobile && (
-             <ViewSwitcher 
-                currentView={viewMode} 
-                onChange={handleViewChange} 
-                isMobile={false} 
-             />
+             <ViewSwitcher currentView={viewMode} onChange={handleViewChange} isMobile={false} />
           )}
         </div>
+
+        {/* CENTER: Date Context (Desktop) */}
+        {!isMobile && viewMode !== 'agenda' && (
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-3 bg-[#0a0c10]/50 border border-white/10 rounded-full p-1 pl-3 pr-1 shadow-lg backdrop-blur-sm">
+                <button 
+                    onClick={() => calendarRef.current?.navigate('next')} 
+                    className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                >
+                    <ChevronRight size={18}/>
+                </button>
+                
+                <span className="text-sm font-bold text-white min-w-[160px] text-center pt-1 font-pinar tracking-wide">
+                    {headerTitle}
+                </span>
+                
+                <button 
+                    onClick={() => calendarRef.current?.navigate('prev')} 
+                    className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                >
+                    <ChevronLeft size={18}/>
+                </button>
+            </div>
+        )}
         
-        {/* LEFT SIDE (RTL End) */}
+        {/* LEFT: User & Actions */}
         <div className="flex items-center gap-4">
           <button onClick={handleHardRefresh} className="p-2 rounded-full hover:bg-white/10 transition-colors text-gray-400 hover:text-white" title="بروزرسانی">
             <RefreshCw size={20} className={isRefreshing ? "animate-spin" : ""} />
@@ -167,7 +166,6 @@ export default function Dashboard() {
         <CalendarGrid ref={calendarRef} />
       </main>
 
-      {/* Desktop Only FAB Menu */}
       <div className="hidden md:block">
         <FabMenu
             onOpenDepartments={() => setIsDeptModalOpen(true)}
@@ -177,14 +175,10 @@ export default function Dashboard() {
             onOpenEventModal={() => calendarRef.current?.openNewEventModal()}
         />
       </div>
-
-      {/* --- Mobile Feedback Button --- */}
+      
       <div className="md:hidden fixed bottom-6 left-6 z-[50]">
-        <button 
-            onClick={() => setIsIssueModalOpen(true)}
-            className="w-14 h-14 bg-yellow-500 text-black rounded-full shadow-lg shadow-yellow-500/20 flex items-center justify-center active:scale-90 transition-transform border-2 border-yellow-400"
-        >
-            <AlertTriangle size={24} strokeWidth={2.5} />
+        <button onClick={() => setIsIssueModalOpen(true)} className="w-14 h-14 bg-yellow-500 text-black rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+            <AlertTriangle size={24} />
         </button>
       </div>
 
