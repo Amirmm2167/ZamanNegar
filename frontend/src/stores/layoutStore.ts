@@ -1,31 +1,34 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ViewMode } from '@/types'; // Import from global types
+import { ViewMode } from '@/types';
 
 interface LayoutState {
   // Environment
   isMobile: boolean;
   setIsMobile: (val: boolean) => void;
 
-  // Navigation State
+  // Navigation & Date State
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
   
+  currentDate: Date; // <--- NEW: Global Date State
+  setCurrentDate: (date: Date) => void;
+
   // Desktop Sidebar
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   setIsSidebarOpen: (isOpen: boolean) => void;
   
-  // Context Rail (The right-side details panel)
+  // Context Rail
   isContextRailOpen: boolean;
   toggleContextRail: () => void;
   setIsContextRailOpen: (isOpen: boolean) => void;
 
-  // Event Selection (Drives the Context Rail content)
+  // Event Selection
   selectedEventId: number | null;
   setSelectedEventId: (id: number | null) => void;
   
-  // Mobile Floating Island
+  // Mobile
   isIslandExpanded: boolean;
   toggleIsland: () => void;
 }
@@ -35,8 +38,8 @@ export const useLayoutStore = create<LayoutState>()(
     (set) => ({
       // Defaults
       isMobile: false,
-      // Default to 'month' as it's the standard desktop view
-      viewMode: 'month', 
+      viewMode: 'month',
+      currentDate: new Date(), // Default to today
       isSidebarOpen: true,
       isContextRailOpen: true, 
       selectedEventId: null,
@@ -44,8 +47,8 @@ export const useLayoutStore = create<LayoutState>()(
 
       // Actions
       setIsMobile: (val) => set({ isMobile: val }),
-      
       setViewMode: (mode) => set({ viewMode: mode }),
+      setCurrentDate: (date) => set({ currentDate: date }), // <--- Setter
 
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       setIsSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }),
@@ -55,7 +58,6 @@ export const useLayoutStore = create<LayoutState>()(
 
       setSelectedEventId: (id) => set((state) => ({ 
         selectedEventId: id,
-        // Auto-open rail on desktop when an event is selected
         isContextRailOpen: id !== null && !state.isMobile ? true : state.isContextRailOpen
       })),
 
@@ -63,11 +65,12 @@ export const useLayoutStore = create<LayoutState>()(
     }),
     {
       name: 'zaman-layout-storage',
-      // Persist these fields so the app feels "Native" (remembers state)
       partialize: (state) => ({ 
         viewMode: state.viewMode, 
         isSidebarOpen: state.isSidebarOpen,
-        isContextRailOpen: state.isContextRailOpen 
+        isContextRailOpen: state.isContextRailOpen,
+        // We generally DON'T persist currentDate so user starts on "Today" when they return, 
+        // but you can add it here if you want sticky dates.
       }),
     }
   )
