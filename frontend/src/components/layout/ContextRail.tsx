@@ -51,20 +51,8 @@ export default function ContextRail() {
         
         {/* Section 1: Manager Approvals */}
         {(role === 'manager' || role === 'evaluator') && (
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest px-1">
-              در انتظار تایید
-            </h4>
-            <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/20 group cursor-pointer hover:bg-orange-500/20 transition-all">
-               <div className="flex items-center justify-between mb-2">
-                 <span className="text-xs text-orange-300 font-mono">10:30</span>
-                 <AlertCircle size={14} className="text-orange-400" />
-               </div>
-               <p className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">
-                 جلسه بررسی بودجه ۱۴۰۵
-               </p>
-               <p className="text-xs text-gray-500 mt-1">واحد مالی • دکتر راد</p>
-            </div>
+          <div>
+            محل نمایش برنامه ها
           </div>
         )}
 
