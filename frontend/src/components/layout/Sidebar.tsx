@@ -11,7 +11,8 @@ import {
   LogOut,
   ChevronDown,
   Building2,
-  ShieldCheck
+  ShieldCheck,
+  X
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -21,6 +22,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { isSidebarOpen, setIsSidebarOpen, isMobile } = useLayoutStore();
   
+  
+
   // Use Auth Store
   const { 
     user, 
@@ -174,6 +177,7 @@ export default function Sidebar() {
            {isSidebarOpen && <span className="mr-3 text-sm font-medium">خروج</span>}
          </button>
       </div>
+      
     </aside>
   );
 }
