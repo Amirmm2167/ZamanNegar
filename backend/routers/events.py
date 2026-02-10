@@ -65,7 +65,8 @@ def create_event(
     company_id = request.state.company_id
     role = request.state.role 
     
-    # Logic: Only Superadmin can set Scope != COMPANY
+    # 1. SCOPE LOGIC
+    # Only Superadmin can set Scope != COMPANY
     if event_data.scope and event_data.scope != EventScope.COMPANY:
         if not current_user.is_superadmin:
             raise HTTPException(403, "Only Superadmins can create System events.")
@@ -77,13 +78,27 @@ def create_event(
                 raise HTTPException(400, "Active Company Context required to create event")
             event_data.company_id = company_id
 
-    # Create Master Record
-    master = EventMaster.from_orm(event_data)
-    master.proposer_id = current_user.id
-    if master.scope == EventScope.COMPANY and not master.company_id:
-        master.company_id = company_id
+    # 2. PREPARE DATA FOR MODEL (Fixing Validation Errors)
+    # Convert Pydantic model to dict, excluding unset fields to allow defaults to work
+    # But explicitly handling the fields that caused errors.
+    master_data = event_data.dict(exclude_unset=True)
+    
+    # Fix: Inject proposer_id BEFORE instantiation
+    master_data["proposer_id"] = current_user.id
+    
+    # Fix: Ensure target_rules is a dict if it was missing or None
+    if "target_rules" not in master_data or master_data["target_rules"] is None:
+        master_data["target_rules"] = {}
 
-    # Auto-Approve logic
+    # Fix: Ensure company_id is set if scope is COMPANY
+    if event_data.scope == EventScope.COMPANY and "company_id" not in master_data:
+         master_data["company_id"] = company_id
+
+    # 3. INSTANTIATE MASTER RECORD
+    # Now validation will pass because proposer_id and target_rules are present/correct
+    master = EventMaster.model_validate(master_data) 
+
+    # 4. AUTO-APPROVE LOGIC
     # Superadmin OR Manager of THIS company
     if current_user.is_superadmin or role == Role.MANAGER or role == "manager":
         master.status = EventStatus.APPROVED
@@ -95,7 +110,7 @@ def create_event(
     session.commit()
     session.refresh(master)
     
-    # Expand
+    # 5. EXPAND RECURRENCE
     expand_master_to_instances(session, master)
     session.commit()
     

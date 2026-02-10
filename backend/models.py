@@ -48,7 +48,7 @@ class User(SQLModel, table=True):
     sessions: List["UserSession"] = Relationship(back_populates="user")
     issues: List["Issue"] = Relationship(back_populates="user")
     events_proposed: List["EventMaster"] = Relationship(back_populates="proposer")
-    notifications: List["Notification"] = Relationship(back_populates="recipient") # <--- ADDED
+    notifications: List["Notification"] = Relationship(back_populates="recipient")
 
 class UserSession(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -105,6 +105,11 @@ class EventMaster(SQLModel, table=True):
     goal: Optional[str] = None
     target_audience: Optional[str] = None
     organizer: Optional[str] = None
+    
+    # --- ADDED TIME FIELDS ---
+    start_time: datetime
+    end_time: datetime
+    is_all_day: bool = False
     
     is_recurring: bool = False
     recurrence_rule: Optional[str] = None
@@ -163,12 +168,10 @@ class EventCreate(SQLModel):
     recurrence_rule: Optional[str] = None
     company_id: Optional[int] = None
     department_id: Optional[int] = None
-    # --- ADDED FOR SUPERADMIN BROADCAST ---
     scope: Optional[EventScope] = None 
     target_rules: Optional[Dict[str, Any]] = None
 
 # --- 4. Supporting Models ---
-
 class Notification(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     recipient_id: int = Field(foreign_key="user.id", index=True)
@@ -176,9 +179,8 @@ class Notification(SQLModel, table=True):
     title: str
     message: str
     is_read: bool = False
-    reference_id: Optional[str] = None # e.g. "event_123"
+    reference_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
     recipient: User = Relationship(back_populates="notifications")
 
 class Holiday(SQLModel, table=True):

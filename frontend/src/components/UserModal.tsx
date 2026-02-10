@@ -237,19 +237,6 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
                   ))}
                 </select>
               </div>
-
-              <div className="md:col-span-2">
-                 <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className={clsx("w-5 h-5 rounded border flex items-center justify-center transition-colors", isSuperAdmin ? "bg-purple-600 border-purple-600" : "border-gray-600 group-hover:border-gray-400")}>
-                        {isSuperAdmin && <Check size={14} className="text-white" />}
-                    </div>
-                    <input type="checkbox" className="hidden" checked={isSuperAdmin} onChange={(e) => setIsSuperAdmin(e.target.checked)} />
-                    <div className="flex flex-col">
-                        <span className="text-sm font-bold text-gray-200">دسترسی مدیر ارشد (Super Admin)</span>
-                        <span className="text-[10px] text-gray-500">دسترسی کامل به تمام تنظیمات سیستم</span>
-                    </div>
-                 </label>
-              </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-white/5">

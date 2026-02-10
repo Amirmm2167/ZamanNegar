@@ -1,16 +1,18 @@
+// frontend/src/components/layout/Sidebar.tsx
+
 "use client";
 
 import { useLayoutStore } from "@/stores/layoutStore";
 import { useAuthStore } from "@/stores/authStore";
 import {
   Calendar,
-  Users,
-  Settings,
-  BarChart2,
+  LayoutDashboard, // Changed Icon for Hub
   CheckSquare,
-  LogOut,
-  Building2,
+  BarChart2,
   ShieldCheck,
+  Building2,
+  Settings,
+  LogOut,
   Pin,
   PinOff,
   ChevronDown
@@ -24,7 +26,6 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { isSidebarOpen, setIsSidebarOpen, isMobile } = useLayoutStore();
   
-  // Use Auth Store
   const {
     user,
     activeCompanyId,
@@ -38,17 +39,14 @@ export default function Sidebar() {
   const activeCompany = availableContexts.find(c => c.company_id === activeCompanyId);
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   
-  // --- Hover & Pin Logic ---
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // The sidebar is "visually" open if it's pinned (isSidebarOpen) OR hovered
   const isExpanded = isSidebarOpen || isHovered;
 
   const handleMouseEnter = () => {
     if (isMobile) return;
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    // 300ms Delay to prevent accidental opening
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHovered(true);
     }, 300); 
@@ -58,10 +56,10 @@ export default function Sidebar() {
     if (isMobile) return;
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     setIsHovered(false);
-    setDropdownOpen(false); // Auto-close dropdown on leave
+    setDropdownOpen(false);
   };
 
-  // Define Menu Items
+  // --- MENU CONFIGURATION ---
   const menuItems = [
     {
       name: "تقویم",
@@ -69,23 +67,28 @@ export default function Sidebar() {
       href: "/",
       show: true
     },
+    // Evaluators still see a direct link to Approvals
+    // Managers access this inside "Manager Hub"
     {
       name: "کارتابل",
       icon: CheckSquare,
       href: "/approvals",
-      show: role === 'manager' || role === 'evaluator'
+      show: role === 'evaluator' 
     },
+    // The Unified Manager Hub
     {
-      name: "کاربران",
-      icon: Users,
+      name: "پنل مدیریت",
+      icon: LayoutDashboard,
       href: "/company-panel",
       show: role === 'manager'
     },
+    // Analytics remains for specialized reporting if needed, 
+    // or can be merged fully later. Keeping for Superadmin/Manager specific views.
     {
       name: "گزارشات",
       icon: BarChart2,
       href: "/analytics",
-      show: role === 'manager' || role === 'superadmin'
+      show: role === 'superadmin' // Removed 'manager' to consolidate
     },
     {
       name: "ادمین سیستم",
@@ -102,9 +105,7 @@ export default function Sidebar() {
       className={clsx(
         "fixed top-0 right-0 h-full bg-[#0a0c10]/95 backdrop-blur-xl border-l border-white/5",
         "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] z-50 flex flex-col",
-        // Width Logic
         isExpanded ? "w-[240px]" : "w-[80px]",
-        // Mobile Logic (Off-screen if closed)
         isMobile ? (isSidebarOpen ? "translate-x-0" : "translate-x-full") : "translate-x-0"
       )}
     >
@@ -181,7 +182,6 @@ export default function Sidebar() {
       <div 
         className={clsx(
           "flex-1 py-6 px-3 space-y-2",
-          // Fix: Hide scrollbar when collapsed to prevent flicker, use invisible scrollbar when expanded
           isExpanded ? "overflow-y-auto scrollbar-hide" : "overflow-hidden"
         )}
       >
@@ -193,20 +193,16 @@ export default function Sidebar() {
               href={item.href}
               className={clsx(
                 "flex items-center p-3 rounded-xl transition-all duration-200 group relative",
-                // FIX: Removed 'justify-center' so icons always align Right (Start)
                 isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-gray-400 hover:bg-white/5 hover:text-gray-100"
               )}
             >
               <div className="relative shrink-0">
                  <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} />
-                 
-                 {/* Glow Dot for Collapsed State */}
                  {!isExpanded && isActive && (
                     <span className="absolute -right-1 -top-1 w-2.5 h-2.5 bg-blue-400 rounded-full border-2 border-[#0a0c10]" />
                  )}
               </div>
               
-              {/* Text Label - Only visible when expanded */}
               <span className={clsx(
                  "mr-3 font-medium text-sm whitespace-nowrap transition-all duration-300",
                  isExpanded ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4 pointer-events-none absolute right-10"
@@ -214,7 +210,6 @@ export default function Sidebar() {
                   {item.name}
               </span>
 
-              {/* Tooltip for collapsed state */}
               {!isExpanded && (
                 <div className="absolute right-full mr-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/10 shadow-xl">
                   {item.name}
@@ -226,15 +221,12 @@ export default function Sidebar() {
         })}
       </div>
 
-      {/* 3. Footer (Settings & Logout) */}
+      {/* 3. Footer */}
       <div className="p-4 border-t border-white/5 space-y-1 shrink-0">
-         
-         {/* Settings Button */}
          <Link
            href="/settings"
            className={clsx(
              "w-full flex items-center p-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors group relative"
-             // FIX: Removed 'justify-center'
            )}
          >
            <div className="relative shrink-0">
@@ -247,22 +239,12 @@ export default function Sidebar() {
            )}>
              تنظیمات
            </span>
-
-           {/* Tooltip */}
-           {!isExpanded && (
-             <div className="absolute right-full mr-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/10 shadow-xl">
-               تنظیمات
-               <div className="absolute top-1/2 -right-1 w-2 h-2 bg-gray-800 rotate-45 border-t border-r border-white/10 transform -translate-y-1/2" />
-             </div>
-           )}
          </Link>
 
-         {/* Logout Button */}
          <button
            onClick={logout}
            className={clsx(
              "w-full flex items-center p-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors group relative"
-             // FIX: Removed 'justify-center'
            )}
            title={!isExpanded ? "خروج" : ""}
          >
@@ -276,14 +258,6 @@ export default function Sidebar() {
            )}>
              خروج
            </span>
-           
-           {/* Tooltip for Logout */}
-           {!isExpanded && (
-             <div className="absolute right-full mr-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/10 shadow-xl">
-               خروج
-               <div className="absolute top-1/2 -right-1 w-2 h-2 bg-gray-800 rotate-45 border-t border-r border-white/10 transform -translate-y-1/2" />
-             </div>
-           )}
          </button>
       </div>
     </aside>

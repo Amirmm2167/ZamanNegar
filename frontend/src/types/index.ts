@@ -31,11 +31,18 @@ export interface LoginResponse {
 export interface EventInstance {
   id: number;
   master_id: number;
+  proposer_id: number; // Added
   title: string;
   start_time: string;
   end_time: string;
   is_all_day: boolean;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  // God Mode Fields
+  is_locked?: boolean;
+  rejection_reason?: string;
+  description?: string; // Optional for list views
+  goal?: string;
+  
   company_id: number;
   department_id?: number;
 }

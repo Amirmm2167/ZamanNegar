@@ -21,6 +21,9 @@ origins = [
     "http://127.0.0.1:3000",
 ]
 
+
+app.add_middleware(ContextMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -29,9 +32,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Session-ID", "X-Company-ID"]
 )
-
-# 3. ADD CONTEXT MIDDLEWARE (Register this!)
-app.add_middleware(ContextMiddleware)
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
