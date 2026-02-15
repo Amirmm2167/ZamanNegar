@@ -3,7 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import Providers from "@/components/Providers";
-import AppShell from "@/components/layout/AppShell"; // Import AppShell
+import AppShell from "@/components/layout/AppShell"; 
 
 const pinar = localFont({
   src: [
@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ServiceWorkerRegister />
 
         <Providers>
-          {/* The AppShell now handles background, mobile detection, and navigation */}
+          {/* AppShell handles auth gating */}
           <AppShell>
             {children}
           </AppShell>

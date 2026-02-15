@@ -1,12 +1,10 @@
-// frontend/src/components/layout/Sidebar.tsx
-
 "use client";
 
 import { useLayoutStore } from "@/stores/layoutStore";
 import { useAuthStore } from "@/stores/authStore";
 import {
   Calendar,
-  LayoutDashboard, // Changed Icon for Hub
+  LayoutDashboard, 
   CheckSquare,
   BarChart2,
   ShieldCheck,
@@ -67,28 +65,24 @@ export default function Sidebar() {
       href: "/",
       show: true
     },
-    // Evaluators still see a direct link to Approvals
-    // Managers access this inside "Manager Hub"
     {
       name: "کارتابل",
       icon: CheckSquare,
       href: "/approvals",
       show: role === 'evaluator' 
     },
-    // The Unified Manager Hub
+    // Unified Manager Hub
     {
       name: "پنل مدیریت",
       icon: LayoutDashboard,
       href: "/company-panel",
       show: role === 'manager'
     },
-    // Analytics remains for specialized reporting if needed, 
-    // or can be merged fully later. Keeping for Superadmin/Manager specific views.
     {
       name: "گزارشات",
       icon: BarChart2,
       href: "/analytics",
-      show: role === 'superadmin' // Removed 'manager' to consolidate
+      show: role === 'superadmin' 
     },
     {
       name: "ادمین سیستم",
@@ -171,9 +165,9 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 w-full">
-             <button className="w-10 h-10 rounded-xl bg-blue-900 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <button className="w-10 h-10 rounded-xl bg-blue-900 flex items-center justify-center shadow-lg shadow-blue-500/20">
                 <img src="/icons/icon.png" alt="Logo" className="w-6 h-6" />
-             </button>
+              </button>
           </div>
         )}
       </div>
@@ -186,7 +180,7 @@ export default function Sidebar() {
         )}
       >
         {menuItems.filter(i => i.show).map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = pathname === item.href || (item.href.includes('?') && pathname === item.href.split('?')[0] && window.location.search.includes(item.href.split('?')[1]));
           return (
             <Link
               key={item.name}

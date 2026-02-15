@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select, or_, col
 from typing import List, Optional
 from datetime import datetime
+from pydantic import BaseModel
 
 from database import get_session
 from models import (
@@ -12,6 +13,26 @@ from security import get_current_user
 from utils.recurrence import expand_master_to_instances
 
 router = APIRouter()
+
+
+class EventDetail(BaseModel):
+    id: int
+    master_id: int
+    title: str
+    description: Optional[str] = None
+    start_time: datetime
+    end_time: datetime
+    is_all_day: bool
+    status: str
+    location: Optional[str] = None
+    organizer: Optional[str] = None # CSV string
+    target_audience: Optional[str] = None # CSV string
+    goal: Optional[str] = None # CSV string
+    recurrence_rule: Optional[str] = None
+    scope: str
+    company_id: int
+    department_id: Optional[int] = None # <--- ADDED THIS
+    is_locked: bool
 
 # --- 1. READ EVENTS ---
 @router.get("/", response_model=List[EventInstance])
@@ -231,3 +252,39 @@ def delete_event(
     session.delete(master)
     session.commit()
     return {"ok": True}
+
+@router.get("/{instance_id}", response_model=EventDetail)
+def get_event_detail(
+    instance_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    instance = session.get(EventInstance, instance_id)
+    if not instance: raise HTTPException(404, "Event not found")
+
+    if not current_user.is_superadmin:
+        user_companies = [p.company_id for p in current_user.profiles]
+        if instance.company_id not in user_companies:
+            raise HTTPException(403, "Access denied")
+
+    master = session.get(EventMaster, instance.master_id)
+    
+    return EventDetail(
+        id=instance.id,
+        master_id=master.id,
+        title=instance.title, # Instance title might differ
+        description=master.description,
+        start_time=instance.start_time,
+        end_time=instance.end_time,
+        is_all_day=instance.is_all_day,
+        status=instance.status,
+        location=master.target_rules.get("location") if master.target_rules else None,
+        organizer=master.organizer,
+        target_audience=master.target_audience,
+        goal=master.goal,
+        recurrence_rule=master.recurrence_rule,
+        scope=master.scope,
+        company_id=instance.company_id,
+        department_id=instance.department_id, # <--- POPULATED NOW
+        is_locked=master.is_locked
+    )

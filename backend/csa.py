@@ -18,8 +18,10 @@ def create_super_user():
         super_user = User(
             username="admin",
             display_name="مدیر کل سیستم", # System Superadmin
+            phone_number= "+989123456789",
             hashed_password=get_password_hash("123456"), # Change this in production!
-            is_superadmin=True
+            is_superadmin=True,
+            is_profile_complete=True
         )
         
         session.add(super_user)

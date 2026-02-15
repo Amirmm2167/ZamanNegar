@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { User, CompanyProfile, LoginResponse } from '@/types';
 import api from '@/lib/api';
+import { cookieStorage } from '@/lib/storage'; // <--- Import Adapter
 
 interface AuthState {
   token: string | null;
@@ -11,6 +12,7 @@ interface AuthState {
   availableContexts: CompanyProfile[];
 
   isHydrated: boolean;
+  isInitialized: boolean;
   isSynced: boolean;
 
   login: (data: LoginResponse) => void;
@@ -18,6 +20,7 @@ interface AuthState {
   fetchSession: () => Promise<void>;
   switchCompany: (companyId: number) => void;
   setHydrated: () => void;
+  initialize: () => Promise<void>;
 
   isAuthenticated: () => boolean;
   currentRole: () => string | null;
@@ -33,6 +36,7 @@ export const useAuthStore = create<AuthState>()(
       availableContexts: [],
 
       isHydrated: false,
+      isInitialized: false,
       isSynced: false,
 
       login: (data: LoginResponse) => {
@@ -51,7 +55,8 @@ export const useAuthStore = create<AuthState>()(
           },
           availableContexts: data.available_contexts,
           activeCompanyId: defaultCompanyId,
-          isSynced: true
+          isSynced: true,
+          isInitialized: true
         });
       },
 
@@ -62,33 +67,57 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           activeCompanyId: null,
           availableContexts: [],
-          isSynced: false
+          isSynced: false,
+          isInitialized: true
         });
-        localStorage.removeItem('zaman-auth-storage');
-        // REMOVED: window.location.href = '/login'; 
-        // We let the AppShell detect the state change and redirect naturally.
+        // Cookies.remove happens automatically via persist logic on next state change,
+        // but forcing a reload ensures clean slate.
+        window.location.href = '/login';
       },
 
       fetchSession: async () => {
-        const { token } = get();
-        if (!token) return;
+        await get().initialize();
+      },
+
+      initialize: async () => {
+        const token = get().token;
+        if (!token) {
+          set({ isInitialized: true, availableContexts: [] });
+          return;
+        }
 
         try {
-          const { data } = await api.get('/auth/me');
+          // Fetch fresh data
+          const [userRes, contextRes] = await Promise.all([
+            api.get('/auth/me'),
+            api.get('/companies/me')
+          ]);
 
           set({
-            user: {
-              id: data.id,
-              username: data.username,
-              display_name: data.display_name,
-              is_superadmin: data.is_superadmin
-            },
-            availableContexts: data.available_contexts || [],
+            user: userRes.data,
+            availableContexts: contextRes.data || [],
             isSynced: true
           });
-        } catch (error) {
-          console.error("Session sync failed", error);
-          get().logout();
+
+          // Validate Active Context
+          const currentId = get().activeCompanyId;
+          const isValid = (contextRes.data || []).find((c: any) => c.company_id === currentId);
+
+          if (!isValid) {
+            if (contextRes.data && contextRes.data.length > 0) {
+              set({ activeCompanyId: contextRes.data[0].company_id });
+            } else {
+              set({ activeCompanyId: null });
+            }
+          }
+
+        } catch (error: any) {
+          console.error("Session restore failed", error);
+          if (error.response?.status === 401) {
+            get().logout();
+          }
+        } finally {
+          set({ isInitialized: true });
         }
       },
 
@@ -96,8 +125,6 @@ export const useAuthStore = create<AuthState>()(
         const { availableContexts, user } = get();
         if (user?.is_superadmin || availableContexts.some(c => c.company_id === companyId)) {
           set({ activeCompanyId: companyId });
-          // REMOVED: window.location.reload(); 
-          // React will automatically re-render components dependent on companyId.
         }
       },
 
@@ -105,28 +132,33 @@ export const useAuthStore = create<AuthState>()(
 
       isAuthenticated: () => !!get().token,
 
-      // In authStore.ts
       currentRole: () => {
         const state = get();
-        // 1. Check if user is superadmin
+
+        // 1. Check Superadmin first (this comes from the login response/cookie)
         if (state.user?.is_superadmin) return 'superadmin';
 
         // 2. Check active company context
-        if (state.activeCompanyId) {
-          const context = state.availableContexts.find(c => c.company_id === state.activeCompanyId);
-          if (context) return context.role; // 'manager' | 'evaluator' | 'viewer'
+        if (state.activeCompanyId && state.availableContexts?.length > 0) {
+          const context = state.availableContexts.find(
+            (c) => Number(c.company_id) === Number(state.activeCompanyId)
+          );
+          if (context) return context.role;
         }
 
-        // 3. Fallback
-        return 'viewer';
+        // 3. Fallback during initialization
+        return state.token ? 'authenticated' : 'viewer';
       },
     }),
     {
-      name: 'zaman-auth-storage',
+      name: 'zaman-auth-cookie', // New name to avoid localStorage conflicts
+      storage: createJSONStorage(() => cookieStorage), // <--- USE COOKIE STORAGE
       partialize: (state) => ({
         token: state.token,
         sessionId: state.sessionId,
         activeCompanyId: state.activeCompanyId,
+        user: state.user,
+        availableContexts: state.availableContexts, // Critical for immediate role resolution
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHydrated();

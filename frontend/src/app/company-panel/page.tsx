@@ -2,30 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuthStore } from "@/stores/authStore"; // <--- IMPORT THIS
+import { useAuthStore } from "@/stores/authStore";
 import { 
   LayoutDashboard, 
   Users, 
-  Building2, 
   PieChart, 
-  CheckSquare,
-  AlertCircle
+  CheckSquare
 } from "lucide-react";
 import clsx from "clsx";
 
 // Components
 import ManagerStats from "@/components/manager/ManagerStats";
-import ManagerUsers from "@/components/manager/ManagerUsers";
-import ManagerDepartments from "@/components/manager/ManagerDepartments";
+import ManagerOrganization from "@/components/manager/ManagerOrganization"; // <--- NEW COMPONENT
 import ApprovalQueue from "@/components/evaluator/ApprovalQueue";
 
-type TabId = "approvals" | "stats" | "staff" | "depts";
+type TabId = "approvals" | "stats" | "org";
 
 export default function CompanyPanelPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // --- SECURITY PATCH FIX ---
   const { currentRole, activeCompanyId, user } = useAuthStore();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
@@ -33,21 +29,14 @@ export default function CompanyPanelPage() {
   const activeTab = (searchParams.get("tab") as TabId) || "approvals";
 
   useEffect(() => {
-    // 1. Check if user is logged in
     if (!user) {
       router.push("/login");
       return;
     }
 
-    // 2. Get the role for the *current* company context
     const role = currentRole(); 
-    // ^ This function in your store automatically finds the role 
-    // based on the selected 'activeCompanyId'
-
-    // 3. Authorization Gate
+    
     if (role !== "manager" && !user.is_superadmin) {
-      // If they are an evaluator, they shouldn't be here (they have their own panel)
-      // If they are a viewer, definitely kick them out.
       console.warn("Unauthorized access attempt to Manager Hub");
       router.push("/"); 
     } else {
@@ -55,7 +44,6 @@ export default function CompanyPanelPage() {
       setIsAuthorized(true);
     }
   }, [user, currentRole, router, activeCompanyId]);
-  // ---------------------------
 
   const handleTabChange = (id: TabId) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -65,7 +53,7 @@ export default function CompanyPanelPage() {
 
   if (!isAuthorized) return null;
 
-  // Tabs Configuration
+  // Simplified Tabs Configuration
   const tabs = [
     { 
       id: "approvals", 
@@ -78,15 +66,11 @@ export default function CompanyPanelPage() {
       label: "داشبورد", 
       icon: PieChart 
     },
+    // Unified Organization Tab
     { 
-      id: "staff", 
-      label: "پرسنل", 
+      id: "org", 
+      label: "مدیریت سازمان", 
       icon: Users 
-    },
-    { 
-      id: "depts", 
-      label: "دپارتمان‌ها", 
-      icon: Building2 
     },
   ];
 
@@ -129,29 +113,25 @@ export default function CompanyPanelPage() {
 
       {/* Content Area */}
       <div className="flex-1 min-h-0 relative overflow-hidden bg-[#12141a] rounded-2xl border border-white/5 shadow-2xl">
-         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6">
+         <div className="absolute inset-0 overflow-y-auto custom-scrollbar"> 
+            {/* Removed p-6 padding here so ManagerOrganization fits flush */}
             
             {activeTab === 'approvals' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="p-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <ApprovalQueue userRole={userRole} />
               </div>
             )}
 
             {activeTab === 'stats' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="p-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <ManagerStats />
               </div>
             )}
 
-            {activeTab === 'staff' && (
-               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                 <ManagerUsers />
-               </div>
-            )}
-
-            {activeTab === 'depts' && (
-               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                 <ManagerDepartments />
+            {activeTab === 'org' && (
+               <div className="h-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                 {/* This component handles its own layout/padding internally now */}
+                 <ManagerOrganization />
                </div>
             )}
          </div>

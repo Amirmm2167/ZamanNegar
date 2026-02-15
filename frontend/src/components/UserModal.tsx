@@ -1,20 +1,31 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Plus, Trash2, Edit2, Check, User as UserIcon, Shield, Lock, Loader2 } from "lucide-react";
+import { UserPlus, Trash2, Check, User as UserIcon, Loader2, Phone, Ghost, Search, Building2, Save, Settings } from "lucide-react";
 import api from "@/lib/api";
+import { toEnglishDigits } from "@/lib/utils"; 
 import clsx from "clsx";
+import ModalWrapper from "@/components/ui/ModalWrapper"; 
 
 interface UserData {
   id: number;
   username: string;
   display_name: string;
+  phone_number: string;
   role: string;
   department_id?: number | null;
   is_superadmin: boolean;
+  status: string;
+  type: "real" | "ghost";
 }
 
 interface Department {
+  id: number;
+  name: string;
+  company_id: number;
+}
+
+interface Company {
   id: number;
   name: string;
 }
@@ -23,22 +34,36 @@ interface UserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  userRole?: 'manager' | 'superadmin';
+  defaultCompanyId?: number | null;
+  userToEdit?: UserData | null;
+  initialView?: 'list' | 'add';
 }
 
-export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps) {
+export default function UserModal({ 
+  isOpen, onClose, onSuccess, userRole = 'manager', 
+  defaultCompanyId = null, userToEdit = null, initialView = 'list' 
+}: UserModalProps) {
+  
   const [users, setUsers] = useState<UserData[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("viewer");
-  const [departmentId, setDepartmentId] = useState<number | null>(null);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  
+  const [view, setView] = useState<'list' | 'add' | 'edit'>(initialView);
+  const [addStep, setAddStep] = useState<'search' | 'form'>('search');
+  
+  const [phoneQuery, setPhoneQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResult, setSearchResult] = useState<any>(null);
+  
+  const [targetRole, setTargetRole] = useState("viewer");
+  const [targetDept, setTargetDept] = useState<number | null>(null);
+  const [adminCompanyId, setAdminCompanyId] = useState<number | null>(defaultCompanyId);
+  const [ghostName, setGhostName] = useState("");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminIsSuper, setAdminIsSuper] = useState(false);
 
   const ROLES = [
     { value: "manager", label: "مدیر" },
@@ -49,265 +74,327 @@ export default function UserModal({ isOpen, onClose, onSuccess }: UserModalProps
 
   useEffect(() => {
     if (isOpen) {
-      fetchData();
-      resetForm();
+      if (userToEdit) {
+        initEditMode(userToEdit);
+      } else {
+        if (!userToEdit && initialView === 'add') setView('add');
+        resetForm();
+      }
+      
+      if (view !== 'list') {
+          fetchDropdowns();
+      } else {
+          fetchData();
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, userToEdit]);
+
+  const initEditMode = (user: UserData) => {
+    setView('edit');
+    setGhostName(user.display_name);
+    setAdminUsername(user.username);
+    setPhoneQuery(user.phone_number);
+    setTargetRole(user.role);
+    setTargetDept(user.department_id || null);
+    setAdminIsSuper(user.is_superadmin);
+    setAdminCompanyId(defaultCompanyId); 
+    fetchDropdowns();
+  };
+
+  const resetForm = () => {
+    if (!userToEdit && initialView === 'add') setView('add'); 
+    setAddStep('search');
+    setPhoneQuery("");
+    setSearchResult(null);
+    setTargetRole("viewer");
+    setTargetDept(null);
+    setAdminCompanyId(defaultCompanyId);
+    setGhostName("");
+    setAdminUsername("");
+    setAdminPassword("");
+    setAdminIsSuper(false);
+  };
+
+  // Fixed fetch logic to avoid TS errors
+  const fetchDropdowns = async () => {
+      try {
+          const deptsRes = await api.get<Department[]>("/departments/");
+          setDepartments(deptsRes.data);
+          
+          if (userRole === 'superadmin') {
+              const compsRes = await api.get<Company[]>("/companies/");
+              setCompanies(compsRes.data);
+          }
+      } catch(e) { console.error(e); }
+  };
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [usersRes, deptsRes] = await Promise.all([
-        api.get<UserData[]>("/users/"),
-        api.get<Department[]>("/departments/")
-      ]);
+      const usersRes = await api.get<UserData[]>("/users/");
       setUsers(usersRes.data);
-      setDepartments(deptsRes.data);
+      await fetchDropdowns();
     } catch (err) {
       console.error(err);
-      setError("خطا در دریافت اطلاعات");
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setEditingId(null);
-    setUsername("");
-    setDisplayName("");
-    setPassword("");
-    setRole("viewer");
-    setDepartmentId(null);
-    setIsSuperAdmin(false);
-    setError("");
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !displayName) return;
-    if (!editingId && !password) {
-      setError("رمز عبور برای کاربر جدید الزامی است");
-      return;
-    }
-
+    if (phoneQuery.length < 4) return;
+    setIsSearching(true);
     try {
-      setSubmitting(true);
-      const payload: any = { 
-        username, 
-        display_name: displayName, 
-        role, 
-        department_id: departmentId,
-        is_superadmin: isSuperAdmin
+      const clean = toEnglishDigits(phoneQuery);
+      const { data } = await api.get(`/users/lookup?phone=${clean}`);
+      setSearchResult(data);
+      setAddStep('form');
+    } catch (err) {
+      alert("خطا در جستجو");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const finishAction = async () => {
+    if (onSuccess) onSuccess();
+    if (initialView === 'add' || userToEdit) {
+        onClose();
+    } else {
+        resetForm();
+        fetchData();
+    }
+  };
+
+  const handleInvite = async () => {
+    try {
+      await api.post("/users/invite", {
+        phone_number: searchResult?.phone_number || toEnglishDigits(phoneQuery),
+        display_name_alias: ghostName || undefined,
+        department_id: targetDept,
+        role: targetRole,
+        company_id: adminCompanyId
+      });
+      finishAction();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "خطا در ارسال دعوت‌نامه");
+    }
+  };
+
+  const handleAdminCreate = async () => {
+    try {
+      await api.post("/users/", {
+        username: adminUsername,
+        password: adminPassword,
+        display_name: ghostName, 
+        phone_number: phoneQuery,
+        is_superadmin: adminIsSuper,
+        role: targetRole,
+        company_id: adminCompanyId,
+        department_id: targetDept
+      });
+      finishAction();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "خطا در ایجاد کاربر");
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!userToEdit) return;
+    try {
+      const payload: any = {
+        display_name: ghostName,
+        role: targetRole,
+        department_id: targetDept,
+        is_superadmin: adminIsSuper
       };
-      
-      if (password) payload.password = password;
+      if (adminPassword) payload.password = adminPassword;
 
-      if (editingId) {
-        delete payload.username; 
-        await api.patch(`/users/${editingId}`, payload);
-      } else {
-        await api.post("/users/", payload);
-      }
-      await fetchData();
-      resetForm();
-      if (onSuccess) onSuccess();
+      await api.patch(`/users/${userToEdit.id}`, payload);
+      finishAction();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "خطا در ذخیره کاربر");
-    } finally {
-      setSubmitting(false);
+      alert(err.response?.data?.detail || "خطا در ویرایش کاربر");
     }
   };
 
-  const handleEdit = (user: UserData) => {
-    setEditingId(user.id);
-    setUsername(user.username);
-    setDisplayName(user.display_name);
-    setPassword("");
-    setRole(user.role);
-    setDepartmentId(user.department_id || null);
-    setIsSuperAdmin(user.is_superadmin);
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm("آیا از حذف این کاربر اطمینان دارید؟")) return;
+  const handleDelete = async (id: number, type: "real" | "ghost") => {
+    if (!confirm("آیا اطمینان دارید؟")) return;
     try {
-      setSubmitting(true);
-      await api.delete(`/users/${id}`);
+      await api.delete(`/users/${id}?type=${type}`);
       await fetchData();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "خطا در حذف کاربر");
-    } finally {
-      setSubmitting(false);
+      if (onSuccess) onSuccess();
+    } catch (err) {
+      alert("خطا در حذف");
     }
   };
 
-  if (!isOpen) return null;
+  const activeCompanyId = adminCompanyId || defaultCompanyId;
+  const availableDepartments = activeCompanyId
+    ? departments.filter(d => d.company_id === activeCompanyId)
+    : departments;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" dir="rtl">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      
-      <div className="relative w-full max-w-2xl bg-[#18181b]/95 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
-        
-        <div className="px-6 py-5 border-b border-white/5 flex justify-between items-center bg-white/5">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <UserIcon className="text-blue-500" />
-            مدیریت کاربران
-          </h3>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
-          <form onSubmit={handleSubmit} className="bg-black/20 p-5 rounded-2xl border border-white/5 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              <div className="space-y-2">
-                <label className="text-xs text-gray-400 font-bold">نام کاربری (انگلیسی)</label>
-                <div className="relative">
-                   <UserIcon className="absolute left-3 top-3 text-gray-600" size={16} />
-                   <input
-                    type="text"
-                    dir="ltr"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    disabled={!!editingId || submitting}
-                    className="w-full px-4 py-2.5 bg-[#0a0c10] border border-white/10 rounded-xl text-white focus:border-blue-500/50 outline-none text-left pl-10 disabled:opacity-50"
-                    placeholder="admin"
-                   />
+    <ModalWrapper
+      isOpen={isOpen}
+      onClose={onClose}
+      size="md"
+      title={
+        <>
+          <UserIcon className="text-blue-500" />
+          {view === 'edit' ? 'ویرایش کاربر' : (view === 'add' ? 'افزودن عضو جدید' : 'مدیریت اعضا')}
+        </>
+      }
+    >
+        {/* VIEW 1: LIST */}
+        {view === 'list' && !userToEdit && (
+            <div className="flex flex-col h-full">
+                <div className="pb-4 border-b border-white/5 mb-4">
+                    <button onClick={() => setView('add')} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
+                        <UserPlus size={18} /> افزودن عضو جدید
+                    </button>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-gray-400 font-bold">نام نمایشی (فارسی)</label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  disabled={submitting}
-                  className="w-full px-4 py-2.5 bg-[#0a0c10] border border-white/10 rounded-xl text-white focus:border-blue-500/50 outline-none"
-                  placeholder="علی حسینی"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-gray-400 font-bold">
-                  {editingId ? "رمز عبور جدید (اختیاری)" : "رمز عبور"}
-                </label>
-                <div className="relative">
-                   <Lock className="absolute left-3 top-3 text-gray-600" size={16} />
-                   <input
-                    type="password"
-                    dir="ltr"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={submitting}
-                    className="w-full px-4 py-2.5 bg-[#0a0c10] border border-white/10 rounded-xl text-white focus:border-blue-500/50 outline-none text-left pl-10"
-                    placeholder="••••••"
-                   />
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 max-h-[400px]">
+                    {loading ? (
+                        <div className="text-center py-10 text-gray-500"><Loader2 className="animate-spin mx-auto mb-2"/>در حال بارگذاری...</div>
+                    ) : users.length === 0 ? (
+                        <div className="text-center py-10 text-gray-500 border border-dashed border-white/10 rounded-2xl">لیست خالی است</div>
+                    ) : (
+                        users.map(u => (
+                            <div key={`${u.type}-${u.id}`} className="flex items-center justify-between p-3 bg-[#0a0c10] border border-white/5 rounded-xl group hover:border-white/10 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center text-white font-bold", u.type === 'ghost' ? "bg-white/10 text-gray-400" : "bg-blue-600/20 text-blue-400")}>
+                                        {u.type === 'ghost' ? <Ghost size={18}/> : u.display_name?.[0]}
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-200 flex items-center gap-2">
+                                            {u.display_name}
+                                            {u.type === 'ghost' && <span className="text-[10px] bg-white/10 px-1.5 rounded text-gray-400">دعوت شده</span>}
+                                        </div>
+                                        <div className="text-xs text-gray-500 flex gap-2">
+                                            <span className="font-mono dir-ltr">{u.phone_number}</span>
+                                            <span>•</span>
+                                            <span>{ROLES.find(r => r.value === u.role)?.label}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={() => handleDelete(u.id, u.type)} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))
+                    )}
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-gray-400 font-bold">نقش کاربری</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  disabled={submitting}
-                  className="w-full px-4 py-2.5 bg-[#0a0c10] border border-white/10 rounded-xl text-white focus:border-blue-500/50 outline-none appearance-none"
-                >
-                  {ROLES.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2 space-y-2">
-                <label className="text-xs text-gray-400 font-bold">دپارتمان</label>
-                <select
-                  value={departmentId || ""}
-                  onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : null)}
-                  disabled={submitting}
-                  className="w-full px-4 py-2.5 bg-[#0a0c10] border border-white/10 rounded-xl text-white focus:border-blue-500/50 outline-none appearance-none"
-                >
-                  <option value="">(بدون دپارتمان)</option>
-                  {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
             </div>
+        )}
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
-              {editingId && (
-                <button type="button" onClick={resetForm} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
-                  انصراف
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="animate-spin" size={18} /> : (editingId ? <Check size={18} /> : <Plus size={18} />)}
-                <span>{editingId ? "ذخیره تغییرات" : "افزودن کاربر"}</span>
-              </button>
+        {/* VIEW 2: SEARCH */}
+        {view === 'add' && addStep === 'search' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 pt-4">
+                <h4 className="text-gray-400 text-sm">شماره موبایل کاربر را وارد کنید:</h4>
+                <form onSubmit={handleSearch} className="relative">
+                    <input 
+                        autoFocus
+                        type="tel" 
+                        dir="ltr"
+                        placeholder="0912..."
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white pl-10 text-lg font-mono placeholder:text-gray-600 outline-none focus:border-blue-500"
+                        value={phoneQuery}
+                        onChange={(e) => setPhoneQuery(e.target.value)}
+                    />
+                    <Phone className="absolute left-3 top-4 text-gray-500" size={20} />
+                    <button type="submit" disabled={isSearching || phoneQuery.length < 4} className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2">
+                        {isSearching ? <Loader2 className="animate-spin" /> : <Search size={18} />} بررسی وضعیت
+                    </button>
+                </form>
+                <button onClick={() => initialView === 'add' ? onClose() : resetForm()} className="w-full py-2 text-gray-500 hover:text-white">انصراف</button>
             </div>
-          </form>
+        )}
 
-          {error && (
-             <div className="p-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2">
-                <Shield size={16} /> {error}
-             </div>
-          )}
-
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold text-gray-400 px-1">لیست کاربران سیستم</h4>
-            {loading ? (
-                <div className="text-center py-8 text-gray-600"><Loader2 className="animate-spin mx-auto mb-2" />در حال دریافت...</div>
-            ) : (
-                <div className="grid gap-2">
-                    {users.map((u) => {
-                      const deptName = departments.find(d => d.id === u.department_id)?.name || "---";
-                      const roleLabel = ROLES.find(r => r.value === u.role)?.label || u.role;
-
-                      return (
-                        <div key={u.id} className="flex items-center justify-between p-3 bg-[#0a0c10] border border-white/5 rounded-xl group hover:border-white/10 transition-colors">
-                          <div className="flex items-center gap-4">
-                            <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center text-white font-bold", u.is_superadmin ? "bg-purple-600/20 text-purple-400" : "bg-blue-600/20 text-blue-400")}>
-                              {u.display_name.charAt(0)}
-                            </div>
-                            <div>
-                              <div className="font-bold text-gray-200 flex items-center gap-2">
-                                  {u.display_name}
-                                  {u.is_superadmin && <Shield size={12} className="text-purple-400" />}
-                              </div>
-                              <div className="text-xs text-gray-500 flex gap-3 mt-0.5">
-                                <span className="font-mono text-gray-600">@{u.username}</span>
-                                <span className="w-1 h-1 rounded-full bg-gray-700 self-center" />
-                                <span>{roleLabel}</span>
-                                <span className="w-1 h-1 rounded-full bg-gray-700 self-center" />
-                                <span>{deptName}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleEdit(u)} className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors">
-                              <Edit2 size={16} />
-                            </button>
-                            <button onClick={() => handleDelete(u.id)} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
+        {/* VIEW 3: FORM */}
+        {(view === 'edit' || (view === 'add' && addStep === 'form')) && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 pt-4">
+                {searchResult && (
+                    <div className={clsx("p-4 rounded-xl border flex items-center gap-4", searchResult.found ? "bg-emerald-500/10 border-emerald-500/20" : "bg-amber-500/10 border-amber-500/20")}>
+                        <div className={clsx("p-3 rounded-full", searchResult.found ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400")}>
+                            {searchResult.found ? <Check size={24}/> : <Ghost size={24}/>}
                         </div>
-                      );
-                    })}
+                        <div>
+                            <div className="font-bold text-white">{searchResult.found ? searchResult.display_name : "کاربر یافت نشد"}</div>
+                            <div className="text-xs text-gray-400">{searchResult.found ? "این کاربر در سیستم عضو است" : "می‌توانید به عنوان مهمان دعوت کنید"}</div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="space-y-4">
+                    {/* Admin Company Selector */}
+                    {userRole === 'superadmin' && (
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400 font-bold flex items-center gap-1"><Building2 size={14}/> سازمان</label>
+                            <select value={adminCompanyId || ""} onChange={e => { setAdminCompanyId(Number(e.target.value)); setTargetDept(null); }} disabled={!!defaultCompanyId} className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-2.5 text-white outline-none focus:border-blue-500 disabled:opacity-50">
+                                <option value="">انتخاب سازمان...</option>
+                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {(!searchResult?.found || view === 'edit') && (
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400 font-bold">نام نمایشی (فارسی)</label>
+                            <input value={ghostName} onChange={e => setGhostName(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-blue-500" placeholder="نام و نام خانوادگی..." />
+                        </div>
+                    )}
+                    
+                    {userRole === 'superadmin' && (!searchResult?.found || view === 'edit') && (
+                        <>
+                            <div className="space-y-2">
+                                <label className="text-xs text-gray-400 font-bold">نام کاربری (لاتین)</label>
+                                <input value={adminUsername} onChange={e => setAdminUsername(e.target.value)} disabled={view === 'edit'} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white dir-ltr text-left outline-none focus:border-blue-500 disabled:opacity-50" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs text-gray-400 font-bold">{view === 'edit' ? "رمز عبور جدید (اختیاری)" : "رمز عبور"}</label>
+                                <input type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white dir-ltr text-left outline-none focus:border-blue-500" />
+                            </div>
+                        </>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400 font-bold">نقش</label>
+                            <select value={targetRole} onChange={e => setTargetRole(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-2.5 text-white outline-none focus:border-blue-500">
+                                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400 font-bold">دپارتمان</label>
+                            <select value={targetDept || ""} onChange={e => setTargetDept(Number(e.target.value))} className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-2.5 text-white outline-none focus:border-blue-500">
+                                <option value="">(ندارد)</option>
+                                {availableDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
                 </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+
+                <div className="flex gap-3 pt-4 border-t border-white/5">
+                    <button onClick={() => view === 'edit' ? onClose() : setAddStep('search')} className="flex-1 py-3 text-gray-400 hover:bg-white/5 rounded-xl">بازگشت</button>
+                    {view === 'edit' ? (
+                        <button onClick={handleUpdate} className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center justify-center gap-2">
+                            <Save size={18} /> ذخیره تغییرات
+                        </button>
+                    ) : (
+                        <>
+                            {userRole === 'superadmin' && !searchResult?.found ? (
+                                <button onClick={handleAdminCreate} className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl">ایجاد مستقیم کاربر</button>
+                            ) : (
+                                <button onClick={handleInvite} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl">
+                                    {searchResult?.found ? "افزودن به سازمان" : "ارسال دعوت‌نامه"}
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+        )}
+    </ModalWrapper>
   );
 }

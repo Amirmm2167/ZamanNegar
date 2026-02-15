@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLayoutStore } from "@/stores/layoutStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { 
-  getJalaliDay, 
   getStartOfJalaliWeek, 
   toPersianDigits, 
-  isSameJalaliDay 
+  isSameJalaliDay,
+  getJalaliDay
 } from "@/lib/jalali";
 import { EventInstance, Department } from "@/types";
 import { calculateEventLayout } from "@/lib/eventLayout";
@@ -50,24 +50,17 @@ export default function WeekView({
   
   const { currentDate } = useLayoutStore();
   const { openMenu } = useContextMenuStore();
-  
   const WEEK_DAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
   
-  // State for Crosshair
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
-
-  // State for Red Pin (Current Time)
   const [now, setNow] = useState(new Date());
 
-  // Update "Now" every minute
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(interval);
   }, []);
 
-  // Calculate Red Pin Position (0% to 100% of the day width)
-  // Horizontal Axis = Time (24h)
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
   const currentPercent = ((currentHour * 60 + currentMinute) / 1440) * 100;
@@ -78,6 +71,18 @@ export default function WeekView({
     d.setDate(d.getDate() + i);
     return d;
   });
+
+  // SPLIT EVENTS: All-Day vs Time-Based
+  const { allDayEvents, timeEvents } = useMemo(() => {
+      const allDay: EventInstance[] = [];
+      const timed: EventInstance[] = [];
+      events.forEach(e => {
+          if (hiddenDeptIds.includes(e.department_id || 0)) return;
+          if (e.is_all_day) allDay.push(e);
+          else timed.push(e);
+      });
+      return { allDayEvents: allDay, timeEvents: timed };
+  }, [events, hiddenDeptIds]);
 
   const getEventStyle = (event: EventInstance) => {
     const dept = departments.find(d => d.id === event.department_id);
@@ -98,11 +103,11 @@ export default function WeekView({
                <div 
                   key={i} 
                   className={clsx(
-                     "flex-1 border-l border-white/5 text-[10px] text-gray-500 flex items-center justify-center relative transition-colors",
-                     hoveredHour === i && "bg-white/5 text-blue-400 font-bold" // Highlight Header Column
+                      "flex-1 border-l border-white/5 text-[10px] text-gray-500 flex items-center justify-start relative transition-colors",
+                      hoveredHour === i && "bg-white/5 text-blue-400 font-bold"
                   )}
                >
-                  <span className="z-10 bg-[#020205]/50 px-1 rounded">
+                  <span className="z-10 bg-[#020205]/50 rounded font-bold rotate-270">
                     {toPersianDigits(i)}:۰۰
                   </span>
                </div>
@@ -110,7 +115,7 @@ export default function WeekView({
          </div>
       </div>
 
-      {/* 2. Main Body (Full Height) */}
+      {/* 2. Main Body */}
       <div className="flex-1 overflow-y-auto scrollbar-hide relative flex flex-col min-h-0">
           
           {weekDays.map((dayDate, dayIndex) => {
@@ -119,13 +124,13 @@ export default function WeekView({
               const isToday = isSameJalaliDay(new Date(), dayDate);
               const isHoveredRow = hoveredDayIndex === dayIndex;
 
-              const dayEvents = events.filter(e => 
-                  !hiddenDeptIds.includes(e.department_id || 0) &&
-                  isSameJalaliDay(new Date(e.start_time), dayDate) &&
-                  !e.is_all_day
-              );
+              // Filter Timed Events for this Day
+              const dayTimedEvents = timeEvents.filter(e => isSameJalaliDay(new Date(e.start_time), dayDate));
+              const visualEvents = calculateEventLayout(dayTimedEvents as any[], 'horizontal') as unknown as VisualEvent[];
+              
+              // Filter All-Day Events for this Day
+              const dayAllDayEvents = allDayEvents.filter(e => isSameJalaliDay(new Date(e.start_time), dayDate));
 
-              const visualEvents = calculateEventLayout(dayEvents as any[], 'horizontal') as unknown as VisualEvent[];
               const isDraftDay = draftEvent && isSameJalaliDay(draftEvent.date, dayDate);
 
               return (
@@ -146,7 +151,7 @@ export default function WeekView({
                           <span className={clsx("text-sm font-bold", isToday ? "text-blue-400" : "text-gray-300")}>
                               {WEEK_DAYS[dayIndex]}
                           </span>
-                          <div className={clsx("text-[10px] px-2 py-0.5 rounded-full mt-1 font-mono", isToday ? "bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]" : "text-gray-500")}>
+                          <div className={clsx("text-[10px] px-1 py-1 rounded-md mt-1 font-bold", isToday ? "bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]" : "text-gray-500")}>
                               {toPersianDigits(getJalaliDay(dayDate))}
                           </div>
                           {holiday && (
@@ -154,11 +159,31 @@ export default function WeekView({
                                 {holiday.occasion}
                               </span>
                           )}
+                          
+                          {/* ALL DAY EVENTS STACK (Inside the Day Label Column or Next to it) */}
+                          {dayAllDayEvents.length > 0 && (
+                              <div className="flex flex-col gap-1 mt-2 w-full">
+                                  {dayAllDayEvents.map(ev => {
+                                      const dept = departments.find(d => d.id === ev.department_id);
+                                      return (
+                                          <div 
+                                              key={ev.id}
+                                              onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
+                                              className="text-[9px] text-white px-1.5 py-0.5 rounded truncate cursor-pointer shadow-sm hover:brightness-110"
+                                              style={{ backgroundColor: dept?.color || "#6b7280" }}
+                                              title={ev.title}
+                                          >
+                                              {ev.title}
+                                          </div>
+                                      )
+                                  })}
+                              </div>
+                          )}
                       </div>
 
                       {/* Grid Cells (Columns) */}
                       <div className="flex-1 relative flex z-0">
-                          {/* Render Grid Background */}
+                          {/* Grid Background */}
                           <div className="absolute inset-0 flex">
                             {Array.from({ length: 24 }).map((_, h) => {
                                 const isCrosshair = isHoveredRow && hoveredHour === h;
@@ -169,16 +194,14 @@ export default function WeekView({
                                       key={h} 
                                       className={clsx(
                                          "flex-1 border-l border-white/5 cursor-pointer transition-colors relative",
-                                         // Crosshair Highlight Logic
                                          isCrosshair ? "bg-white/10" : isColHover ? "bg-white/[0.03]" : "hover:bg-white/5"
                                       )}
                                       onMouseEnter={() => setHoveredHour(h)}
                                       onClick={() => onSlotClick(dayDate, h)}
                                       onContextMenu={(e) => openMenu(e, 'empty-slot', { date: dayDate, hour: h })}
                                     >
-                                        {/* Optional: Add a subtle text hint on hover */}
                                         {isCrosshair && (
-                                            <span className="absolute top-1 right-1 text-[9px] text-gray-500 font-mono opacity-50">
+                                            <span className="absolute top-1 right-1 text-[9px] text-gray-500 font-bold opacity-50">
                                                 {toPersianDigits(h)}:۰۰
                                             </span>
                                         )}
@@ -187,7 +210,7 @@ export default function WeekView({
                             })}
                           </div>
 
-                          {/* RED PULSATING PIN (Only show if Today) */}
+                          {/* RED PULSATING PIN */}
                           {isToday && (
                              <div 
                                 className="absolute top-0 bottom-0 z-40 w-0.5 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] pointer-events-none transition-all duration-[60000ms] ease-linear"
@@ -198,7 +221,7 @@ export default function WeekView({
                              </div>
                           )}
 
-                          {/* Draft Event Placeholder */}
+                          {/* Draft Event */}
                           {isDraftDay && draftEvent && (
                              <div 
                                 className="absolute top-2 bottom-2 z-10 bg-emerald-500/20 border-2 border-dashed border-emerald-500 rounded-md flex items-center justify-center animate-pulse pointer-events-none"
@@ -211,7 +234,7 @@ export default function WeekView({
                              </div>
                           )}
 
-                          {/* Events */}
+                          {/* Timed Events */}
                           <div className="absolute inset-0 pointer-events-none w-full h-full">
                               {visualEvents.map((ev) => {
                                   const styles = getEventStyle(ev);
@@ -236,7 +259,7 @@ export default function WeekView({
                                               color: styles.color
                                           }}
                                       >
-                                          <span className="text-[10px] font-bold truncate group-hover/event:whitespace-normal group-hover/event:overflow-visible mix-blend-plus-lighter">
+                                          <span className="text-[10px] font-bold  group-hover/event:whitespace-normal group-hover/event:overflow-visible mix-blend-plus-lighter">
                                               {ev.title}
                                           </span>
                                       </div>

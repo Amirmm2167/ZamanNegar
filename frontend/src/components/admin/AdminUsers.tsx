@@ -4,14 +4,14 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { User } from "@/types";
-import { Search, Plus, User as UserIcon, Shield, MoreVertical } from "lucide-react";
+import { Search, Plus, MoreVertical } from "lucide-react";
 import UserModal from "@/components/UserModal";
 
 export default function AdminUsers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: users = [], isLoading, refetch } = useQuery<User[]>({
+  const { data: users = [], refetch, isLoading } = useQuery<User[]>({
     queryKey: ['admin', 'users'],
     queryFn: () => api.get("/users/").then(res => res.data),
   });
@@ -37,6 +37,7 @@ export default function AdminUsers() {
         </button>
       </div>
 
+      {/* ... Search Bar and Table (No Changes Needed Here) ... */}
       <div className="bg-[#1a1d24]/50 border border-white/5 rounded-2xl p-4 flex items-center gap-4 backdrop-blur-sm">
          <div className="relative flex-1 max-w-md">
             <Search className="absolute right-3 top-3 text-gray-500" size={18} />
@@ -91,10 +92,12 @@ export default function AdminUsers() {
         )}
       </div>
 
+      {/* Fix: Pass userRole="superadmin" so the company field appears */}
       <UserModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)}
         onSuccess={() => { refetch(); setIsModalOpen(false); }}
+        userRole="superadmin" 
       />
     </div>
   );

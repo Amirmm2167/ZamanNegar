@@ -1,18 +1,22 @@
 import { useMutation } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useEffect } from "react";
-// Ensure web-vitals is installed: npm install web-vitals
 import { onCLS, onINP, onLCP, Metric } from 'web-vitals'; 
+import { useAuthStore } from "@/stores/authStore"; // Import Auth Store
 
 type EventType = "PERFORMANCE" | "ERROR" | "PWA_ACTION" | "VIEW" | "ACTION" | "RAGE_CLICK" | "DEAD_CLICK";
 
 export function useAnalytics() {
   const mutation = useMutation({
-    mutationFn: (payload: { event_type: EventType; details: any }) => {
+    mutationFn: async (payload: { event_type: EventType; details: any }) => {
       
+      // --- FIX START: Check for Token ---
+      // Do not send analytics if user is not logged in
+      const token = useAuthStore.getState().token;
+      if (!token) return null;
+      // --- FIX END ---
+
       // FORCE STRINGIFICATION
-      // The backend model expects 'details' to be a string.
-      // If we pass an object, FastAPI might reject it or the DB insert might fail.
       const detailsString = typeof payload.details === 'string' 
         ? payload.details 
         : JSON.stringify(payload.details);
@@ -23,7 +27,10 @@ export function useAnalytics() {
       });
     },
     onError: (err) => {
-        console.error("Analytics Failed to Send:", err);
+        // Optional: Suppress errors in console to keep it clean
+        if (process.env.NODE_ENV === 'development') {
+            console.error("Analytics Failed to Send:", err);
+        }
     }
   });
 

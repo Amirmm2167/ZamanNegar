@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useLayoutStore } from "@/stores/layoutStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useHotkeys } from "@/hooks/useHotkeys"; 
 import FloatingIsland from "./FloatingIsland";
-import ContextRail from "./ContextRail";
 import Sidebar from "./Sidebar";
 import DesktopHeader from "./DesktopHeader";
+import NotificationsRail from "./NotificationsRail"; 
 import ContextMenu from "@/components/ui/ContextMenu";
 import ModernBackground from "@/components/ui/ModernBackground";
 import EventModal from "@/components/EventModal";
@@ -20,47 +20,46 @@ interface AppShellProps {
 }
 
 export default function AppShell({ children }: AppShellProps) {
-  const router = useRouter();
   const pathname = usePathname();
-  
   useHotkeys();
 
   const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore();
-  const { user, isAuthenticated, currentRole } = useAuthStore();
+  const { user, currentRole, initialize, isInitialized, isHydrated } = useAuthStore(); 
   
-  const role = currentRole();
-  const isAuthPage = pathname === "/login" || pathname === "/register";
-  const isAdminPage = pathname?.startsWith("/admin");
-  
-  // Modal States
   const [showEventModal, setShowEventModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [editingEventId, setEditingEventId] = useState<number | undefined>(undefined);
   
   const [isClient, setIsClient] = useState(false);
 
-  // --- 1. Global Event Listeners (Hotkeys & Context Menu) ---
+  // 1. Set client-side mount status
   useEffect(() => {
-    // A. Open New Event
-    const handleOpenNew = () => {
-      setEditingEventId(undefined);
-      setShowEventModal(true);
-    };
+    setIsClient(true);
+  }, []);
 
-    // B. Open Edit Event (from Context Menu)
+  // 2. Auth Initialization: Wait for Cookie Hydration first
+  useEffect(() => {
+    if (isHydrated && isClient) {
+      initialize();
+    }
+  }, [isHydrated, isClient, initialize]);
+
+  // 3. Mobile Check
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, [setIsMobile]);
+
+  // 4. Custom Event Listeners for Modals
+  useEffect(() => {
+    const handleOpenNew = () => { setEditingEventId(undefined); setShowEventModal(true); };
     const handleOpenEdit = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.eventId) {
-        setEditingEventId(detail.eventId);
-        setShowEventModal(true);
-      }
+      if (detail?.eventId) { setEditingEventId(detail.eventId); setShowEventModal(true); }
     };
-
-    // C. Close All Modals (Esc Key)
-    const handleCloseAll = () => {
-      setShowEventModal(false);
-      setShowIssueModal(false);
-    };
+    const handleCloseAll = () => { setShowEventModal(false); setShowIssueModal(false); };
 
     window.addEventListener('open-new-event', handleOpenNew);
     window.addEventListener('open-event-modal', handleOpenEdit);
@@ -73,53 +72,33 @@ export default function AppShell({ children }: AppShellProps) {
     };
   }, []);
 
-  // --- 2. Button Focus Management (The "Prevent Stickiness" Fix) ---
-  useEffect(() => {
-    const handleMouseUp = (e: MouseEvent) => {
-      // Find the closest button element if the user clicked an icon/span inside a button
-      const button = (e.target as HTMLElement).closest('button');
-      if (button) {
-        // Force blur immediately so Space/Enter hotkeys don't re-trigger the button
-        button.blur();
-      }
-    };
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => window.removeEventListener('mouseup', handleMouseUp);
-  }, []);
+  // --- Render Logic ---
 
-  useEffect(() => {
-    setIsClient(true);
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, [setIsMobile]);
+  // Don't render anything during SSR or before we've checked the cookies
+  if (!isClient || !isHydrated) return null;
 
-  useEffect(() => {
-    if (isClient && !isAuthenticated() && !isAuthPage) {
-      router.push('/login');
-    }
-  }, [isClient, isAuthenticated, isAuthPage, router]);
+  const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isAdminPage = pathname?.startsWith("/admin");
+  const role = currentRole();
 
-  if (!isClient) return null;
-
-  if (!isAuthenticated() && !isAuthPage) {
-     return (
-        <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
-           <Loader2 className="animate-spin" size={32} />
-        </div>
-     );
+  // Show loader while fetching fresh session data from API
+  if (!isInitialized && !isAuthPage) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
+        <Loader2 className="animate-spin" size={32} />
+      </div>
+    );
   }
 
   return (
     <div className="relative h-screen w-full overflow-hidden flex flex-col md:flex-row bg-black" dir="rtl">
       <div className="fixed inset-0 z-0 pointer-events-none">
-         <ModernBackground />
+        <ModernBackground />
       </div>
       <ContextMenu />
 
       {!isAuthPage && !isAdminPage && <Sidebar />}
-      {!isMobile && !isAuthPage && !isAdminPage && <ContextRail />}
+      {!isAuthPage && !isAdminPage && <NotificationsRail />}
 
       <main 
         className={`
@@ -128,6 +107,7 @@ export default function AppShell({ children }: AppShellProps) {
         `}
       >
         {!isMobile && !isAuthPage && !isAdminPage && <DesktopHeader />}
+        
         <div className="flex-1 relative overflow-hidden flex flex-col">
            {children}
         </div>
@@ -141,14 +121,15 @@ export default function AppShell({ children }: AppShellProps) {
         />
       )}
 
-      {/* Passing editId allows the modal to fetch data if needed, or pass null for new */}
       <EventModal 
         isOpen={showEventModal} 
         onClose={() => setShowEventModal(false)}
-        onSuccess={() => setShowEventModal(false)}
-        currentUserId={user?.id || 0}
-        // If your EventModal supports editing by ID, pass it here
-        // eventId={editingEventId} 
+        onSuccess={() => {
+            setShowEventModal(false);
+            window.dispatchEvent(new Event('refresh-calendar'));
+        }}
+        eventId={editingEventId}
+        currentUserId={user?.id}
       />
 
       <IssueModal 

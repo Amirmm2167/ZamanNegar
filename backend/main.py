@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import create_db_and_tables
-from routers import auth, events, users, companies, departments, holidays, tags, analytics, superadmin
+from routers import auth, events, users, companies, departments, holidays, tags, analytics, superadmin, notifications
 
 # 1. IMPORT YOUR CUSTOM MIDDLEWARE
 from middleware import ContextMiddleware
@@ -42,6 +42,7 @@ app.include_router(holidays.router, prefix="/holidays", tags=["Holidays"])
 app.include_router(tags.router, prefix="/tags", tags=["Tags"])
 app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 app.include_router(superadmin.router, prefix="/superadmin", tags=["SuperAdmin"])
+app.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 
 @app.get("/")
 def read_root():

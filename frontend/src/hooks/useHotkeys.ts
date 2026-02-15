@@ -59,7 +59,7 @@ export function useHotkeys() {
         case 'arrowright': 
           if (e.ctrlKey) {
              e.preventDefault();
-             const days = viewMode === 'week' ? 7 : 1;
+             const days = viewMode === 'week' ? -7 : -1;
              setCurrentDate(addJalaliDays(currentDate, days));
           }
           break;
@@ -67,7 +67,7 @@ export function useHotkeys() {
         case 'arrowleft': 
           if (e.ctrlKey) {
              e.preventDefault();
-             const days = viewMode === 'week' ? -7 : -1;
+             const days = viewMode === 'week' ? 7 : 1;
              setCurrentDate(addJalaliDays(currentDate, days));
           }
           break;

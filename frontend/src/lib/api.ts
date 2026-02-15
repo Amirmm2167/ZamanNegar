@@ -8,9 +8,9 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// 1. Request Interceptor: Attach Token & Context Headers
+// 1. Request Interceptor: Injects dynamic auth data from the store
 api.interceptors.request.use((config) => {
-  // We access the store directly (outside of React components)
+  // Get current state from Zustand (works inside or outside React)
   const state = useAuthStore.getState();
   const token = state.token;
   const sessionId = state.sessionId;
@@ -24,21 +24,31 @@ api.interceptors.request.use((config) => {
     config.headers['X-Session-ID'] = sessionId;
   }
   
-  if (companyId) {
+  // Only add Company ID header if it exists
+  if (companyId !== null && companyId !== undefined) {
     config.headers['X-Company-ID'] = companyId.toString();
   }
 
   return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
-// 2. Response Interceptor: Handle 401 (Session Expiry)
+// 2. Response Interceptor: Handles expired tokens and unauthorized access
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Use the store action to cleanup
-      useAuthStore.getState().logout();
-      
+      // Logic Check: Don't logout if the failed request was an optional check (like analytics)
+      const isAnalytics = error.config?.url?.includes('/analytics');
+      if (isAnalytics) {
+         return Promise.reject(error);
+      }
+
+      // If unauthorized, clear state and redirect to login
+      const logout = useAuthStore.getState().logout;
+      logout();
+
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
         window.location.href = '/login';
       }

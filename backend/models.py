@@ -21,6 +21,11 @@ class EventStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     CANCELLED = "cancelled"
+    
+class MembershipStatus(str, Enum):
+    ACTIVE = "active"
+    PENDING_APPROVAL = "pending"
+    SUSPENDED = "suspended"
 
 class IssueStatus(str, Enum):
     NEW = "new"
@@ -38,10 +43,17 @@ class NotificationType(str, Enum):
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
-    phone_number: Optional[str] = Field(default=None, index=True)
+    
+    # Phone is now critical for the "Ghost" handshake
+    phone_number: str = Field(unique=True, index=True) 
+    
     display_name: str
     hashed_password: str
     is_superadmin: bool = Field(default=False)
+    
+    # Profile Gate
+    is_profile_complete: bool = Field(default=False)
+    
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     profiles: List["CompanyProfile"] = Relationship(back_populates="user")
@@ -62,8 +74,24 @@ class UserSession(SQLModel, table=True):
     
     user: User = Relationship(back_populates="sessions")
 
+class CompanyInvitation(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # We store the normalized phone (+98...)
+    target_phone: str = Field(index=True)
+    temp_name: Optional[str] = None # Manager's nickname for the ghost
+    
+    company_id: int = Field(foreign_key="company.id")
+    department_id: Optional[int] = Field(default=None, foreign_key="department.id")
+    proposed_role: Role = Field(default=Role.VIEWER)
+    
+    inviter_id: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 class CompanyProfile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    status: MembershipStatus = Field(default=MembershipStatus.ACTIVE) # <--- NEW
+    
     user_id: int = Field(foreign_key="user.id")
     company_id: int = Field(foreign_key="company.id")
     department_id: Optional[int] = Field(default=None, foreign_key="department.id")
@@ -72,7 +100,7 @@ class CompanyProfile(SQLModel, table=True):
     user: User = Relationship(back_populates="profiles")
     company: "Company" = Relationship(back_populates="profiles")
     department: Optional["Department"] = Relationship(back_populates="profiles")
-
+    
 # --- 2. Organization Models ---
 
 class Company(SQLModel, table=True):
