@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname } from "next/navigation"; 
 import { useLayoutStore } from "@/stores/layoutStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useHotkeys } from "@/hooks/useHotkeys"; 
@@ -26,25 +26,31 @@ export default function AppShell({ children }: AppShellProps) {
   const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore();
   const { user, currentRole, initialize, isInitialized, isHydrated } = useAuthStore(); 
   
+  // FIX: Determine Role Safely
+  const role = currentRole();
+  const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isAdminPage = pathname?.startsWith("/admin");
+  
   const [showEventModal, setShowEventModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [editingEventId, setEditingEventId] = useState<number | undefined>(undefined);
   
   const [isClient, setIsClient] = useState(false);
 
-  // 1. Set client-side mount status
+  // --- 1. Client Mount ---
   useEffect(() => {
-    setIsClient(true);
+      setIsClient(true);
   }, []);
 
-  // 2. Auth Initialization: Wait for Cookie Hydration first
+  // --- 2. Initialize AFTER Hydration ---
+  // This prevents the "tokenless" API call that was happening on refresh
   useEffect(() => {
-    if (isHydrated && isClient) {
-      initialize();
-    }
-  }, [isHydrated, isClient, initialize]);
+      if (isClient && isHydrated) {
+          initialize();
+      }
+  }, [isClient, isHydrated, initialize]);
 
-  // 3. Mobile Check
+  // --- Mobile Check ---
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -52,7 +58,7 @@ export default function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("resize", checkMobile);
   }, [setIsMobile]);
 
-  // 4. Custom Event Listeners for Modals
+  // --- Event Listeners ---
   useEffect(() => {
     const handleOpenNew = () => { setEditingEventId(undefined); setShowEventModal(true); };
     const handleOpenEdit = (e: Event) => {
@@ -72,28 +78,25 @@ export default function AppShell({ children }: AppShellProps) {
     };
   }, []);
 
-  // --- Render Logic ---
-
-  // Don't render anything during SSR or before we've checked the cookies
+  // --- Render Gates ---
+  
+  // 1. Wait for Hydration: Don't show ANYTHING until we've read cookies
   if (!isClient || !isHydrated) return null;
 
-  const isAuthPage = pathname === "/login" || pathname === "/register";
-  const isAdminPage = pathname?.startsWith("/admin");
-  const role = currentRole();
-
-  // Show loader while fetching fresh session data from API
+  // 2. Wait for API Validation (Optional but recommended for strict auth)
+  // If we have a token but haven't validated it yet, show loader
   if (!isInitialized && !isAuthPage) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
-        <Loader2 className="animate-spin" size={32} />
-      </div>
-    );
+      return (
+        <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
+           <Loader2 className="animate-spin" size={32} />
+        </div>
+      );
   }
 
   return (
     <div className="relative h-screen w-full overflow-hidden flex flex-col md:flex-row bg-black" dir="rtl">
       <div className="fixed inset-0 z-0 pointer-events-none">
-        <ModernBackground />
+         <ModernBackground />
       </div>
       <ContextMenu />
 

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { User, CompanyProfile, LoginResponse } from '@/types';
 import api from '@/lib/api';
-import { cookieStorage } from '@/lib/storage'; // <--- Import Adapter
+import { cookieStorage } from '@/lib/storage';
 
 interface AuthState {
   token: string | null;
@@ -40,7 +40,7 @@ export const useAuthStore = create<AuthState>()(
       isSynced: false,
 
       login: (data: LoginResponse) => {
-        const defaultCompanyId = data.available_contexts.length > 0
+        const defaultCompanyId = data.available_contexts?.length > 0
           ? data.available_contexts[0].company_id
           : null;
 
@@ -48,12 +48,12 @@ export const useAuthStore = create<AuthState>()(
           token: data.access_token,
           sessionId: data.session_id,
           user: {
-            id: 0,
+            id: 0, // ID will be updated on next fetchSession/initialize if needed, or decoded
             username: data.username,
             display_name: data.username,
             is_superadmin: data.is_superadmin
           },
-          availableContexts: data.available_contexts,
+          availableContexts: data.available_contexts || [],
           activeCompanyId: defaultCompanyId,
           isSynced: true,
           isInitialized: true
@@ -70,9 +70,9 @@ export const useAuthStore = create<AuthState>()(
           isSynced: false,
           isInitialized: true
         });
-        // Cookies.remove happens automatically via persist logic on next state change,
-        // but forcing a reload ensures clean slate.
-        window.location.href = '/login';
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
       },
 
       fetchSession: async () => {
@@ -80,36 +80,45 @@ export const useAuthStore = create<AuthState>()(
       },
 
       initialize: async () => {
-        const token = get().token;
+        const state = get();
+        const token = state.token;
+
         if (!token) {
-          set({ isInitialized: true, availableContexts: [] });
+          set({ isInitialized: true });
           return;
         }
 
         try {
-          // Fetch fresh data
-          const [userRes, contextRes] = await Promise.all([
-            api.get('/auth/me'),
-            api.get('/companies/me')
-          ]);
+          // FIX: We only need /auth/me because it contains the 'available_contexts' with ROLES.
+          // /companies/me only returns the company list without roles.
+          const userRes = await api.get('/auth/me');
+          
+          const userData = userRes.data;
+          // Extract contexts from the /me response, NOT /companies/me
+          // @ts-ignore - The API response has available_contexts, even if User type doesn't explicitly list it
+          const freshContexts: CompanyProfile[] = userData.available_contexts || [];
+
+          // Validate if the currently active company is still valid
+          const currentActiveId = state.activeCompanyId;
+          const isStillValid = freshContexts.find(c => c.company_id === currentActiveId);
+
+          let nextActiveId = currentActiveId;
+          if (!isStillValid) {
+             nextActiveId = freshContexts.length > 0 ? freshContexts[0].company_id : null;
+          }
 
           set({
-            user: userRes.data,
-            availableContexts: contextRes.data || [],
-            isSynced: true
+            user: {
+                id: userData.id,
+                username: userData.username,
+                display_name: userData.display_name,
+                is_superadmin: userData.is_superadmin
+            },
+            availableContexts: freshContexts, // <--- THIS WAS THE FIX
+            activeCompanyId: nextActiveId,
+            isSynced: true,
+            isInitialized: true
           });
-
-          // Validate Active Context
-          const currentId = get().activeCompanyId;
-          const isValid = (contextRes.data || []).find((c: any) => c.company_id === currentId);
-
-          if (!isValid) {
-            if (contextRes.data && contextRes.data.length > 0) {
-              set({ activeCompanyId: contextRes.data[0].company_id });
-            } else {
-              set({ activeCompanyId: null });
-            }
-          }
 
         } catch (error: any) {
           console.error("Session restore failed", error);
@@ -123,7 +132,10 @@ export const useAuthStore = create<AuthState>()(
 
       switchCompany: (companyId: number) => {
         const { availableContexts, user } = get();
-        if (user?.is_superadmin || availableContexts.some(c => c.company_id === companyId)) {
+        // Allow switch if superadmin or if user belongs to that company
+        const hasAccess = user?.is_superadmin || availableContexts.some(c => c.company_id === companyId);
+        
+        if (hasAccess) {
           set({ activeCompanyId: companyId });
         }
       },
@@ -135,30 +147,30 @@ export const useAuthStore = create<AuthState>()(
       currentRole: () => {
         const state = get();
 
-        // 1. Check Superadmin first (this comes from the login response/cookie)
+        // 1. Superadmin takes precedence
         if (state.user?.is_superadmin) return 'superadmin';
 
-        // 2. Check active company context
-        if (state.activeCompanyId && state.availableContexts?.length > 0) {
+        // 2. Check current context
+        if (state.activeCompanyId !== null && state.availableContexts?.length > 0) {
           const context = state.availableContexts.find(
             (c) => Number(c.company_id) === Number(state.activeCompanyId)
           );
           if (context) return context.role;
         }
 
-        // 3. Fallback during initialization
+        // 3. Fallback
         return state.token ? 'authenticated' : 'viewer';
       },
     }),
     {
-      name: 'zaman-auth-cookie', // New name to avoid localStorage conflicts
-      storage: createJSONStorage(() => cookieStorage), // <--- USE COOKIE STORAGE
+      name: 'zaman-auth-cookie',
+      storage: createJSONStorage(() => cookieStorage),
       partialize: (state) => ({
         token: state.token,
         sessionId: state.sessionId,
         activeCompanyId: state.activeCompanyId,
         user: state.user,
-        availableContexts: state.availableContexts, // Critical for immediate role resolution
+        availableContexts: state.availableContexts, 
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHydrated();
