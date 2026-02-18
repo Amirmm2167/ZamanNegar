@@ -12,9 +12,15 @@ import { useLayoutStore } from "@/stores/layoutStore";
 import { useAuthStore } from "@/stores/authStore";
 
 // Sub-Views
+
+// Desktop Sub-Views
 import WeekView from "@/components/views/desktop/WeekView";
 import MonthView from "@/components/views/desktop/MonthView";
 import AgendaView from "@/components/views/shared/AgendaView"; // NEW IMPORT
+
+// Mobile Sub-Views
+import MobileMonthView from "@/components/views/mobile/MobileMonthView";
+
 
 // Shared Components
 import EventPanel from "@/components/EventPanel";
@@ -162,15 +168,31 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
           )}
 
           {viewMode === 'month' && (
-             <MonthView 
-                currentDate={currentDate}
-                events={events}
-                departments={departments}
-                holidays={holidays}
-                onEventClick={handleEventClick}
-                onEventLongPress={() => {}} 
-                onSlotClick={handleSlotClick}
-             />
+             <>
+                {/* Desktop View */}
+                <div className="hidden md:block h-full">
+                    <MonthView 
+                        currentDate={currentDate}
+                        events={events}
+                        departments={departments}
+                        holidays={holidays}
+                        onEventClick={handleEventClick}
+                        onEventLongPress={() => {}} 
+                        onSlotClick={handleSlotClick}
+                    />
+                </div>
+                {/* Mobile Split View */}
+                <div className="md:hidden h-full">
+                    <MobileMonthView 
+                        currentDate={currentDate}
+                        events={events}
+                        departments={departments}
+                        holidays={holidays}
+                        onEventClick={handleEventClick}
+                        onSlotClick={handleSlotClick}
+                    />
+                </div>
+             </>
           )}
 
           {viewMode === 'week' && (
