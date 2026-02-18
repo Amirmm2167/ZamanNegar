@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import re
@@ -204,6 +204,48 @@ def update_event(
         return new_event
 
     return event
+
+@router.get("/density", response_model=Dict[str, int])
+def get_events_density(
+    request: Request,
+    start: datetime,
+    end: datetime,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns a heatmap of event counts per day for the Year View.
+    Optimized to return only counts, not full objects.
+    """
+    # 1. Permission Logic
+    allowed_ids = []
+    if current_user.is_superadmin:
+        if request.state.company_id: allowed_ids = [request.state.company_id]
+    else:
+        allowed_ids = [p.company_id for p in current_user.profiles]
+        if request.state.company_id:
+            if request.state.company_id not in allowed_ids: raise HTTPException(403)
+            allowed_ids = [request.state.company_id]
+
+    if not allowed_ids and not current_user.is_superadmin: return {}
+
+    # 2. Use Recurrence Engine
+    events = get_events_in_range(session, start, end, allowed_ids, is_superadmin=current_user.is_superadmin)
+    
+    # 3. Aggregate
+    density_map: Dict[str, int] = {}
+    
+    for ev in events:
+        # ev is a dict from get_events_in_range
+        # Ensure start_time is a datetime object
+        st = ev.get('start_time')
+        if isinstance(st, str):
+            st = datetime.fromisoformat(st.replace('Z', '+00:00'))
+            
+        date_key = st.strftime("%Y-%m-%d")
+        density_map[date_key] = density_map.get(date_key, 0) + 1
+        
+    return density_map
 
 @router.delete("/{event_id}")
 def delete_event(

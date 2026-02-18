@@ -17,6 +17,7 @@ import { useAuthStore } from "@/stores/authStore";
 import WeekView from "@/components/views/desktop/WeekView";
 import MonthView from "@/components/views/desktop/MonthView";
 import AgendaView from "@/components/views/shared/AgendaView"; // NEW IMPORT
+import YearView from "@/components/views/desktop/YearView";
 
 // Mobile Sub-Views
 import MobileMonthView from "@/components/views/mobile/MobileMonthView";
@@ -89,6 +90,16 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
       setLoading(false);
     }
   }, [activeCompanyId, getDateRange]);
+
+  const handleYearDayDoubleClick = (date: Date) => {
+      // 1. Update the centralized date
+      setCurrentDate(date);
+      // 2. Switch View to 'week' (User Requirement)
+      // We assume useLayoutStore has a setViewMode action or we pass a callback prop
+      // Since viewMode is from store, we ideally need the setter from store.
+      // Assuming useLayoutStore returns { viewMode, setViewMode }
+      useLayoutStore.getState().setViewMode('week'); 
+  };
 
   // --- 2. EFFECTS ---
   useEffect(() => {
@@ -221,8 +232,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
                 onEventLongPress={handleEventClick} // Reuse logic for now
              />
           )}
+          {viewMode === 'year' && (
+             <YearView 
+                currentDate={currentDate}
+                onDayClick={(date) => handleSlotClick(date, 9)} // Open Panel on click
+                onDayDoubleClick={handleYearDayDoubleClick}     // Go to Week on double click
+             />
+          )}
           
-          {viewMode !== 'month' && viewMode !== 'week' && viewMode !== 'agenda' && (
+          {viewMode !== 'month' && viewMode !== 'week' && viewMode !== 'agenda' && viewMode !== 'year' && (
              <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-2">
                 <Loader2 className="animate-spin opacity-50" size={32} />
                 <p className="text-sm">نمای {viewMode} در حال آماده‌سازی است...</p>
