@@ -14,6 +14,7 @@ import { useAuthStore } from "@/stores/authStore";
 // Sub-Views
 import WeekView from "@/components/views/desktop/WeekView";
 import MonthView from "@/components/views/desktop/MonthView";
+import AgendaView from "@/components/views/shared/AgendaView"; // NEW IMPORT
 
 // Shared Components
 import EventPanel from "@/components/EventPanel";
@@ -29,7 +30,7 @@ export interface CalendarGridHandle {
 const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
   // --- STORES ---
   const { viewMode } = useLayoutStore(); 
-  const { activeCompanyId } = useAuthStore(); // Removed 'user' since it's not used directly here
+  const { activeCompanyId } = useAuthStore();
 
   // --- LOCAL STATE ---
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -53,9 +54,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
       start = startOfWeek(startOfMonth(now));
       end = endOfWeek(endOfMonth(now));
     } else if (viewMode === 'agenda') {
-      start = now;
-      end = addDays(now, 30);
+      // UPDATED: Range-Based Infinite Scroll Strategy
+      // Load 1 month back and 3 months forward
+      start = subMonths(now, 1);
+      end = addMonths(now, 3);
     } else {
+      // Week / Mobile-Week / 3Day / Day
       start = startOfWeek(now);
       end = endOfWeek(now);
     }
@@ -92,6 +96,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     fetchEvents();
   }, [fetchEvents]);
 
+  // Listen for global refresh (e.g. from AgendaView inline actions)
   useEffect(() => {
     const handleGlobalRefresh = () => fetchEvents();
     window.addEventListener('refresh-calendar', handleGlobalRefresh);
@@ -110,6 +115,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
         setCurrentDate(prev => direction === 'next' ? addMonths(prev, 1) : subMonths(prev, 1));
       } else if (viewMode === 'week' || viewMode === 'mobile-week') {
         setCurrentDate(prev => direction === 'next' ? addDays(prev, 7) : subDays(prev, 7));
+      } else if (viewMode === 'agenda') {
+        // For Agenda, jumping "Next" usually means jumping a month to trigger new loads
+        setCurrentDate(prev => direction === 'next' ? addMonths(prev, 1) : subMonths(prev, 1));
       } else {
         const step = viewMode === '3day' ? 3 : 1;
         setCurrentDate(prev => direction === 'next' ? addDays(prev, step) : subDays(prev, step));
@@ -180,8 +188,19 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
                 draftEvent={null} 
              />
           )}
+
+          {/* NEW: Agenda View */}
+          {viewMode === 'agenda' && (
+             <AgendaView
+                events={events}
+                departments={departments}
+                holidays={holidays}
+                onEventClick={handleEventClick}
+                onEventLongPress={handleEventClick} // Reuse logic for now
+             />
+          )}
           
-          {viewMode !== 'month' && viewMode !== 'week' && (
+          {viewMode !== 'month' && viewMode !== 'week' && viewMode !== 'agenda' && (
              <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-2">
                 <Loader2 className="animate-spin opacity-50" size={32} />
                 <p className="text-sm">نمای {viewMode} در حال آماده‌سازی است...</p>
@@ -196,7 +215,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              fetchEvents(); 
              setIsPanelOpen(false);
           }}
-          // FIX: Removed currentUserId prop
           eventToEdit={selectedEvent}
           initialDate={panelInitialDate}
           initialStartTime={panelInitialTime?.start}

@@ -36,6 +36,14 @@ export const getJalaliYear = (date: Date): number => {
   return getJalaliParts(date)[0];
 };
 
+// --- ADDED THIS MISSING HELPER ---
+export const getJalaliMonthName = (date: Date): string => {
+  return new Intl.DateTimeFormat("fa-IR", {
+    calendar: "persian",
+    month: "long",
+  }).format(date);
+};
+
 // 4. Formatting
 export const formatJalaliDate = (date: Date): string => {
   return new Intl.DateTimeFormat("fa-IR", {
@@ -73,22 +81,12 @@ export const getStartOfJalaliMonth = (date: Date): Date => {
 };
 
 // Returns the SATURDAY of the current week
-// Standard JS getDay(): Sun=0, Mon=1... Sat=6
-// Jalali Week: Sat=0, Sun=1... Fri=6
 export const getStartOfJalaliWeek = (date: Date): Date => {
   const d = new Date(date);
   const day = d.getDay(); // 0(Sun) to 6(Sat)
-  
-  // Calculate days since Saturday
-  // Sat(6) -> 0 days ago
-  // Sun(0) -> 1 day ago
-  // Mon(1) -> 2 days ago
-  // ...
-  // Fri(5) -> 6 days ago
   const diff = (day + 1) % 7;
   
   d.setDate(d.getDate() - diff);
-  // Reset time to start of day for accurate comparison
   d.setHours(0, 0, 0, 0);
   return d;
 };
