@@ -43,23 +43,17 @@ class NotificationType(str, Enum):
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
-    
-    # Phone is now critical for the "Ghost" handshake
     phone_number: str = Field(unique=True, index=True) 
-    
     display_name: str
     hashed_password: str
     is_superadmin: bool = Field(default=False)
-    
-    # Profile Gate
     is_profile_complete: bool = Field(default=False)
-    
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     profiles: List["CompanyProfile"] = Relationship(back_populates="user")
     sessions: List["UserSession"] = Relationship(back_populates="user")
     issues: List["Issue"] = Relationship(back_populates="user")
-    events_proposed: List["EventMaster"] = Relationship(back_populates="proposer")
+    events_proposed: List["Event"] = Relationship(back_populates="proposer")
     notifications: List["Notification"] = Relationship(back_populates="recipient")
 
 class UserSession(SQLModel, table=True):
@@ -71,32 +65,25 @@ class UserSession(SQLModel, table=True):
     geo_location: Optional[str] = None
     last_active: datetime = Field(default_factory=datetime.utcnow)
     preferences: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    
     user: User = Relationship(back_populates="sessions")
 
 class CompanyInvitation(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    
-    # We store the normalized phone (+98...)
     target_phone: str = Field(index=True)
-    temp_name: Optional[str] = None # Manager's nickname for the ghost
-    
+    temp_name: Optional[str] = None 
     company_id: int = Field(foreign_key="company.id")
     department_id: Optional[int] = Field(default=None, foreign_key="department.id")
     proposed_role: Role = Field(default=Role.VIEWER)
-    
     inviter_id: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class CompanyProfile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    status: MembershipStatus = Field(default=MembershipStatus.ACTIVE) # <--- NEW
-    
+    status: MembershipStatus = Field(default=MembershipStatus.ACTIVE)
     user_id: int = Field(foreign_key="user.id")
     company_id: int = Field(foreign_key="company.id")
     department_id: Optional[int] = Field(default=None, foreign_key="department.id")
     role: Role = Field(default=Role.VIEWER)
-    
     user: User = Relationship(back_populates="profiles")
     company: "Company" = Relationship(back_populates="profiles")
     department: Optional["Department"] = Relationship(back_populates="profiles")
@@ -108,11 +95,9 @@ class Company(SQLModel, table=True):
     name: str = Field(index=True)
     settings: str = "{}" 
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
     departments: List["Department"] = Relationship(back_populates="company")
     profiles: List["CompanyProfile"] = Relationship(back_populates="company")
-    event_masters: List["EventMaster"] = Relationship(back_populates="company")
-    event_instances: List["EventInstance"] = Relationship(back_populates="company")
+    events: List["Event"] = Relationship(back_populates="company")
 
 class Department(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -120,13 +105,12 @@ class Department(SQLModel, table=True):
     color: str = "#cccccc"
     company_id: Optional[int] = Field(default=None, foreign_key="company.id")
     parent_id: Optional[int] = Field(default=None, foreign_key="department.id")
-    
     company: Optional[Company] = Relationship(back_populates="departments")
     profiles: List["CompanyProfile"] = Relationship(back_populates="department")
 
-# --- 3. Recurrence Engine Models ---
+# --- 3. Events (Read-Time Architecture) ---
 
-class EventMaster(SQLModel, table=True):
+class Event(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     description: Optional[str] = None
@@ -134,13 +118,20 @@ class EventMaster(SQLModel, table=True):
     target_audience: Optional[str] = None
     organizer: Optional[str] = None
     
-    # --- ADDED TIME FIELDS ---
-    start_time: datetime
+    start_time: datetime = Field(index=True)
     end_time: datetime
     is_all_day: bool = False
     
     is_recurring: bool = False
     recurrence_rule: Optional[str] = None
+    
+    # --- UI HINTS (Normalization Pattern) ---
+    recurrence_ui_mode: Optional[str] = None # 'count' | 'date'
+    recurrence_ui_count: Optional[int] = None # Original count input by user
+    
+    exception_dates: List[str] = Field(default=[], sa_column=Column(JSON))
+    parent_id: Optional[int] = Field(default=None, foreign_key="event.id")
+    original_start_time: Optional[datetime] = None
     
     scope: EventScope = Field(default=EventScope.COMPANY)
     target_rules: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
@@ -156,33 +147,13 @@ class EventMaster(SQLModel, table=True):
     department_id: Optional[int] = Field(default=None, foreign_key="department.id")
     
     proposer: User = Relationship(back_populates="events_proposed")
-    company: Optional[Company] = Relationship(back_populates="event_masters")
-    instances: List["EventInstance"] = Relationship(back_populates="master")
-    exceptions: List["EventException"] = Relationship(back_populates="master")
-
-class EventInstance(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    master_id: int = Field(foreign_key="eventmaster.id")
+    company: Optional[Company] = Relationship(back_populates="events")
     
-    title: str 
-    start_time: datetime = Field(index=True)
-    end_time: datetime = Field(index=True)
-    is_all_day: bool = False
-    status: EventStatus = Field(default=EventStatus.PENDING)
-    
-    company_id: int = Field(foreign_key="company.id", index=True)
-    department_id: Optional[int] = Field(default=None, foreign_key="department.id")
-    
-    master: EventMaster = Relationship(back_populates="instances")
-    company: Company = Relationship(back_populates="event_instances")
-
-class EventException(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    master_id: int = Field(foreign_key="eventmaster.id")
-    original_date: datetime
-    new_date: Optional[datetime] = None
-    is_cancelled: bool = False
-    master: EventMaster = Relationship(back_populates="exceptions")
+    parent: Optional["Event"] = Relationship(
+        back_populates="exceptions", 
+        sa_relationship_kwargs={"remote_side": "Event.id"}
+    )
+    exceptions: List["Event"] = Relationship(back_populates="parent")
 
 class EventCreate(SQLModel):
     title: str
@@ -194,12 +165,18 @@ class EventCreate(SQLModel):
     end_time: datetime
     is_all_day: bool = False
     recurrence_rule: Optional[str] = None
+    
+    # --- New Fields for Creation ---
+    recurrence_ui_mode: Optional[str] = None
+    recurrence_ui_count: Optional[int] = None
+    
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     scope: Optional[EventScope] = None 
     target_rules: Optional[Dict[str, Any]] = None
 
 # --- 4. Supporting Models ---
+# (Notifications, Holidays, Issues, Tags, AnalyticsLog - SAME AS BEFORE)
 class Notification(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     recipient_id: int = Field(foreign_key="user.id", index=True)

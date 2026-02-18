@@ -27,24 +27,34 @@ export interface LoginResponse {
   available_contexts: CompanyProfile[];
 }
 
-// --- EVENTS ---
-export interface EventInstance {
+export interface CalendarEvent {
   id: number;
-  master_id: number;
-  proposer_id: number; // Added
+  master_id: number; 
+  proposer_id: number;
   title: string;
   start_time: string;
   end_time: string;
   is_all_day: boolean;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
-  // God Mode Fields
+  
   is_locked?: boolean;
   rejection_reason?: string;
-  description?: string; // Optional for list views
+  description?: string;
   goal?: string;
+  target_audience?: string;
+  organizer?: string;
+  recurrence_rule?: string | null;
+  
+  // UI Hints
+  recurrence_ui_mode?: 'count' | 'date' | null;
+  recurrence_ui_count?: number | null;
   
   company_id: number;
   department_id?: number;
+  
+  // Virtual / Read-Time helpers
+  is_virtual?: boolean;
+  instance_date?: string;
 }
 
 export interface EventCreatePayload {
@@ -57,6 +67,11 @@ export interface EventCreatePayload {
   end_time: string;
   is_all_day: boolean;
   recurrence_rule?: string | null;
+  
+  // New UI Hints for Creation
+  recurrence_ui_mode?: string | null;
+  recurrence_ui_count?: number | null;
+  
   company_id: number;
   department_id?: number;
 }

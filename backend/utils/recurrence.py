@@ -1,110 +1,110 @@
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Dict
 from dateutil.rrule import rrulestr
-from sqlmodel import Session, select
-from models import EventMaster, EventInstance, EventScope, Company, EventStatus
+from sqlmodel import Session, select, or_
+from models import Event, EventScope
 
-EXPANSION_WINDOW_DAYS = 730 # 2 Years
+def _to_date_str(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d")
 
-def expand_master_to_instances(
+def _ensure_naive(dt: datetime) -> datetime:
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
+
+def get_events_in_range(
     session: Session, 
-    master: EventMaster, 
-    clear_existing: bool = True
-) -> List[EventInstance]:
-    """
-    Generates EventInstance rows from an EventMaster rule.
-    Handles System-Wide broadcasting logic.
-    """
+    start_range: datetime, 
+    end_range: datetime, 
+    company_ids: List[int],
+    is_superadmin: bool = False
+) -> List[Dict]:
     
-    # 1. Clear old future instances if requested (for updates)
-    if clear_existing:
-        existing = session.exec(
-            select(EventInstance).where(EventInstance.master_id == master.id)
-        ).all()
-        for e in existing:
-            session.delete(e)
-    
-    instances = []
-    
-    # 2. Determine Target Companies
-    target_company_ids = []
-    if master.scope == EventScope.SYSTEM:
-        query = select(Company.id)
-        includes = master.target_rules.get("include_companies", [])
-        excludes = master.target_rules.get("exclude_companies", [])
-        
-        if includes:
-            query = query.where(Company.id.in_(includes)) # type: ignore
-        if excludes:
-            query = query.where(Company.id.notin_(excludes)) # type: ignore
-            
-        target_company_ids = session.exec(query).all()
-    else:
-        # Single Company Event
-        if master.company_id:
-            target_company_ids = [master.company_id]
-        else:
-            print(f"Warning: EventMaster {master.id} has no company_id and scope is not SYSTEM.")
-            return [] 
+    start_range = _ensure_naive(start_range)
+    end_range = _ensure_naive(end_range)
 
-    # 3. Calculate Dates
-    # Now correctly using the Master's start/end time
-    base_start = master.start_time
-    base_end = master.end_time
-    duration = base_end - base_start
-
-    # --- CASE A: NON-RECURRING ---
-    if not master.recurrence_rule:
-        for company_id in target_company_ids:
-            instance = EventInstance(
-                master_id=master.id,
-                title=master.title,
-                start_time=base_start,
-                end_time=base_end,
-                status=master.status,
-                company_id=company_id,
-                department_id=master.department_id,
-                is_all_day=master.is_all_day
+    query = select(Event)
+    
+    if not is_superadmin:
+        query = query.where(
+            or_(
+                Event.company_id.in_(company_ids), # type: ignore
+                Event.scope == EventScope.SYSTEM
             )
-            session.add(instance)
-            instances.append(instance)
-        
-        return instances
+        )
+    
+    query = query.where(Event.start_time <= end_range)
+    all_events = session.exec(query).all()
+    
+    results = []
+    exceptions_map = {}
+    
+    for evt in all_events:
+        if evt.parent_id and evt.original_start_time:
+            key = (evt.parent_id, _to_date_str(evt.original_start_time))
+            exceptions_map[key] = evt
 
-    # --- CASE B: RECURRING ---
-    try:
-        # Parse RRULE
-        # dtstart is required for rrulestr to calculate dates correctly relative to start
-        rules = rrulestr(master.recurrence_rule, dtstart=base_start)
-        
-        # Generate dates for next 2 years
-        now = datetime.utcnow()
-        # Adjust 'now' to ensure we capture upcoming events if start date is in future
-        search_start = min(now, base_start) 
-        end_limit = now + timedelta(days=EXPANSION_WINDOW_DAYS)
-        
-        dates = list(rules.between(search_start, end_limit, inc=True))
-        
-        # Create Instance for each Date x Company
-        for dt in dates:
-            for company_id in target_company_ids:
-                # Calculate End Time based on original duration
+    for evt in all_events:
+        evt_start = _ensure_naive(evt.start_time)
+        evt_end = _ensure_naive(evt.end_time)
+
+        if not evt.recurrence_rule:
+            if evt_start >= start_range and evt_start <= end_range:
+                results.append(_event_to_dict(evt, evt_start, evt_end))
+            continue
+
+        if evt.parent_id:
+            continue
+
+        try:
+            rules = rrulestr(evt.recurrence_rule, dtstart=evt_start)
+            instances = rules.between(start_range, end_range, inc=True)
+            
+            duration = evt_end - evt_start
+            exdates = set(evt.exception_dates or [])
+            
+            for dt in instances:
+                dt = _ensure_naive(dt)
+                date_key = _to_date_str(dt)
+                
+                if date_key in exdates:
+                    continue
+                
+                override_key = (evt.id, date_key)
+                if override_key in exceptions_map:
+                    continue
+                
                 instance_end = dt + duration
+                # FIX: is_virtual (no underscore)
+                results.append(_event_to_dict(evt, dt, instance_end, is_virtual=True))
                 
-                instance = EventInstance(
-                    master_id=master.id,
-                    title=master.title,
-                    start_time=dt,
-                    end_time=instance_end,
-                    status=master.status,
-                    company_id=company_id,
-                    department_id=master.department_id,
-                    is_all_day=master.is_all_day
-                )
-                session.add(instance)
-                instances.append(instance)
-                
-    except Exception as e:
-        print(f"Error expanding RRULE for Master {master.id}: {e}")
-        
-    return instances
+        except Exception as e:
+            print(f"Recurrence Error Event {evt.id}: {e}")
+            if evt_start >= start_range and evt_start <= end_range:
+                results.append(_event_to_dict(evt, evt_start, evt_end))
+
+    results.sort(key=lambda x: x['start_time'])
+    return results
+
+def _event_to_dict(evt: Event, start: datetime, end: datetime, is_virtual: bool = False) -> Dict:
+    return {
+        "id": evt.id, 
+        "master_id": evt.id if is_virtual else (evt.parent_id or evt.id),
+        "proposer_id": evt.proposer_id,
+        "title": evt.title,
+        "description": evt.description,
+        "start_time": start,
+        "end_time": end,
+        "is_all_day": evt.is_all_day,
+        "status": evt.status,
+        "company_id": evt.company_id,
+        "department_id": evt.department_id,
+        "is_locked": evt.is_locked,
+        "recurrence_rule": evt.recurrence_rule,
+        "goal": evt.goal,
+        "target_audience": evt.target_audience,
+        "organizer": evt.organizer,
+        # FIX: Remove underscores for JSON serialization
+        "is_virtual": is_virtual,
+        "instance_date": _to_date_str(start) 
+    }

@@ -7,7 +7,7 @@ from typing import Optional, List, Dict
 from database import get_session
 from models import (
     Company, User, Holiday, Department, 
-    CompanyProfile, Role, EventInstance
+    CompanyProfile, Role, Event
 )
 from security import get_current_user, get_password_hash
 
@@ -15,7 +15,6 @@ router = APIRouter()
 
 # --- Security Dependency ---
 def get_superadmin_user(current_user: User = Depends(get_current_user)):
-    # FIX: Use boolean flag from new Identity Schema
     if not current_user.is_superadmin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -44,7 +43,7 @@ class AdminUserCreate(BaseModel):
     username: str
     display_name: str
     password: str
-    role: Role  # Enum: viewer, proposer, evaluator, manager
+    role: Role
     company_id: int
     department_id: Optional[int] = None
 
@@ -67,8 +66,9 @@ def get_global_stats(
     return {
         "total_companies": session.exec(select(func.count(Company.id))).one(),
         "total_users": session.exec(select(func.count(User.id))).one(),
-        "total_events": session.exec(select(func.count(EventInstance.id))).one(),
-        "active_sessions": 0 # Placeholder until Redis integration
+        # Count all stored events
+        "total_events": session.exec(select(func.count(Event.id))).one(),
+        "active_sessions": 0
     }
 
 # --- 2. Company Management ---
@@ -99,7 +99,7 @@ def get_all_companies(
 ):
     return session.exec(select(Company)).all()
 
-# --- 3. User & Manager Management (Refactored for Phase 1 Schema) ---
+# --- 3. User & Manager Management ---
 
 @router.post("/managers", response_model=User)
 def create_manager(
@@ -107,17 +107,14 @@ def create_manager(
     session: Session = Depends(get_session),
     _: User = Depends(get_superadmin_user)
 ):
-    # 1. Validate Company
     company = session.get(Company, manager_data.company_id)
     if not company:
         raise HTTPException(status_code=404, detail="شرکت یافت نشد")
 
-    # 2. Validate Username
     existing_user = session.exec(select(User).where(User.username == manager_data.username)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="نام کاربری تکراری است")
 
-    # 3. Create User (Global Identity)
     new_manager = User(
         username=manager_data.username,
         display_name=manager_data.display_name,
@@ -128,7 +125,6 @@ def create_manager(
     session.commit()
     session.refresh(new_manager)
 
-    # 4. Create Profile (Link to Company as Manager)
     profile = CompanyProfile(
         user_id=new_manager.id,
         company_id=manager_data.company_id,
@@ -146,12 +142,10 @@ def admin_create_user(
     session: Session = Depends(get_session),
     _: User = Depends(get_superadmin_user)
 ):
-    # 1. Check Duplicates
     existing = session.exec(select(User).where(User.username == user_data.username)).first()
     if existing:
         raise HTTPException(status_code=400, detail="نام کاربری تکراری است")
 
-    # 2. Create User
     new_user = User(
         username=user_data.username,
         display_name=user_data.display_name,
@@ -162,7 +156,6 @@ def admin_create_user(
     session.commit()
     session.refresh(new_user)
 
-    # 3. Create Profile
     profile = CompanyProfile(
         user_id=new_user.id,
         company_id=user_data.company_id,
@@ -182,7 +175,6 @@ def create_global_holiday(
     session: Session = Depends(get_session),
     _: User = Depends(get_superadmin_user)
 ):
-    # company_id=None means GLOBAL
     new_holiday = Holiday(
         occasion=holiday_data.occasion,
         holiday_date=holiday_data.holiday_date,
@@ -211,7 +203,6 @@ def get_global_holidays(
     session: Session = Depends(get_session),
     _: User = Depends(get_superadmin_user)
 ):
-    # Fetch only where company_id is NULL
     return session.exec(select(Holiday).where(Holiday.company_id == None)).all()
 
 @router.patch("/holidays/{holiday_id}", response_model=Holiday)

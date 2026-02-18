@@ -2,13 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlmodel import Session, select, func
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
+from datetime import datetime, timedelta
 
 from database import get_session
 from models import (
     Company, CompanyProfile, User, Role, Department, 
-    EventMaster, EventInstance, MembershipStatus
+    Event, MembershipStatus
 )
 from security import get_current_user
+from utils.recurrence import get_events_in_range
 
 router = APIRouter()
 
@@ -47,10 +49,6 @@ def get_companies_stats(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Returns high-level stats for the Admin Card View.
-    Aggregates Users, Departments, and Event Statuses.
-    """
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin access required")
 
@@ -58,31 +56,27 @@ def get_companies_stats(
     results = []
 
     for comp in companies:
-        # 1. Count Users (Active + Pending profiles)
         user_count = session.exec(
             select(func.count(CompanyProfile.id))
             .where(CompanyProfile.company_id == comp.id)
         ).one()
 
-        # 2. Count Departments
         dept_count = session.exec(
             select(func.count(Department.id))
             .where(Department.company_id == comp.id)
         ).one()
 
-        # 3. Aggregate Event Plans (EventMaster) by Status
-        # We count the 'Plans' to see how many requests are approved/pending
+        # Count 'Event' rows (Plans/Parents + Singles)
         event_counts = session.exec(
-            select(EventMaster.status, func.count(EventMaster.id))
-            .where(EventMaster.company_id == comp.id)
-            .group_by(EventMaster.status)
+            select(Event.status, func.count(Event.id))
+            .where(Event.company_id == comp.id)
+            .group_by(Event.status)
         ).all()
         
         stats_map = {
             "approved": 0, "pending": 0, "rejected": 0, "cancelled": 0
         }
         for status_val, count in event_counts:
-            # Safe conversion of Enum to string for JSON response
             status_str = status_val.value if hasattr(status_val, 'value') else str(status_val)
             if status_str in stats_map:
                 stats_map[status_str] = count
@@ -107,7 +101,6 @@ def create_company(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """Superadmin only: Create a new Organization"""
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Only Superadmins can create companies")
     
@@ -123,14 +116,9 @@ def list_companies(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Superadmin: Lists ALL companies.
-    Manager/User: Lists companies they belong to.
-    """
     if current_user.is_superadmin:
         return session.exec(select(Company)).all()
     
-    # Return only companies where user has a profile
     statement = (
         select(Company)
         .join(CompanyProfile)
@@ -143,7 +131,6 @@ def get_my_companies(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """For Workspace Switcher UI"""
     statement = (
         select(Company)
         .join(CompanyProfile)
@@ -161,7 +148,6 @@ def get_company(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
         
-    # Access Control
     if not current_user.is_superadmin:
         membership = session.exec(
             select(CompanyProfile)
@@ -183,7 +169,6 @@ def update_company(
     if not company:
         raise HTTPException(status_code=404, detail="Not found")
 
-    # Access Control: Superadmin OR Manager of that company
     if not current_user.is_superadmin:
         profile = session.exec(
             select(CompanyProfile)
@@ -208,9 +193,6 @@ def delete_company(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Superadmin only: Delete an entire organization.
-    """
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Only Superadmins can delete companies")
 
@@ -218,22 +200,19 @@ def delete_company(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    # Manual Cascade Cleanup (Safety First)
-    # 1. Remove all memberships
+    # Manual Cascade Cleanup
     session.exec(select(CompanyProfile).where(CompanyProfile.company_id == company_id)).delete()
-    # 2. Remove all departments
     session.exec(select(Department).where(Department.company_id == company_id)).delete()
-    # 3. Remove all events (Masters & Instances) - Instances usually cascade via DB, but being explicit helps
-    session.exec(select(EventInstance).where(EventInstance.company_id == company_id)).delete()
-    session.exec(select(EventMaster).where(EventMaster.company_id == company_id)).delete()
+    
+    # Cascade events (Single, Recurring, Exceptions)
+    session.exec(select(Event).where(Event.company_id == company_id)).delete()
 
-    # 4. Delete the company
     session.delete(company)
     session.commit()
     return {"ok": True, "message": f"Company {company_id} deleted"}
 
 # ==========================================
-# 3. SUB-RESOURCE MANAGEMENT (Settings Tabs)
+# 3. SUB-RESOURCE MANAGEMENT
 # ==========================================
 
 @router.post("/{company_id}/members")
@@ -243,8 +222,6 @@ def add_member(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """Add an EXISTING user to a company directly"""
-    # Permission Check
     if not current_user.is_superadmin:
         requester_profile = session.exec(
             select(CompanyProfile)
@@ -253,7 +230,6 @@ def add_member(
         if not requester_profile or requester_profile.role != Role.MANAGER:
             raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Check for duplicates
     existing = session.exec(
         select(CompanyProfile)
         .where(CompanyProfile.user_id == member_data.user_id, CompanyProfile.company_id == company_id)
@@ -279,10 +255,6 @@ def get_company_users(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    List users for the 'Users' tab in Command Center.
-    Returns status, role, and department.
-    """
     if not current_user.is_superadmin:
         membership = session.exec(select(CompanyProfile).where(
             CompanyProfile.user_id == current_user.id, 
@@ -305,7 +277,7 @@ def get_company_users(
             "display_name": user.display_name,
             "role": profile.role,
             "department_id": profile.department_id,
-            "status": profile.status, # Critical for UI (Active vs Pending)
+            "status": profile.status,
             "profile_id": profile.id
         })
     return users_data
@@ -317,7 +289,7 @@ def get_company_upcoming_events(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Returns upcoming Event INSTANCES (Agenda View).
+    Returns upcoming Event instances using the Read-Time engine.
     """
     if not current_user.is_superadmin:
         membership = session.exec(select(CompanyProfile).where(
@@ -327,10 +299,17 @@ def get_company_upcoming_events(
         if not membership:
             raise HTTPException(403, "Access denied")
 
-    events = session.exec(
-        select(EventInstance)
-        .where(EventInstance.company_id == company_id)
-        .order_by(EventInstance.start_time.desc())
-        .limit(20)
-    ).all()
+    # Define range: Now to +30 days
+    start = datetime.utcnow()
+    end = start + timedelta(days=30)
+
+    events = get_events_in_range(
+        session,
+        start,
+        end,
+        company_ids=[company_id],
+        is_superadmin=current_user.is_superadmin
+    )
+    
+    # Return flattened dicts matching frontend expectations
     return events

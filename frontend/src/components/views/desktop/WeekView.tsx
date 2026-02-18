@@ -9,12 +9,12 @@ import {
   isSameJalaliDay,
   getJalaliDay
 } from "@/lib/jalali";
-import { EventInstance, Department } from "@/types";
+import { CalendarEvent, Department } from "@/types";
 import { calculateEventLayout } from "@/lib/eventLayout";
 import { Plus } from "lucide-react";
 import clsx from "clsx";
 
-interface VisualEvent extends EventInstance {
+interface VisualEvent extends CalendarEvent {
   startPercent: number;
   sizePercent: number;
   totalLanes: number;
@@ -23,14 +23,14 @@ interface VisualEvent extends EventInstance {
 
 interface WeekViewProps {
   currentDate?: Date;
-  events: EventInstance[];
+  events: CalendarEvent[];
   holidays: any[];
   departments: Department[];
   hiddenDeptIds: number[];
-  onEventClick: (e: EventInstance) => void;
-  onEventLongPress: (e: EventInstance) => void;
+  onEventClick: (e: CalendarEvent) => void;
+  onEventLongPress: (e: CalendarEvent) => void;
   onSlotClick: (date: Date, hour: number) => void;
-  onEventHover: (e: React.MouseEvent, event: EventInstance) => void;
+  onEventHover: (e: React.MouseEvent, event: CalendarEvent) => void;
   onEventLeave: () => void;
   draftEvent: { date: Date; startHour: number; endHour: number } | null;
 }
@@ -74,8 +74,8 @@ export default function WeekView({
 
   // SPLIT EVENTS: All-Day vs Time-Based
   const { allDayEvents, timeEvents } = useMemo(() => {
-      const allDay: EventInstance[] = [];
-      const timed: EventInstance[] = [];
+      const allDay: CalendarEvent[] = [];
+      const timed: CalendarEvent[] = [];
       events.forEach(e => {
           if (hiddenDeptIds.includes(e.department_id || 0)) return;
           if (e.is_all_day) allDay.push(e);
@@ -84,7 +84,7 @@ export default function WeekView({
       return { allDayEvents: allDay, timeEvents: timed };
   }, [events, hiddenDeptIds]);
 
-  const getEventStyle = (event: EventInstance) => {
+  const getEventStyle = (event: CalendarEvent) => {
     const dept = departments.find(d => d.id === event.department_id);
     const color = dept?.color || "#6b7280";
     if (event.status === 'pending') {

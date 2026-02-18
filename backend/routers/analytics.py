@@ -3,16 +3,13 @@ from sqlmodel import Session, select, func, desc, or_
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from database import get_session
-from models import AnalyticsLog, User, EventMaster, EventInstance, Department, EventStatus
+from models import AnalyticsLog, User, Event, Department, EventStatus
 from security import get_current_user, get_current_user_optional
 from pydantic import BaseModel
 from utils.snapshot_engine import SnapshotEngine
 
-# from utils.data_fusion import DataFusionEngine # Comment out if not implemented yet
-
 router = APIRouter()
 snapshot_engine = SnapshotEngine()
-# fusion_engine = DataFusionEngine()
 
 # --- DTOs ---
 class LogCreate(BaseModel):
@@ -63,7 +60,8 @@ def get_analytics_stats(
 
     # 3. Totals
     total_users = session.exec(select(func.count(User.id))).one()
-    total_events = session.exec(select(func.count(EventInstance.id))).one()
+    # Count stored events (Masters + Exceptions + Singles)
+    total_events = session.exec(select(func.count(Event.id))).one()
 
     return {
         "dau": [{"date": str(r[0]), "count": r[1]} for r in dau_results],
@@ -107,7 +105,7 @@ def get_recent_logs(
     logs = session.exec(query).all()
     return logs
 
-# --- ADVANCED INTELLIGENCE (FUSION ENGINE) ---
+# --- ADVANCED INTELLIGENCE ---
 
 @router.get("/fusion/breakdown")
 def get_fusion_breakdown(
@@ -119,14 +117,12 @@ def get_fusion_breakdown(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     results = session.exec(
-        select(EventInstance.status, func.count(EventInstance.id))
-        .group_by(EventInstance.status)
+        select(Event.status, func.count(Event.id))
+        .group_by(Event.status)
     ).all()
     
-    # Format for Recharts: [{name: 'approved', value: 10}, ...]
     data = [{"name": r[0] or "Unknown", "value": r[1]} for r in results]
     
-    # Prevent empty chart crash
     if not data:
         data = [
             {"name": "Approved", "value": 0},
@@ -145,28 +141,19 @@ def get_fusion_timeline(
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Determine time window
     now = datetime.utcnow()
     if range == "7d":
         start_date = now - timedelta(days=7)
-        interval = "day" # Group by day logic needed
     else:
         start_date = now - timedelta(hours=24)
-        interval = "hour"
 
-    # In SQLite, date truncation is tricky. We'll fetch raw logs and process in Python for simplicity
-    # (For PostgreSQL use func.date_trunc)
-    
     logs = session.exec(
         select(AnalyticsLog.created_at, AnalyticsLog.event_type)
         .where(AnalyticsLog.created_at >= start_date)
         .order_by(AnalyticsLog.created_at)
     ).all()
 
-    # Bucketing Logic (Simple hourly bucket)
     buckets = {}
-    
-    # Initialize last 24h buckets
     for i in range(24):
         h_key = (now - timedelta(hours=i)).strftime("%H:00")
         buckets[h_key] = {"total": 0, "error": 0}
@@ -178,10 +165,7 @@ def get_fusion_timeline(
             if log.event_type == "ERROR":
                 buckets[key]["error"] += 1
     
-    # Convert to List sorted by time
-    # Note: To sort correctly we rely on the loop order or sort by keys if using dict
     sorted_data = []
-    # Re-iterate to respect time order (23 hours ago -> now)
     for i in range(23, -1, -1):
         h_key = (now - timedelta(hours=i)).strftime("%H:00")
         sorted_data.append({
@@ -197,19 +181,16 @@ def get_system_snapshot(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """Req #4 & #7: Events per Department, Users per Role"""
+    """Events per Department"""
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # 1. Events by Department
     events_by_dept = session.exec(
-        select(Department.name, func.count(EventInstance.id))
-        .join(EventInstance, isouter=True)
+        select(Department.name, func.count(Event.id))
+        .join(Event, isouter=True)
         .group_by(Department.name)
     ).all()
     
-    # 2. Users by Role (Using Profiles now, since roles are in CompanyProfile)
-    # If using simplified User.is_superadmin logic:
     superadmins = session.exec(select(func.count(User.id)).where(User.is_superadmin == True)).one()
     regular_users = session.exec(select(func.count(User.id)).where(User.is_superadmin == False)).one()
     
@@ -218,7 +199,6 @@ def get_system_snapshot(
         {"role": "User", "count": regular_users}
     ]
 
-    # 3. Total Logs
     total_logs = session.exec(select(func.count(AnalyticsLog.id))).one()
 
     return {
@@ -261,8 +241,6 @@ def get_user_profiling(
         }
         for r in results
     ]
-
-# --- ARCHIVING / SNAPSHOTS ---
 
 @router.post("/archive")
 def run_manual_snapshot(

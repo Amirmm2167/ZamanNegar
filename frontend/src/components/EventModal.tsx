@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
+import { Dialog, Transition } from "@headlessui/react";
 import {
   X, Clock, AlignLeft, Type, Repeat, Target, User, Flag,
   CheckCircle2, Loader2, Trash2, CalendarDays,
   ChevronDown, Building2, Lock, Unlock, Tag,
-  Ban
+  Ban, AlertTriangle, ArrowRight, Layers, Copy
 } from "lucide-react";
 import api from "@/lib/api";
 import clsx from "clsx";
@@ -14,8 +15,10 @@ import DatePicker from "@/components/DatePicker";
 import TimePicker from "@/components/TimePicker";
 import MultiTagInput from "@/components/MultiTagInput";
 import ModalWrapper from "@/components/ui/ModalWrapper";
-import { Department, EventInstance } from "@/types";
+import { Department, CalendarEvent } from "@/types";
 import { useAuthStore } from "@/stores/authStore";
+import { motion, AnimatePresence } from "framer-motion";
+import { addDays, addWeeks, addMonths } from "date-fns-jalali";
 
 interface EventModalProps {
   isOpen: boolean;
@@ -24,12 +27,20 @@ interface EventModalProps {
   initialDate?: Date;
   initialStartTime?: string;
   initialEndTime?: string;
-  eventToEdit?: EventInstance | null;
+  eventToEdit?: CalendarEvent | null;
   eventId?: number;
   currentUserId?: number;
 }
 
 type TabType = "general" | "timing" | "details";
+type RecurrenceScope = "all" | "single" | "future";
+
+const getLocalDateStr = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function EventModal({
   isOpen, onClose, onSuccess, initialDate, initialStartTime, initialEndTime,
@@ -47,40 +58,39 @@ export default function EventModal({
   const [error, setError] = useState("");
   const [departments, setDepartments] = useState<Department[]>([]);
 
-  // --- GOD MODE STATE ---
+  const [showRecurrenceOptions, setShowRecurrenceOptions] = useState(false);
+  const [originalRecurrenceRule, setOriginalRecurrenceRule] = useState<string | null>(null);
+
   const [canEdit, setCanEdit] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
 
-  // --- FORM STATES ---
   const [title, setTitle] = useState("");
   const [departmentId, setDepartmentId] = useState<number | null>(null);
 
-  // Timing
   const [startDate, setStartDate] = useState("");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [isAllDay, setIsAllDay] = useState(false);
 
-  // Recurrence
   const [recurrenceType, setRecurrenceType] = useState("none");
   const [recurrenceEndMode, setRecurrenceEndMode] = useState<"count" | "date">("count");
   const [recurrenceCount, setRecurrenceCount] = useState("");
   const [recurrenceUntil, setRecurrenceUntil] = useState("");
 
-  // Details (Now all Arrays for Tags)
   const [targetAudience, setTargetAudience] = useState<string[]>([]);
-  const [organizer, setOrganizer] = useState<string[]>([]); // Changed to Array
-  const [goal, setGoal] = useState<string[]>([]); // Changed to Array
+  const [organizer, setOrganizer] = useState<string[]>([]); 
+  const [goal, setGoal] = useState<string[]>([]); 
   const [description, setDescription] = useState("");
 
-  // Pickers
   const [pickerMode, setPickerMode] = useState<"date" | "until" | null>(null);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
-  // --- INITIALIZATION ---
   useEffect(() => {
     if (isOpen) {
+      setShowRecurrenceOptions(false);
+      setError("");
+      
       if (["manager", "superadmin", "evaluator"].includes(userRole)) {
         fetchDepartments();
       }
@@ -88,46 +98,55 @@ export default function EventModal({
       const targetId = eventToEdit?.id || eventId;
 
       if (targetId) {
-        // --- EDIT MODE ---
         const loadEvent = async () => {
           setFetchingDetails(true);
           try {
             const { data } = await api.get(`/events/${targetId}`);
+            
             setTitle(data.title);
             setDescription(data.description || "");
             setDepartmentId(data.department_id);
             setIsLocked(!!data.is_locked);
+            setOriginalRecurrenceRule(data.recurrence_rule);
 
-            // Parse Tags (CSV to Array)
             setGoal(data.goal ? data.goal.split(',').filter(Boolean) : []);
             setTargetAudience(data.target_audience ? data.target_audience.split(',').filter(Boolean) : []);
             setOrganizer(data.organizer ? data.organizer.split(',').filter(Boolean) : []);
 
-            // Parse Timing
-            const start = new Date(data.start_time);
-            const end = new Date(data.end_time);
-            setStartDate(start.toISOString().split("T")[0]);
-            setStartTime(start.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-            setEndTime(end.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+            let startObj = new Date(data.start_time);
+            let endObj = new Date(data.end_time);
+
+            if (eventToEdit && eventToEdit.is_virtual && eventToEdit.start_time) {
+                startObj = new Date(eventToEdit.start_time);
+                endObj = new Date(eventToEdit.end_time);
+            }
+
+            setStartDate(getLocalDateStr(startObj));
+            setStartTime(startObj.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }));
+            setEndTime(endObj.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }));
             setIsAllDay(data.is_all_day);
 
-            // Parse Recurrence
             if (data.recurrence_rule) {
               const rule = data.recurrence_rule;
               const freqMatch = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY)/i);
               if (freqMatch) setRecurrenceType(freqMatch[1].toLowerCase());
 
-              const countMatch = rule.match(/COUNT=(\d+)/);
-              if (countMatch) {
-                setRecurrenceEndMode("count");
-                setRecurrenceCount(countMatch[1]);
-              }
-
+              // --- KEY FIX: Always extract UNTIL first to have an anchor ---
               const untilMatch = rule.match(/UNTIL=(\d{8})/);
               if (untilMatch) {
-                setRecurrenceEndMode("date");
                 const raw = untilMatch[1];
                 setRecurrenceUntil(`${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`);
+              }
+
+              // Determine UI Mode
+              if (data.recurrence_ui_mode === 'count' && data.recurrence_ui_count) {
+                  setRecurrenceEndMode("count");
+                  setRecurrenceCount(data.recurrence_ui_count.toString());
+              } else if (untilMatch) {
+                  setRecurrenceEndMode("date");
+              } else {
+                  // Fallback for infinite
+                  setRecurrenceEndMode("count"); 
               }
             } else {
               setRecurrenceType("none");
@@ -135,11 +154,9 @@ export default function EventModal({
               setRecurrenceUntil("");
             }
 
-            // Permission Logic
             let editable = true;
             if (userRole === "viewer") editable = false;
             if (data.is_locked && !isManager) editable = false;
-            if (userRole === "evaluator" && data.status === "approved") editable = false;
             setCanEdit(editable);
 
           } catch (err) {
@@ -152,9 +169,8 @@ export default function EventModal({
         loadEvent();
 
       } else {
-        // --- CREATE MODE ---
         const targetDate = initialDate || new Date();
-        setStartDate(targetDate.toISOString().split("T")[0]);
+        setStartDate(getLocalDateStr(targetDate));
         setTitle("");
         setDepartmentId(null);
         setStartTime(initialStartTime || "09:00");
@@ -164,7 +180,6 @@ export default function EventModal({
         setRecurrenceEndMode("count");
         setRecurrenceCount("");
         setRecurrenceUntil("");
-        // Clear Tag Arrays
         setTargetAudience([]);
         setOrganizer([]);
         setGoal([]);
@@ -172,9 +187,9 @@ export default function EventModal({
         setActiveTab("general");
         setCanEdit(userRole !== "viewer");
         setIsLocked(false);
+        setOriginalRecurrenceRule(null);
         setFetchingDetails(false);
       }
-      setError("");
     }
   }, [isOpen, eventToEdit, eventId, initialDate, initialStartTime, initialEndTime, userRole, isManager]);
 
@@ -185,27 +200,49 @@ export default function EventModal({
     } catch (e) { console.error(e); }
   };
 
-  // --- ACTIONS ---
-
   const handleToggleLock = async () => {
     if (!isManager || (!eventToEdit && !eventId)) return;
     setLoading(true);
     try {
       const newLockState = !isLocked;
-      const targetId = eventToEdit?.master_id || eventId;
-      await api.patch(`/events/${targetId}`, { is_locked: newLockState });
-      setIsLocked(newLockState);
-      if (!newLockState) setCanEdit(true);
-      onSuccess();
-    } catch (err) { setError("خطا"); } finally { setLoading(false); }
+      const idToUse = eventToEdit?.id || eventId;
+      if(idToUse) {
+          await api.patch(`/events/${idToUse}`, { is_locked: newLockState });
+          setIsLocked(newLockState);
+          if (!newLockState) setCanEdit(true);
+          onSuccess();
+      }
+    } catch (err) { setError("خطا در تغییر وضعیت قفل"); } finally { setLoading(false); }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handlePreSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit) return;
     if (!activeCompanyId) { setError("خطا: سازمان فعال یافت نشد."); return; }
 
+    const isUpdate = !!(eventToEdit?.id || eventId);
+    if (isUpdate && originalRecurrenceRule) {
+      setShowRecurrenceOptions(true);
+    } else {
+      executeSubmit('all');
+    }
+  };
+
+  const calculateUntilDate = (start: Date, type: string, count: number) => {
+      let result = start;
+      if (type === 'daily') result = addDays(start, count - 1);
+      if (type === 'weekly') result = addWeeks(start, count - 1);
+      if (type === 'monthly') result = addMonths(start, count - 1);
+      
+      const year = result.getFullYear();
+      const month = String(result.getMonth() + 1).padStart(2, '0');
+      const day = String(result.getDate()).padStart(2, '0');
+      return `${year}${month}${day}T235959`;
+  };
+
+  const executeSubmit = async (scope: RecurrenceScope) => {
     setLoading(true);
+    setError("");
 
     try {
       const sTime = isAllDay ? "00:00" : startTime;
@@ -213,40 +250,70 @@ export default function EventModal({
       const startDT = `${startDate}T${sTime}:00`;
       const endDT = `${startDate}T${eTime}:00`;
 
-      // 1. Build Recurrence Rule
       let rrule: string | null = null;
+      let uiMode: string | null = null;
+      let uiCount: number | null = null;
+
       if (recurrenceType !== "none") {
         let ruleStr = `FREQ=${recurrenceType.toUpperCase()}`;
-        if (recurrenceEndMode === "count" && recurrenceCount) {
-          ruleStr += `;COUNT=${recurrenceCount}`;
-        } else if (recurrenceEndMode === "date" && recurrenceUntil) {
+        
+        // --- LOGIC FOR RECURRENCE RULE GENERATION ---
+        
+        // CASE A: Future Split (Copy Master's End Date)
+        // If we are splitting ('future') AND we have a valid 'recurrenceUntil' loaded from the master,
+        // we prefer to use that UNTIL date to prevent "extending" the series due to count recalculation.
+        if (scope === 'future' && recurrenceUntil) {
+             uiMode = 'date';
+             ruleStr += `;UNTIL=${recurrenceUntil.replace(/-/g, "")}T235959`;
+        }
+        // CASE B: Standard Count Logic (Create or Edit All)
+        else if (recurrenceEndMode === "count" && recurrenceCount) {
+          uiMode = 'count';
+          uiCount = parseInt(recurrenceCount);
+          const startDateObj = new Date(startDate);
+          const untilStr = calculateUntilDate(startDateObj, recurrenceType, uiCount);
+          ruleStr += `;UNTIL=${untilStr}`;
+        } 
+        // CASE C: Standard Date Logic
+        else if (recurrenceEndMode === "date" && recurrenceUntil) {
+          uiMode = 'date';
           ruleStr += `;UNTIL=${recurrenceUntil.replace(/-/g, "")}T235959`;
         }
+        
         rrule = ruleStr;
       }
 
-      // 2. Serialize Tags (Array -> CSV)
       const payload: any = {
         title,
         description: description || null,
-        // Convert arrays to comma-separated strings for backend storage
         goal: goal.join(',') || null,
         target_audience: targetAudience.join(',') || null,
         organizer: organizer.join(',') || null,
-        
         start_time: startDT,
         end_time: endDT,
         is_all_day: isAllDay,
         recurrence_rule: rrule,
+        recurrence_ui_mode: uiMode,
+        recurrence_ui_count: uiCount,
         department_id: departmentId || null,
         company_id: Number(activeCompanyId),
       };
 
-      const targetId = eventToEdit?.master_id || eventId;
+      const targetId = eventToEdit?.id || eventId;
 
       if (targetId) {
+        const idToPatch = targetId;
+        const originalDate = eventToEdit?.instance_date || eventToEdit?.start_time; 
+
+        const queryParams = new URLSearchParams();
+        queryParams.append('scope', scope);
+        if (originalDate) {
+            queryParams.append('date', originalDate);
+        }
+
         const updatePayload = { ...payload, is_locked: false };
-        await api.patch(`/events/${targetId}`, updatePayload);
+        await api.patch(`/events/${idToPatch}?${queryParams.toString()}`, updatePayload);
+      
       } else {
         await api.post("/events/", payload);
       }
@@ -254,20 +321,23 @@ export default function EventModal({
       onSuccess();
       onClose();
     } catch (err: any) {
+      console.error(err);
       const details = err.response?.data?.detail;
       const msg = Array.isArray(details) ? details.map((d: any) => `${d.loc.join('.')} : ${d.msg}`).join(' | ') : "خطا در ذخیره رویداد.";
       setError(msg);
     } finally {
       setLoading(false);
+      setShowRecurrenceOptions(false);
     }
   };
 
   const handleDelete = async () => {
-    const targetId = eventToEdit?.master_id || eventId;
-    if (!targetId || !canEdit || !confirm("آیا از حذف این رویداد اطمینان دارید؟")) return;
+    const idToDelete = eventToEdit?.id || eventId;
+    if (!idToDelete || !canEdit || !confirm("آیا از حذف کل این رویداد (و تمام تکرارها) اطمینان دارید؟")) return;
+    
     setDeleting(true);
     try {
-      await api.delete(`/events/${targetId}`);
+      await api.delete(`/events/${idToDelete}`);
       onSuccess();
       onClose();
     } catch (err) {
@@ -278,6 +348,7 @@ export default function EventModal({
   };
 
   return (
+    <>
     <ModalWrapper isOpen={isOpen} onClose={onClose} size="lg" title={
       <div className="flex items-center gap-2">
         {isLocked ? <Lock className="text-amber-500" size={24} /> : <CalendarDays className="text-blue-500" />}
@@ -308,14 +379,14 @@ export default function EventModal({
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
+        {/* Content Form */}
+        <form onSubmit={handlePreSubmit} className="p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
           {error && (
             <div className="p-4 text-sm text-red-200 bg-red-900/30 border border-red-800 rounded-xl flex items-center gap-2">
               <Ban size={16} /> {error}
             </div>
           )}
 
-          {/* Read-Only Warning */}
           {!canEdit && (eventId || eventToEdit) && (
             <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300 flex items-center gap-2">
               <Lock size={14} />
@@ -462,20 +533,20 @@ export default function EventModal({
           <div className={clsx("space-y-5", activeTab !== "details" && "hidden")}>
             <div className="space-y-2">
               <label className="text-xs text-gray-400 font-bold flex items-center gap-2">
-                <Target size={14} /> هدف رویداد (تگ)
+                <Target size={14} /> هدف رویداد
               </label>
               <MultiTagInput
                 category="goal"
                 value={goal}
                 onChange={setGoal}
                 disabled={!canEdit}
-                placeholder="هدف را تایپ کنید و اینتر بزنید..."
+                placeholder="هدف را تایپ کنید..."
               />
             </div>
 
             <div className="space-y-2">
               <label className="text-xs text-gray-400 font-bold flex items-center gap-2">
-                <Tag size={14} /> مخاطبان (تگ)
+                <Tag size={14} /> مخاطبان
               </label>
               <MultiTagInput
                 category="audience"
@@ -488,7 +559,7 @@ export default function EventModal({
 
             <div className="space-y-2">
               <label className="text-xs text-gray-400 font-bold flex items-center gap-2">
-                <User size={14} /> برگزار کننده (تگ)
+                <User size={14} /> برگزار کننده
               </label>
               <MultiTagInput
                 category="organizer"
@@ -540,7 +611,7 @@ export default function EventModal({
             </button>
             {canEdit && (
               <button
-                onClick={handleSubmit}
+                onClick={handlePreSubmit}
                 disabled={loading || deleting || fetchingDetails}
                 className={clsx(
                   "px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-all flex items-center gap-2 hover:scale-105 active:scale-95",
@@ -585,5 +656,106 @@ export default function EventModal({
         />
       )}
     </ModalWrapper>
+
+    {/* --- RECURRENCE CONFIRMATION MODAL --- */}
+    <Transition appear show={showRecurrenceOptions} as={Fragment}>
+      <Dialog 
+        as="div" 
+        className="relative z-[300]" 
+        onClose={() => setShowRecurrenceOptions(false)} 
+        dir="rtl"
+      >
+        <Transition.Child
+          as={Fragment}
+          enter="ease-out duration-300"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
+        </Transition.Child>
+
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4 text-center">
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0 scale-95 translate-y-4"
+              enterTo="opacity-100 scale-100 translate-y-0"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100 scale-100 translate-y-0"
+              leaveTo="opacity-0 scale-95 translate-y-4"
+            >
+              <Dialog.Panel className="w-full max-w-sm transform overflow-hidden rounded-2xl bg-[#18181b] border border-white/10 text-right shadow-2xl transition-all ring-1 ring-white/10">
+                
+                <div className="p-5 border-b border-white/10 bg-gradient-to-r from-blue-900/20 to-transparent">
+                  <div className="flex items-center gap-3 text-blue-400 mb-1">
+                    <AlertTriangle size={24} />
+                    <Dialog.Title as="h3" className="font-bold text-lg">ویرایش رویداد تکرار شونده</Dialog.Title>
+                  </div>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    این رویداد بخشی از یک سری تکرار شونده است. تغییرات شما چگونه اعمال شود؟
+                  </p>
+                </div>
+
+                <div className="p-3 space-y-2">
+                  <button
+                    onClick={() => executeSubmit('single')}
+                    className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-white/5 transition-colors group text-right"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                      <Target size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-gray-200">فقط همین رویداد</div>
+                      <div className="text-[10px] text-gray-500 mt-1">سایر تکرارها بدون تغییر باقی می‌مانند.</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => executeSubmit('future')}
+                    className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-white/5 transition-colors group text-right"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                      <ArrowRight size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-gray-200">این رویداد و بعدی‌ها</div>
+                      <div className="text-[10px] text-gray-500 mt-1">تغییرات روی تمام رویدادهای آینده اعمال می‌شود.</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => executeSubmit('all')}
+                    className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-white/5 transition-colors group text-right"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                      <Layers size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-gray-200">تمام رویدادها</div>
+                      <div className="text-[10px] text-gray-500 mt-1">تغییر کل مجموعه (گذشته و آینده).</div>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="p-4 border-t border-white/10 bg-black/20">
+                  <button 
+                    onClick={() => setShowRecurrenceOptions(false)}
+                    className="w-full py-2.5 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    انصراف
+                  </button>
+                </div>
+
+              </Dialog.Panel>
+            </Transition.Child>
+          </div>
+        </div>
+      </Dialog>
+    </Transition>
+    </>
   );
 }

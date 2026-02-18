@@ -9,18 +9,18 @@ import {
   addJalaliDays,
   isSameJalaliDay 
 } from "@/lib/jalali";
-import { EventInstance, Department } from "@/types";
+import { CalendarEvent, Department } from "@/types";
 import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 
 interface MonthViewProps {
   currentDate?: Date;
-  events: EventInstance[];
+  events: CalendarEvent[];
   holidays: any[];
   departments: Department[];
-  onEventClick: (e: EventInstance) => void;
-  onEventLongPress: (e: EventInstance) => void;
+  onEventClick: (e: CalendarEvent) => void;
+  onEventLongPress: (e: CalendarEvent) => void;
   onSlotClick: (date: Date, hour: number) => void;
 }
 
@@ -92,7 +92,7 @@ export default function MonthView({
   const days = getJalaliMonthGrid(currentDate);
   const today = new Date();
 
-  const getEventStyle = (event: EventInstance) => {
+  const getEventStyle = (event: CalendarEvent) => {
     const dept = departments.find(d => d.id === event.department_id);
     const color = dept?.color || "#6b7280";
     if (event.status === 'pending') {

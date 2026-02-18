@@ -1,41 +1,46 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlmodel import Session, select, or_, col
+from sqlmodel import Session, select
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
+import re
 
 from database import get_session
 from models import (
-    EventMaster, EventInstance, EventCreate, 
-    User, EventScope, EventStatus, Role
+    Event, EventCreate, User, EventStatus, Role, EventScope
 )
 from security import get_current_user
-from utils.recurrence import expand_master_to_instances
+from utils.recurrence import get_events_in_range
 
 router = APIRouter()
 
-
-class EventDetail(BaseModel):
+class EventInstanceResponse(BaseModel):
     id: int
     master_id: int
+    proposer_id: int
     title: str
     description: Optional[str] = None
     start_time: datetime
     end_time: datetime
     is_all_day: bool
     status: str
-    location: Optional[str] = None
-    organizer: Optional[str] = None # CSV string
-    target_audience: Optional[str] = None # CSV string
-    goal: Optional[str] = None # CSV string
-    recurrence_rule: Optional[str] = None
-    scope: str
     company_id: int
-    department_id: Optional[int] = None # <--- ADDED THIS
+    department_id: Optional[int] = None
     is_locked: bool
+    recurrence_rule: Optional[str] = None
+    goal: Optional[str] = None
+    target_audience: Optional[str] = None
+    organizer: Optional[str] = None
+    
+    # UI Hints
+    recurrence_ui_mode: Optional[str] = None
+    recurrence_ui_count: Optional[int] = None
+    
+    is_virtual: bool = False
+    instance_date: Optional[str] = None
 
 # --- 1. READ EVENTS ---
-@router.get("/", response_model=List[EventInstance])
+@router.get("/", response_model=List[EventInstanceResponse])
 def read_events(
     request: Request,
     start: datetime,
@@ -43,40 +48,22 @@ def read_events(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Base Query: Filter by date range
-    query = select(EventInstance).where(
-        EventInstance.start_time >= start,
-        EventInstance.start_time <= end
-    )
-    
-    # 2. Context Filtering
-    # The middleware now guarantees this attribute exists (even if None)
-    requested_company_id = request.state.company_id
-    
+    allowed_ids = []
     if current_user.is_superadmin:
-        # Admin: If context is set, filter by it. If not, show EVERYTHING.
-        if requested_company_id:
-            query = query.where(EventInstance.company_id == requested_company_id)
+        if request.state.company_id: allowed_ids = [request.state.company_id]
     else:
-        # Standard User: MUST be restricted to their allowed companies
-        allowed_company_ids = [p.company_id for p in current_user.profiles]
-        
-        if not allowed_company_ids:
-            return []
+        allowed_ids = [p.company_id for p in current_user.profiles]
+        if request.state.company_id:
+            if request.state.company_id not in allowed_ids: raise HTTPException(403)
+            allowed_ids = [request.state.company_id]
 
-        if requested_company_id:
-            # Verify they belong to this specific company context
-            if requested_company_id not in allowed_company_ids:
-                raise HTTPException(403, "Access denied to this company context")
-            query = query.where(EventInstance.company_id == requested_company_id)
-        else:
-            # No specific context? Show events from ALL their companies
-            query = query.where(col(EventInstance.company_id).in_(allowed_company_ids))
-        
-    return session.exec(query.order_by(EventInstance.start_time)).all()
+    if not allowed_ids and not current_user.is_superadmin: return []
+
+    events = get_events_in_range(session, start, end, allowed_ids, is_superadmin=current_user.is_superadmin)
+    return events
 
 # --- 2. CREATE EVENT ---
-@router.post("/", response_model=EventMaster)
+@router.post("/", response_model=Event)
 def create_event(
     request: Request,
     event_data: EventCreate, 
@@ -86,205 +73,202 @@ def create_event(
     company_id = request.state.company_id
     role = request.state.role 
     
-    # 1. SCOPE LOGIC
-    # Only Superadmin can set Scope != COMPANY
     if event_data.scope and event_data.scope != EventScope.COMPANY:
-        if not current_user.is_superadmin:
-            raise HTTPException(403, "Only Superadmins can create System events.")
+        if not current_user.is_superadmin: raise HTTPException(403)
     else:
-        # Force Company Scope for standard users
         event_data.scope = EventScope.COMPANY
         if not current_user.is_superadmin:
-            if not company_id:
-                raise HTTPException(400, "Active Company Context required to create event")
+            if not company_id: raise HTTPException(400)
             event_data.company_id = company_id
 
-    # 2. PREPARE DATA FOR MODEL (Fixing Validation Errors)
-    # Convert Pydantic model to dict, excluding unset fields to allow defaults to work
-    # But explicitly handling the fields that caused errors.
-    master_data = event_data.dict(exclude_unset=True)
+    event_dict = event_data.dict(exclude_unset=True)
+    event_dict["proposer_id"] = current_user.id
     
-    # Fix: Inject proposer_id BEFORE instantiation
-    master_data["proposer_id"] = current_user.id
-    
-    # Fix: Ensure target_rules is a dict if it was missing or None
-    if "target_rules" not in master_data or master_data["target_rules"] is None:
-        master_data["target_rules"] = {}
+    if "target_rules" not in event_dict: event_dict["target_rules"] = {}
+    if event_data.scope == EventScope.COMPANY and "company_id" not in event_dict:
+         event_dict["company_id"] = company_id
 
-    # Fix: Ensure company_id is set if scope is COMPANY
-    if event_data.scope == EventScope.COMPANY and "company_id" not in master_data:
-         master_data["company_id"] = company_id
+    event = Event.model_validate(event_dict) 
 
-    # 3. INSTANTIATE MASTER RECORD
-    # Now validation will pass because proposer_id and target_rules are present/correct
-    master = EventMaster.model_validate(master_data) 
-
-    # 4. AUTO-APPROVE LOGIC
-    # Superadmin OR Manager of THIS company
-    if current_user.is_superadmin or role == Role.MANAGER or role == "manager":
-        master.status = EventStatus.APPROVED
-        master.is_locked = True
+    if current_user.is_superadmin or role in [Role.MANAGER, "manager"]:
+        event.status = EventStatus.APPROVED
+        event.is_locked = True
     else:
-        master.status = EventStatus.PENDING
+        event.status = EventStatus.PENDING
     
-    session.add(master)
+    session.add(event)
     session.commit()
-    session.refresh(master)
-    
-    # 5. EXPAND RECURRENCE
-    expand_master_to_instances(session, master)
-    session.commit()
-    
-    return master
+    session.refresh(event)
+    return event
 
-# --- 3. SEARCH ---
-@router.get("/search", response_model=List[EventInstance])
-def search_events(
-    request: Request,
-    query: str,
-    start: Optional[datetime] = None,
-    end: Optional[datetime] = None,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
-    # Security: Filter by allowed companies
-    allowed_ids = [p.company_id for p in current_user.profiles]
-    
-    sql_query = select(EventInstance).join(EventMaster).where(
-        or_(
-            EventInstance.title.ilike(f"%{query}%"),
-            EventMaster.description.ilike(f"%{query}%")
-        )
-    )
-    
-    if not current_user.is_superadmin:
-        sql_query = sql_query.where(col(EventInstance.company_id).in_(allowed_ids))
-
-    if start: sql_query = sql_query.where(EventInstance.start_time >= start)
-    if end: sql_query = sql_query.where(EventInstance.start_time <= end)
-    
-    # Optional context refinement
-    if request.state.company_id:
-        sql_query = sql_query.where(EventInstance.company_id == request.state.company_id)
-
-    return session.exec(sql_query.limit(50)).all()
-
-@router.patch("/{event_id}", response_model=EventMaster)
+# --- 3. UPDATE EVENT ---
+@router.patch("/{event_id}", response_model=Event)
 def update_event(
     event_id: int,
     request: Request,
-    event_update: dict, # Using dict to handle partial updates flexibly
+    event_update: dict,
+    scope: str = Query("all", enum=["all", "single", "future"]),
+    instance_date_str: Optional[str] = Query(None, alias="date"),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Fetch Master
-    master = session.get(EventMaster, event_id)
-    if not master:
-        raise HTTPException(404, "Event not found")
+    event = session.get(Event, event_id)
+    if not event: raise HTTPException(404, "Event not found")
         
     role = request.state.role
-    
-    # 2. Permission Check
-    if master.proposer_id != current_user.id and role not in [Role.MANAGER, Role.EVALUATOR]:
-        raise HTTPException(403, "Not authorized to edit this event")
+    if event.proposer_id != current_user.id and role not in [Role.MANAGER, Role.EVALUATOR]:
+        raise HTTPException(403, "Not authorized")
 
-    # 3. Locking Logic
-    if master.is_locked:
-        # Only Manager can unlock or edit a locked event
-        if role != Role.MANAGER:
-            raise HTTPException(403, "Event is Locked. Ask a Manager to unlock it.")
-            
-        # If Manager is explicitly unlocking
-        if event_update.get("is_locked") is False:
-            master.is_locked = False
+    if event.is_locked:
+        if role != Role.MANAGER: raise HTTPException(403, "Event Locked")
+        if event_update.get("is_locked") is False: event.is_locked = False
+
+    # 1. SIMPLE UPDATE
+    if scope == "all" or not event.recurrence_rule:
+        for k, v in event_update.items():
+            if hasattr(event, k): setattr(event, k, v)
+        session.add(event)
+        session.commit()
+        session.refresh(event)
+        return event
+
+    # 2. COMPLEX RECURRENCE UPDATE
+    if not instance_date_str: raise HTTPException(400, "Instance date required")
     
-    # 4. Apply Updates
-    for key, value in event_update.items():
-        if hasattr(master, key):
-            setattr(master, key, value)
-            
-    # 5. Logic: If critical fields changed, reset status & re-expand
-    critical_fields = ["start_time", "end_time", "recurrence_rule"]
-    needs_reexpansion = any(k in event_update for k in critical_fields)
-    
-    if needs_reexpansion:
-        # If non-manager edited it, reset to PENDING
-        if role != Role.MANAGER:
-            master.status = EventStatus.PENDING
-            master.is_locked = False
-            
-        session.add(master)
-        session.commit() # Save Master first
+    try:
+        instance_date = datetime.fromisoformat(instance_date_str.replace("Z", "+00:00"))
+        if instance_date.tzinfo: instance_date = instance_date.replace(tzinfo=None)
+        date_str = instance_date.strftime("%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(400, "Invalid date format")
+
+    if scope == "single":
+        # A. Add Exception to Parent
+        current_ex = list(event.exception_dates or [])
+        if date_str not in current_ex:
+            current_ex.append(date_str)
+            event.exception_dates = current_ex
+            session.add(event)
+
+        # B. Create Exception Event
+        new_data = event.dict(exclude={"id", "created_at", "instances", "exceptions", "exception_dates", "parent", "parent_id"})
+        new_data.update(event_update)
         
-        # Regenerate Instances
-        expand_master_to_instances(session, master, clear_existing=True)
-    else:
-        session.add(master)
-    
-    session.commit()
-    session.refresh(master)
-    return master
+        # Link to Parent
+        new_data["parent_id"] = event.id
+        new_data["original_start_time"] = instance_date
+        
+        # Explicitly Disable Recurrence for the Single Exception
+        new_data["recurrence_rule"] = None
+        new_data["is_recurring"] = False
+        new_data["recurrence_ui_mode"] = None
+        new_data["recurrence_ui_count"] = None
+        
+        if "start_time" not in event_update: new_data["start_time"] = instance_date
+        if "end_time" not in event_update:
+             dur = event.end_time - event.start_time
+             new_data["end_time"] = new_data["start_time"] + dur
+
+        new_event = Event(**new_data)
+        session.add(new_event)
+        session.commit()
+        session.refresh(new_event)
+        return new_event
+
+    elif scope == "future":
+        # A. Truncate Old Series
+        split_cutoff = instance_date - timedelta(days=1)
+        cutoff_str = split_cutoff.strftime("%Y%m%dT235959")
+        
+        # We modify the PARENT rule to stop yesterday
+        if event.recurrence_rule:
+             base = re.sub(r';?UNTIL=[^;]+', '', event.recurrence_rule)
+             event.recurrence_rule = f"{base};UNTIL={cutoff_str}"
+        session.add(event)
+
+        # B. Create New Series
+        new_data = event.dict(exclude={"id", "created_at", "instances", "exceptions", "exception_dates", "parent", "parent_id"})
+        new_data.update(event_update)
+        
+        # --- CRITICAL FIX ---
+        # Trust the frontend's recurrence_rule in the payload (event_update).
+        # Do NOT strip UNTIL from it. The frontend calculated the correct UNTIL for the new series.
+        # Only if the frontend didn't send a rule (rare), we rely on the old one, but that shouldn't happen in a valid edit.
+        
+        if "start_time" not in event_update: new_data["start_time"] = instance_date
+             
+        new_event = Event(**new_data)
+        session.add(new_event)
+        session.commit()
+        session.refresh(new_event)
+        return new_event
+
+    return event
 
 @router.delete("/{event_id}")
 def delete_event(
     event_id: int,
     request: Request,
+    scope: str = Query("all", enum=["all", "single", "future"]),
+    instance_date_str: Optional[str] = Query(None, alias="date"),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    master = session.get(EventMaster, event_id)
-    if not master:
-        raise HTTPException(404, "Event not found")
-        
+    event = session.get(Event, event_id)
+    if not event: raise HTTPException(404)
+    
     role = request.state.role
-    if master.proposer_id != current_user.id and role != Role.MANAGER:
-        raise HTTPException(403, "Not authorized")
+    if event.proposer_id != current_user.id and role != Role.MANAGER: raise HTTPException(403)
+
+    if scope == "all" or not event.recurrence_rule:
+        children = session.exec(select(Event).where(Event.parent_id == event.id)).all()
+        for c in children: session.delete(c)
+        session.delete(event)
+        session.commit()
+        return {"ok": True}
         
-    if master.is_locked and role != Role.MANAGER:
-        raise HTTPException(403, "Event is locked")
-        
-    # Cascade delete is handled by DB FKs usually, but we explicit here for safety
-    # Delete instances first
-    instances = session.exec(select(EventInstance).where(EventInstance.master_id == master.id)).all()
-    for i in instances:
-        session.delete(i)
-        
-    session.delete(master)
-    session.commit()
+    if scope == "single" and instance_date_str:
+        try:
+            dt = datetime.fromisoformat(instance_date_str.replace("Z", "+00:00"))
+            if dt.tzinfo: dt = dt.replace(tzinfo=None)
+            date_str = dt.strftime("%Y-%m-%d")
+            
+            curr = list(event.exception_dates or [])
+            if date_str not in curr:
+                curr.append(date_str)
+                event.exception_dates = curr
+                session.add(event)
+                session.commit()
+        except:
+            raise HTTPException(400, "Bad Date")
+            
     return {"ok": True}
 
-@router.get("/{instance_id}", response_model=EventDetail)
+@router.get("/{id}", response_model=EventInstanceResponse)
 def get_event_detail(
-    instance_id: int,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    id: int,
+    session: Session = Depends(get_session)
 ):
-    instance = session.get(EventInstance, instance_id)
-    if not instance: raise HTTPException(404, "Event not found")
-
-    if not current_user.is_superadmin:
-        user_companies = [p.company_id for p in current_user.profiles]
-        if instance.company_id not in user_companies:
-            raise HTTPException(403, "Access denied")
-
-    master = session.get(EventMaster, instance.master_id)
+    event = session.get(Event, id)
+    if not event: raise HTTPException(404)
     
-    return EventDetail(
-        id=instance.id,
-        master_id=master.id,
-        title=instance.title, # Instance title might differ
-        description=master.description,
-        start_time=instance.start_time,
-        end_time=instance.end_time,
-        is_all_day=instance.is_all_day,
-        status=instance.status,
-        location=master.target_rules.get("location") if master.target_rules else None,
-        organizer=master.organizer,
-        target_audience=master.target_audience,
-        goal=master.goal,
-        recurrence_rule=master.recurrence_rule,
-        scope=master.scope,
-        company_id=instance.company_id,
-        department_id=instance.department_id, # <--- POPULATED NOW
-        is_locked=master.is_locked
+    return EventInstanceResponse(
+        id=event.id,
+        master_id=event.parent_id or event.id,
+        proposer_id=event.proposer_id,
+        title=event.title,
+        description=event.description,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        is_all_day=event.is_all_day,
+        status=event.status,
+        company_id=event.company_id,
+        department_id=event.department_id,
+        is_locked=event.is_locked,
+        recurrence_rule=event.recurrence_rule,
+        recurrence_ui_mode=event.recurrence_ui_mode,
+        recurrence_ui_count=event.recurrence_ui_count,
+        goal=event.goal,
+        target_audience=event.target_audience,
+        organizer=event.organizer
     )
