@@ -11,7 +11,7 @@ import DesktopHeader from "./DesktopHeader";
 import NotificationsRail from "./NotificationsRail"; 
 import ContextMenu from "@/components/ui/ContextMenu";
 import ModernBackground from "@/components/ui/ModernBackground";
-import EventModal from "@/components/EventModal";
+import EventModal from "@/components/EventPanel";
 import IssueModal from "@/components/IssueModal";
 import { Loader2 } from "lucide-react";
 

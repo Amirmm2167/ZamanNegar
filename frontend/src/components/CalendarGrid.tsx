@@ -14,23 +14,22 @@ import { useAuthStore } from "@/stores/authStore";
 // Sub-Views
 import WeekView from "@/components/views/desktop/WeekView";
 import MonthView from "@/components/views/desktop/MonthView";
-// import AgendaView from "@/components/views/shared/AgendaView"; 
 
 // Shared Components
-import EventModal from "@/components/EventModal";
+import EventPanel from "@/components/EventPanel";
 
 export interface CalendarGridHandle {
   navigate: (direction: 'prev' | 'next' | 'today') => void;
   setView: (view: any) => void;
-  openNewEventModal: () => void;
+  openNewEventPanel: () => void;
   getCurrentDate: () => Date;
-  refresh: () => void; // Added refresh to interface
+  refresh: () => void;
 }
 
 const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
   // --- STORES ---
   const { viewMode } = useLayoutStore(); 
-  const { activeCompanyId, user } = useAuthStore();
+  const { activeCompanyId } = useAuthStore(); // Removed 'user' since it's not used directly here
 
   // --- LOCAL STATE ---
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -39,15 +38,13 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
   const [holidays, setHolidays] = useState<any[]>([]); 
   const [loading, setLoading] = useState(false);
 
-  // --- MODAL STATE ---
+  // --- PANEL STATE ---
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalInitialDate, setModalInitialDate] = useState<Date | undefined>(undefined);
-  const [modalInitialTime, setModalInitialTime] = useState<{start: string, end: string} | undefined>(undefined);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [panelInitialDate, setPanelInitialDate] = useState<Date | undefined>(undefined);
+  const [panelInitialTime, setPanelInitialTime] = useState<{start: string, end: string} | undefined>(undefined);
 
   // --- 1. DATA FETCHING ---
-  
-  // Calculate the required date range based on the current view
   const getDateRange = useCallback(() => {
     const now = currentDate;
     let start, end;
@@ -59,18 +56,15 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
       start = now;
       end = addDays(now, 30);
     } else {
-      // Week / Mobile-Week / 3Day / Day
       start = startOfWeek(now);
       end = endOfWeek(now);
     }
     return { start: start.toISOString(), end: end.toISOString() };
   }, [currentDate, viewMode]);
 
-  // Fetch Events from API (Read-Time Engine)
   const fetchEvents = useCallback(async () => {
     if (!activeCompanyId) return;
     
-    // Avoid double loading indicators if already loading
     setLoading(prev => !prev ? true : prev); 
     
     try {
@@ -87,8 +81,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
   }, [activeCompanyId, getDateRange]);
 
   // --- 2. EFFECTS ---
-
-  // Initial Metadata Fetch
   useEffect(() => {
     if (activeCompanyId) {
       api.get("/departments/").then(res => setDepartments(res.data)).catch(console.error);
@@ -96,12 +88,10 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     }
   }, [activeCompanyId]);
 
-  // Fetch events when dependencies change
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
-  // Global Event Listener for Refresh (e.g. from Floating Island or other components)
   useEffect(() => {
     const handleGlobalRefresh = () => fetchEvents();
     window.addEventListener('refresh-calendar', handleGlobalRefresh);
@@ -126,11 +116,11 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
       }
     },
     setView: () => {}, 
-    openNewEventModal: () => {
-        setModalInitialDate(currentDate);
-        setModalInitialTime(undefined); // Reset time defaults
+    openNewEventPanel: () => {
+        setPanelInitialDate(currentDate);
+        setPanelInitialTime(undefined);
         setSelectedEvent(null);
-        setIsModalOpen(true);
+        setIsPanelOpen(true);
     },
     getCurrentDate: () => currentDate,
     refresh: fetchEvents
@@ -139,16 +129,16 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
   // --- HANDLERS ---
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event);
-    setIsModalOpen(true);
+    setIsPanelOpen(true);
   };
 
   const handleSlotClick = (date: Date, hour: number) => {
     setSelectedEvent(null);
-    setModalInitialDate(date);
+    setPanelInitialDate(date);
     const startStr = `${hour.toString().padStart(2, '0')}:00`;
     const endStr = `${(hour + 1).toString().padStart(2, '0')}:00`;
-    setModalInitialTime({ start: startStr, end: endStr });
-    setIsModalOpen(true);
+    setPanelInitialTime({ start: startStr, end: endStr });
+    setIsPanelOpen(true);
   };
 
   // --- RENDER ---
@@ -163,7 +153,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              </div>
           )}
 
-          {/* VIEW SWITCHER LOGIC */}
           {viewMode === 'month' && (
              <MonthView 
                 currentDate={currentDate}
@@ -192,7 +181,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              />
           )}
           
-          {/* Fallback */}
           {viewMode !== 'month' && viewMode !== 'week' && (
              <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-2">
                 <Loader2 className="animate-spin opacity-50" size={32} />
@@ -201,18 +189,18 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
           )}
        </div>
 
-       <EventModal 
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+       <EventPanel 
+          isOpen={isPanelOpen}
+          onClose={() => setIsPanelOpen(false)}
           onSuccess={() => {
              fetchEvents(); 
-             setIsModalOpen(false);
+             setIsPanelOpen(false);
           }}
-          currentUserId={user?.id || 0}
+          // FIX: Removed currentUserId prop
           eventToEdit={selectedEvent}
-          initialDate={modalInitialDate}
-          initialStartTime={modalInitialTime?.start}
-          initialEndTime={modalInitialTime?.end}
+          initialDate={panelInitialDate}
+          initialStartTime={panelInitialTime?.start}
+          initialEndTime={panelInitialTime?.end}
        />
     </div>
   );
