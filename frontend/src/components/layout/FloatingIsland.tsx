@@ -4,7 +4,7 @@ import { useLayoutStore, ViewMode } from "@/stores/layoutStore";
 import { 
   Plus, LayoutGrid, AlertTriangle, Building2, 
   CheckSquare, LogOut, Calendar, 
-  Columns, CalendarDays, List, Check
+  Columns, CalendarDays, List, Check, Trello
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
@@ -34,10 +34,12 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
     }
   };
 
+  // Full Mobile View Options
   const viewOptions: { id: ViewMode; label: string; icon: any }[] = [
     { id: 'agenda', label: 'برنامه', icon: List },
     { id: 'day', label: 'روزانه', icon: Columns },
-    { id: 'week', label: 'هفته', icon: CalendarDays },
+    { id: '3day', label: '۳ روزه', icon: Trello },
+    { id: 'week', label: 'هفتگی', icon: CalendarDays },
     { id: 'month', label: 'ماهانه', icon: Calendar },
   ];
 

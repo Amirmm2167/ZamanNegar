@@ -165,7 +165,7 @@ export default function MobileGrid({
 
         {/* BODY */}
         <div 
-            className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar touch-pan-y" 
+            className="flex-1 overflow-y-auto overflow-x-hidden relative scrollbar-hide touch-pan-y" 
             ref={scrollRef}
         >
             <div className="flex flex-row relative h-[1440px]">

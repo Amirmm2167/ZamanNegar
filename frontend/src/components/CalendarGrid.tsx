@@ -12,16 +12,12 @@ import { useLayoutStore } from "@/stores/layoutStore";
 import { useAuthStore } from "@/stores/authStore";
 
 // Sub-Views
-
-// Desktop Sub-Views
 import WeekView from "@/components/views/desktop/WeekView";
 import MonthView from "@/components/views/desktop/MonthView";
-import AgendaView from "@/components/views/shared/AgendaView"; // NEW IMPORT
 import YearView from "@/components/views/desktop/YearView";
-
-// Mobile Sub-Views
-import MobileMonthView from "@/components/views/mobile/MobileMonthView";
-
+import MobileMonthView from "@/components/views/mobile/MobileMonthView"; 
+import MobileGrid from "@/components/views/mobile/MobileGrid"; // <--- INTEGRATED MOBILE GRID
+import AgendaView from "@/components/views/shared/AgendaView";
 
 // Shared Components
 import EventPanel from "@/components/EventPanel";
@@ -35,11 +31,9 @@ export interface CalendarGridHandle {
 }
 
 const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
-  // --- STORES ---
-  const { viewMode } = useLayoutStore(); 
+  const { viewMode, isMobile, setViewMode } = useLayoutStore(); 
   const { activeCompanyId } = useAuthStore();
 
-  // --- LOCAL STATE ---
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -61,12 +55,16 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
       start = startOfWeek(startOfMonth(now));
       end = endOfWeek(endOfMonth(now));
     } else if (viewMode === 'agenda') {
-      // UPDATED: Range-Based Infinite Scroll Strategy
-      // Load 1 month back and 3 months forward
       start = subMonths(now, 1);
       end = addMonths(now, 3);
+    } else if (viewMode === 'day') {
+      start = now;
+      end = addDays(now, 1);
+    } else if (viewMode === '3day') {
+      start = now;
+      end = addDays(now, 3);
     } else {
-      // Week / Mobile-Week / 3Day / Day
+      // Week
       start = startOfWeek(now);
       end = endOfWeek(now);
     }
@@ -74,7 +72,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
   }, [currentDate, viewMode]);
 
   const fetchEvents = useCallback(async () => {
-    if (!activeCompanyId) return;
+    if (!activeCompanyId || viewMode === 'year') return; // Year view fetches its own density
     
     setLoading(prev => !prev ? true : prev); 
     
@@ -89,17 +87,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     } finally {
       setLoading(false);
     }
-  }, [activeCompanyId, getDateRange]);
-
-  const handleYearDayDoubleClick = (date: Date) => {
-      // 1. Update the centralized date
-      setCurrentDate(date);
-      // 2. Switch View to 'week' (User Requirement)
-      // We assume useLayoutStore has a setViewMode action or we pass a callback prop
-      // Since viewMode is from store, we ideally need the setter from store.
-      // Assuming useLayoutStore returns { viewMode, setViewMode }
-      useLayoutStore.getState().setViewMode('week'); 
-  };
+  }, [activeCompanyId, getDateRange, viewMode]);
 
   // --- 2. EFFECTS ---
   useEffect(() => {
@@ -113,7 +101,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     fetchEvents();
   }, [fetchEvents]);
 
-  // Listen for global refresh (e.g. from AgendaView inline actions)
   useEffect(() => {
     const handleGlobalRefresh = () => fetchEvents();
     window.addEventListener('refresh-calendar', handleGlobalRefresh);
@@ -122,24 +109,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
 
   // --- 3. CONTROLS ---
   useImperativeHandle(ref, () => ({
-    navigate: (direction) => {
-      if (direction === 'today') {
-        setCurrentDate(new Date());
-        return;
-      }
-      
-      if (viewMode === 'month') {
-        setCurrentDate(prev => direction === 'next' ? addMonths(prev, 1) : subMonths(prev, 1));
-      } else if (viewMode === 'week' || viewMode === 'mobile-week') {
-        setCurrentDate(prev => direction === 'next' ? addDays(prev, 7) : subDays(prev, 7));
-      } else if (viewMode === 'agenda') {
-        // For Agenda, jumping "Next" usually means jumping a month to trigger new loads
-        setCurrentDate(prev => direction === 'next' ? addMonths(prev, 1) : subMonths(prev, 1));
-      } else {
-        const step = viewMode === '3day' ? 3 : 1;
-        setCurrentDate(prev => direction === 'next' ? addDays(prev, step) : subDays(prev, step));
-      }
-    },
+    navigate: () => {}, // Handled by useHeaderLogic now
     setView: () => {}, 
     openNewEventPanel: () => {
         setPanelInitialDate(currentDate);
@@ -166,6 +136,23 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     setIsPanelOpen(true);
   };
 
+  const handleYearDayDoubleClick = (date: Date) => {
+      setCurrentDate(date);
+      setViewMode('week'); 
+  };
+
+  // --- MOBILE GRID PARAMS MAPPER ---
+  const getMobileGridDays = () => {
+      if (viewMode === 'day') return 1;
+      if (viewMode === '3day') return 3;
+      return 7; // week
+  };
+
+  const getMobileGridStartDate = () => {
+      if (viewMode === 'week') return startOfWeek(currentDate);
+      return currentDate; // For day and 3day, start from current focused date
+  };
+
   // --- RENDER ---
   return (
     <div className="h-full flex flex-col relative bg-[#020205]">
@@ -178,9 +165,9 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              </div>
           )}
 
+          {/* MONTH VIEW */}
           {viewMode === 'month' && (
              <>
-                {/* Desktop View */}
                 <div className="hidden md:block h-full">
                     <MonthView 
                         currentDate={currentDate}
@@ -192,13 +179,12 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
                         onSlotClick={handleSlotClick}
                     />
                 </div>
-                {/* Mobile Split View */}
                 <div className="md:hidden h-full">
                     <MobileMonthView 
                         currentDate={currentDate}
                         events={events}
-                        departments={departments}
                         holidays={holidays}
+                        departments={departments}
                         onEventClick={handleEventClick}
                         onSlotClick={handleSlotClick}
                     />
@@ -206,7 +192,8 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              </>
           )}
 
-          {viewMode === 'week' && (
+          {/* DESKTOP WEEK VIEW */}
+          {!isMobile && viewMode === 'week' && (
              <WeekView 
                 currentDate={currentDate}
                 events={events}
@@ -222,30 +209,42 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              />
           )}
 
-          {/* NEW: Agenda View */}
+          {/* MOBILE GRIDS (Day, 3-Day, Week) */}
+          {isMobile && ['day', '3day', 'week'].includes(viewMode) && (
+              <MobileGrid
+                  daysToShow={getMobileGridDays()}
+                  startDate={getMobileGridStartDate()}
+                  events={events}
+                  holidays={holidays}
+                  departments={departments}
+                  hiddenDeptIds={[]} 
+                  onEventTap={handleEventClick}
+                  onEventHold={handleEventClick} // Opens edit panel immediately
+                  onSlotClick={handleSlotClick}
+                  draftEvent={null}
+              />
+          )}
+
+          {/* AGENDA VIEW */}
           {viewMode === 'agenda' && (
              <AgendaView
                 events={events}
                 departments={departments}
                 holidays={holidays}
                 onEventClick={handleEventClick}
-                onEventLongPress={handleEventClick} // Reuse logic for now
+                onEventLongPress={handleEventClick} 
              />
           )}
+
+          {/* YEAR VIEW (Desktop Usually) */}
           {viewMode === 'year' && (
              <YearView 
                 currentDate={currentDate}
-                onDayClick={(date) => handleSlotClick(date, 9)} // Open Panel on click
-                onDayDoubleClick={handleYearDayDoubleClick}     // Go to Week on double click
+                onDayClick={(date) => handleSlotClick(date, 9)} 
+                onDayDoubleClick={handleYearDayDoubleClick}
              />
           )}
           
-          {viewMode !== 'month' && viewMode !== 'week' && viewMode !== 'agenda' && viewMode !== 'year' && (
-             <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-2">
-                <Loader2 className="animate-spin opacity-50" size={32} />
-                <p className="text-sm">نمای {viewMode} در حال آماده‌سازی است...</p>
-             </div>
-          )}
        </div>
 
        <EventPanel 

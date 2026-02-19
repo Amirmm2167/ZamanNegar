@@ -34,6 +34,9 @@ export const useHeaderLogic = () => {
       case 'week':
         setCurrentDate(addWeeks(currentDate, dir));
         break;
+      case '3day': // <--- ADDED 3-DAY JUMP
+        setCurrentDate(addDays(currentDate, dir * 3));
+        break;
       case 'day':
       case 'agenda':
         if (viewMode === 'agenda') {
@@ -67,7 +70,7 @@ export const useHeaderLogic = () => {
 
   return {
     currentDate,
-    setCurrentDate, // <--- EXPORTED NOW
+    setCurrentDate,
     viewMode,
     setViewMode,
     handleNav,
