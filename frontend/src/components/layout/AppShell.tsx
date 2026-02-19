@@ -8,10 +8,10 @@ import { useHotkeys } from "@/hooks/useHotkeys";
 import FloatingIsland from "./FloatingIsland";
 import Sidebar from "./Sidebar";
 import DesktopHeader from "./DesktopHeader";
-import NotificationsRail from "./NotificationsRail"; 
+import MobileHeader from "./MobileHeader"; 
 import ContextMenu from "@/components/ui/ContextMenu";
 import ModernBackground from "@/components/ui/ModernBackground";
-import EventModal from "@/components/EventPanel";
+import EventModal from "@/components/EventPanel"; 
 import IssueModal from "@/components/IssueModal";
 import { Loader2 } from "lucide-react";
 
@@ -23,10 +23,9 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   useHotkeys();
 
-  const { setIsMobile, isMobile, isSidebarOpen } = useLayoutStore();
+  const { setIsMobile, isMobile, isSidebarOpen, toggleSidebar } = useLayoutStore();
   const { user, currentRole, initialize, isInitialized, isHydrated } = useAuthStore(); 
   
-  // FIX: Determine Role Safely
   const role = currentRole();
   const isAuthPage = pathname === "/login" || pathname === "/register";
   const isAdminPage = pathname?.startsWith("/admin");
@@ -37,20 +36,16 @@ export default function AppShell({ children }: AppShellProps) {
   
   const [isClient, setIsClient] = useState(false);
 
-  // --- 1. Client Mount ---
   useEffect(() => {
       setIsClient(true);
   }, []);
 
-  // --- 2. Initialize AFTER Hydration ---
-  // This prevents the "tokenless" API call that was happening on refresh
   useEffect(() => {
       if (isClient && isHydrated) {
           initialize();
       }
   }, [isClient, isHydrated, initialize]);
 
-  // --- Mobile Check ---
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -58,7 +53,6 @@ export default function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("resize", checkMobile);
   }, [setIsMobile]);
 
-  // --- Event Listeners ---
   useEffect(() => {
     const handleOpenNew = () => { setEditingEventId(undefined); setShowEventModal(true); };
     const handleOpenEdit = (e: Event) => {
@@ -78,13 +72,8 @@ export default function AppShell({ children }: AppShellProps) {
     };
   }, []);
 
-  // --- Render Gates ---
-  
-  // 1. Wait for Hydration: Don't show ANYTHING until we've read cookies
   if (!isClient || !isHydrated) return null;
 
-  // 2. Wait for API Validation (Optional but recommended for strict auth)
-  // If we have a token but haven't validated it yet, show loader
   if (!isInitialized && !isAuthPage) {
       return (
         <div className="h-screen w-full flex items-center justify-center bg-[#000000] text-blue-500">
@@ -101,7 +90,6 @@ export default function AppShell({ children }: AppShellProps) {
       <ContextMenu />
 
       {!isAuthPage && !isAdminPage && <Sidebar />}
-      {!isAuthPage && !isAdminPage && <NotificationsRail />}
 
       <main 
         className={`
@@ -111,11 +99,16 @@ export default function AppShell({ children }: AppShellProps) {
       >
         {!isMobile && !isAuthPage && !isAdminPage && <DesktopHeader />}
         
+        {isMobile && !isAuthPage && !isAdminPage && (
+            <MobileHeader onMenuClick={toggleSidebar} />
+        )}
+        
         <div className="flex-1 relative overflow-hidden flex flex-col">
            {children}
         </div>
       </main>
 
+      {/* Floating Island (Mobile FAB with View Switcher and Report) */}
       {!isAuthPage && !isAdminPage && isMobile && (
         <FloatingIsland 
            role={role || 'viewer'} 
@@ -132,7 +125,6 @@ export default function AppShell({ children }: AppShellProps) {
             window.dispatchEvent(new Event('refresh-calendar'));
         }}
         eventId={editingEventId}
-        currentUserId={user?.id}
       />
 
       <IssueModal 

@@ -1,97 +1,34 @@
 "use client";
 
-import { useLayoutStore, ViewMode } from "@/stores/layoutStore";
+import { useHeaderLogic } from "@/hooks/useHeaderLogic";
+import { ViewMode } from "@/stores/layoutStore";
 import { 
-  getPersianMonth, 
-  getJalaliYear, 
-  toPersianDigits 
-} from "@/lib/jalali";
-// We use date-fns-jalali for robust year/month math (handles leap years correctly)
-import { addYears, addMonths, addWeeks, addDays } from "date-fns-jalali"; 
-import { 
-  ChevronRight, 
-  ChevronLeft, 
-  Search, 
-  Bell, 
-  RefreshCw,
-  Calendar,
-  Grid3X3,
-  Layers,
-  List
+  ChevronRight, ChevronLeft, Search, RefreshCw,
+  Calendar, Grid3X3, Layers, List
 } from "lucide-react";
 import clsx from "clsx";
-import { useState } from "react";
+import NotificationBell from "./NotificationBell"; // <--- INTEGRATED
 
 export default function DesktopHeader() {
   const { 
-    currentDate, 
-    setCurrentDate, 
-    jumpToToday, 
+    title, 
     viewMode, 
-    setViewMode 
-  } = useLayoutStore();
-  
-  const [isRefreshing, setIsRefreshing] = useState(false);
+    setViewMode, 
+    handleNav, 
+    jumpToToday, 
+    handleHardRefresh, 
+    isRefreshing 
+  } = useHeaderLogic();
 
-  // --- 1. Hard Refresh Logic ---
-  const handleHardRefresh = async () => {
-    setIsRefreshing(true);
-    // Unregister Service Workers to clear cache
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        await registration.unregister();
-      }
-    }
-    // Hard Reload
-    window.location.reload();
-  };
-
-  // --- 2. Smart Navigation Logic ---
-  const handleNav = (dir: 1 | -1) => {
-    switch (viewMode) {
-      case 'year':
-        // Jump by 1 Year
-        setCurrentDate(addYears(currentDate, dir));
-        break;
-      case 'month':
-        // Jump by 1 Month
-        setCurrentDate(addMonths(currentDate, dir));
-        break;
-      case 'week':
-        // Jump by 1 Week
-        setCurrentDate(addWeeks(currentDate, dir));
-        break;
-      case 'day':
-      case 'agenda':
-        // Jump by 1 Day
-        setCurrentDate(addDays(currentDate, dir));
-        break;
-      default:
-        setCurrentDate(addWeeks(currentDate, dir));
-    }
-  };
-
-  // --- 3. Dynamic Title ---
-  let title = "";
-  if (viewMode === 'year') {
-     // Year View: "1403"
-     title = toPersianDigits(getJalaliYear(currentDate));
-  } else {
-     // Other Views: "Bahman 1403"
-     title = `${getPersianMonth(currentDate)} ${toPersianDigits(getJalaliYear(currentDate))}`;
-  }
-
-  // Desktop View Options
   const desktopViews: { id: ViewMode; label: string; icon: any }[] = [
-    { id: 'agenda', label: 'برنامه', icon: List },    // D (Agenda)
-    { id: 'week',   label: 'هفته',   icon: Layers },  // W
-    { id: 'month',  label: 'ماه',    icon: Grid3X3 }, // M
-    { id: 'year',   label: 'سال',    icon: Calendar },// Y
+    { id: 'agenda', label: 'برنامه', icon: List },
+    { id: 'week',   label: 'هفته',   icon: Layers },
+    { id: 'month',  label: 'ماه',    icon: Grid3X3 },
+    { id: 'year',   label: 'سال',    icon: Calendar },
   ];
 
   return (
-    <header className="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-[#0a0c10]/50 backdrop-blur-md z-40 shrink-0 gap-4">
+    <header className="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-[#0a0c10]/50 backdrop-blur-md z-40 shrink-0 gap-4 select-none">
       
       {/* Left: Navigation Controls */}
       <div className="flex items-center gap-4">
@@ -118,7 +55,7 @@ export default function DesktopHeader() {
             </button>
          </div>
 
-         <h2 className="text-lg font-bold text-gray-100 min-w-[120px] tabular-nums">
+         <h2 className="text-lg font-bold text-gray-100 min-w-[120px] tabular-nums cursor-default">
             {title}
          </h2>
       </div>
@@ -143,7 +80,7 @@ export default function DesktopHeader() {
       {/* Right: Actions & Switcher */}
       <div className="flex items-center gap-3">
          
-         {/* Custom Desktop View Switcher */}
+         {/* Desktop View Switcher */}
          <div className="flex items-center bg-white/5 p-1 rounded-lg border border-white/5">
             {desktopViews.map((view) => (
                <button
@@ -164,19 +101,16 @@ export default function DesktopHeader() {
          
          <div className="h-6 w-px bg-white/10 mx-1" />
          
-         {/* Hard Refresh Button */}
          <button 
             onClick={handleHardRefresh}
-            className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors relative group"
+            className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors group"
             title="بروزرسانی کامل (پاکسازی کش)"
          >
             <RefreshCw size={20} className={clsx(isRefreshing && "animate-spin")} />
          </button>
 
-         <button className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors relative">
-            <Bell size={20} />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#0a0c10]" />
-         </button>
+         {/* Native Notification Integration */}
+         <NotificationBell isMobile={false} />
          
       </div>
 

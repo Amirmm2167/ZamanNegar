@@ -1,10 +1,10 @@
 "use client";
 
-import { useLayoutStore } from "@/stores/layoutStore";
+import { useLayoutStore, ViewMode } from "@/stores/layoutStore";
 import { 
-  Plus, List, LayoutGrid, AlertTriangle, Building2, 
-  CheckSquare, LogOut, User, Calendar, 
-  Columns, Trello, CalendarDays // New Icons
+  Plus, LayoutGrid, AlertTriangle, Building2, 
+  CheckSquare, LogOut, Calendar, 
+  Columns, CalendarDays, List, Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
@@ -34,18 +34,17 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
     }
   };
 
-  // Explicit View Options
-  const viewOptions = [
-    { id: '1day', label: 'روزانه', icon: Columns },
-    { id: '3day', label: '۳ روزه', icon: Trello }, // Trello icon looks like columns
-    { id: 'mobile-week', label: 'هفتگی', icon: CalendarDays },
+  const viewOptions: { id: ViewMode; label: string; icon: any }[] = [
+    { id: 'agenda', label: 'برنامه', icon: List },
+    { id: 'day', label: 'روزانه', icon: Columns },
+    { id: 'week', label: 'هفته', icon: CalendarDays },
     { id: 'month', label: 'ماهانه', icon: Calendar },
   ];
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-3 w-auto pointer-events-none">
         
-        {/* --- SYSTEM MENU POPOVER --- */}
+        {/* --- SYSTEM MENU POPOVER (View Switcher) --- */}
         <AnimatePresence>
           {showMenu && (
             <motion.div 
@@ -54,23 +53,15 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
               exit={{ opacity: 0, y: 10, scale: 0.9 }}
               className="mb-2 w-72 bg-[#18181b]/95 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl pointer-events-auto overflow-hidden flex flex-col origin-bottom"
             >
-               {/* 1. Profile Section */}
-               <div className="p-4 border-b border-white/5 flex items-center gap-3 bg-white/5">
-                  <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-white text-center truncate">نمای تقویم</div>
-                  </div>
-               </div>
-
-               {/* 2. View Switcher Grid (Manual Implementation) */}
                <div className="p-3">
                   <div className="grid grid-cols-2 gap-2">
                       {viewOptions.map((opt) => {
-                          const isActive = viewMode === opt.id || (viewMode === 'week' && opt.id === 'mobile-week'); // Map 'week' to mobile-week visually
+                          const isActive = viewMode === opt.id;
                           return (
                               <button
                                 key={opt.id}
                                 onClick={() => {
-                                    setViewMode(opt.id as any);
+                                    setViewMode(opt.id);
                                     setShowMenu(false);
                                 }}
                                 className={clsx(
@@ -82,14 +73,13 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
                               >
                                   <opt.icon size={18} />
                                   <span className="text-xs font-medium">{opt.label}</span>
-                                  {isActive && <div className="mr-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                                  {isActive && <Check size={14} className="mr-auto" />}
                               </button>
                           );
                       })}
                   </div>
                </div>
 
-               {/* 3. Footer / Logout */}
                <div className="p-2 border-t border-white/5 mt-1 bg-black/20">
                   <button 
                     onClick={handleLogout}
@@ -103,17 +93,16 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
           )}
         </AnimatePresence>
 
-        {/* --- THE PILL --- */}
+        {/* --- THE FAB PILL --- */}
         <motion.div 
            className="flex items-center gap-1 p-2 bg-[#09090b]/80 backdrop-blur-xl backdrop-saturate-150 border border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] rounded-full pointer-events-auto"
            layout
         >
-          {/* Left: System Menu Toggle */}
+          {/* Left: View Menu Toggle */}
           <button 
             onClick={() => setShowMenu(!showMenu)}
             className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${showMenu ? 'bg-white/20 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
           >
-            {/* Show 'List' icon for menu, or 'Layout' if preferred */}
             <LayoutGrid size={22} />
           </button>
 
@@ -121,7 +110,10 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
 
           {/* Center: Add Event (Primary) */}
           <button
-             onClick={onOpenEvent}
+             onClick={() => {
+                if(navigator.vibrate) navigator.vibrate(10);
+                onOpenEvent();
+             }}
              className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-full shadow-[0_0_20px_rgba(59,130,246,0.5)] flex items-center justify-center hover:scale-105 active:scale-95 transition-transform border-2 border-[#09090b]"
           >
              <Plus size={28} />
@@ -129,7 +121,7 @@ export default function FloatingIsland({ role, onOpenIssue, onOpenEvent }: Float
 
           <div className="w-px h-6 bg-white/10 mx-1" />
 
-          {/* Right: Dynamic Context Button */}
+          {/* Right: Dynamic Context Button (Report / Manager / Evaluator) */}
           {isManager ? (
             <Link href="/company-panel">
                <button className="w-12 h-12 flex items-center justify-center rounded-full text-emerald-400 hover:text-white hover:bg-emerald-500/10 transition-colors">
