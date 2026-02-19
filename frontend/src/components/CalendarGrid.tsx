@@ -16,8 +16,9 @@ import WeekView from "@/components/views/desktop/WeekView";
 import MonthView from "@/components/views/desktop/MonthView";
 import YearView from "@/components/views/desktop/YearView";
 import MobileMonthView from "@/components/views/mobile/MobileMonthView"; 
-import MobileGrid from "@/components/views/mobile/MobileGrid"; // <--- INTEGRATED MOBILE GRID
+import MobileGrid from "@/components/views/mobile/MobileGrid"; 
 import AgendaView from "@/components/views/shared/AgendaView";
+import InfiniteSwiper from "@/components/ui/InfiniteSwiper";
 
 // Shared Components
 import EventPanel from "@/components/EventPanel";
@@ -40,42 +41,44 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
   const [holidays, setHolidays] = useState<any[]>([]); 
   const [loading, setLoading] = useState(false);
 
-  // --- PANEL STATE ---
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [panelInitialDate, setPanelInitialDate] = useState<Date | undefined>(undefined);
   const [panelInitialTime, setPanelInitialTime] = useState<{start: string, end: string} | undefined>(undefined);
 
-  // --- 1. DATA FETCHING ---
+  // --- 1. DATA FETCHING (TRIPLE BUFFER) ---
   const getDateRange = useCallback(() => {
     const now = currentDate;
     let start, end;
 
     if (viewMode === 'month') {
-      start = startOfWeek(startOfMonth(now));
-      end = endOfWeek(endOfMonth(now));
+        if (isMobile) {
+            // Mobile Swiper Buffer: -1 Month to +1 Month
+            start = startOfWeek(startOfMonth(subMonths(now, 1)));
+            end = endOfWeek(endOfMonth(addMonths(now, 1)));
+        } else {
+            start = startOfWeek(startOfMonth(now));
+            end = endOfWeek(endOfMonth(now));
+        }
     } else if (viewMode === 'agenda') {
       start = subMonths(now, 1);
       end = addMonths(now, 3);
-    } else if (viewMode === 'day') {
-      start = now;
-      end = addDays(now, 1);
-    } else if (viewMode === '3day') {
-      start = now;
-      end = addDays(now, 3);
+    } else if (isMobile && ['day', '3day', 'week'].includes(viewMode)) {
+      // Mobile Grids Buffer: -14 Days to +14 Days
+      start = subDays(now, 14);
+      end = addDays(now, 14);
     } else {
-      // Week
+      // Desktop Week
       start = startOfWeek(now);
       end = endOfWeek(now);
     }
     return { start: start.toISOString(), end: end.toISOString() };
-  }, [currentDate, viewMode]);
+  }, [currentDate, viewMode, isMobile]);
 
   const fetchEvents = useCallback(async () => {
-    if (!activeCompanyId || viewMode === 'year') return; // Year view fetches its own density
+    if (!activeCompanyId || viewMode === 'year') return; 
     
     setLoading(prev => !prev ? true : prev); 
-    
     try {
       const { start, end } = getDateRange();
       const response = await api.get<CalendarEvent[]>("/events/", {
@@ -89,7 +92,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     }
   }, [activeCompanyId, getDateRange, viewMode]);
 
-  // --- 2. EFFECTS ---
   useEffect(() => {
     if (activeCompanyId) {
       api.get("/departments/").then(res => setDepartments(res.data)).catch(console.error);
@@ -101,15 +103,8 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     fetchEvents();
   }, [fetchEvents]);
 
-  useEffect(() => {
-    const handleGlobalRefresh = () => fetchEvents();
-    window.addEventListener('refresh-calendar', handleGlobalRefresh);
-    return () => window.removeEventListener('refresh-calendar', handleGlobalRefresh);
-  }, [fetchEvents]);
-
-  // --- 3. CONTROLS ---
   useImperativeHandle(ref, () => ({
-    navigate: () => {}, // Handled by useHeaderLogic now
+    navigate: () => {}, 
     setView: () => {}, 
     openNewEventPanel: () => {
         setPanelInitialDate(currentDate);
@@ -121,7 +116,6 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
     refresh: fetchEvents
   }));
 
-  // --- HANDLERS ---
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event);
     setIsPanelOpen(true);
@@ -141,19 +135,22 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
       setViewMode('week'); 
   };
 
-  // --- MOBILE GRID PARAMS MAPPER ---
+  // --- MOBILE SWIPER LOGIC ---
   const getMobileGridDays = () => {
       if (viewMode === 'day') return 1;
       if (viewMode === '3day') return 3;
-      return 7; // week
+      return 7; 
   };
 
-  const getMobileGridStartDate = () => {
-      if (viewMode === 'week') return startOfWeek(currentDate);
-      return currentDate; // For day and 3day, start from current focused date
+  const handleMobileSwipe = (direction: 1 | -1) => {
+      if (viewMode === 'month') {
+          setCurrentDate(prev => addMonths(prev, direction));
+      } else {
+          const step = viewMode === '3day' ? 3 : viewMode === 'week' ? 7 : 1;
+          setCurrentDate(prev => addDays(prev, direction * step));
+      }
   };
 
-  // --- RENDER ---
   return (
     <div className="h-full flex flex-col relative bg-[#020205]">
        
@@ -165,31 +162,17 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              </div>
           )}
 
-          {/* MONTH VIEW */}
-          {viewMode === 'month' && (
-             <>
-                <div className="hidden md:block h-full">
-                    <MonthView 
-                        currentDate={currentDate}
-                        events={events}
-                        departments={departments}
-                        holidays={holidays}
-                        onEventClick={handleEventClick}
-                        onEventLongPress={() => {}} 
-                        onSlotClick={handleSlotClick}
-                    />
-                </div>
-                <div className="md:hidden h-full">
-                    <MobileMonthView 
-                        currentDate={currentDate}
-                        events={events}
-                        holidays={holidays}
-                        departments={departments}
-                        onEventClick={handleEventClick}
-                        onSlotClick={handleSlotClick}
-                    />
-                </div>
-             </>
+          {/* DESKTOP MONTH VIEW */}
+          {!isMobile && viewMode === 'month' && (
+              <MonthView 
+                  currentDate={currentDate}
+                  events={events}
+                  departments={departments}
+                  holidays={holidays}
+                  onEventClick={handleEventClick}
+                  onEventLongPress={() => {}} 
+                  onSlotClick={handleSlotClick}
+              />
           )}
 
           {/* DESKTOP WEEK VIEW */}
@@ -209,23 +192,49 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              />
           )}
 
-          {/* MOBILE GRIDS (Day, 3-Day, Week) */}
-          {isMobile && ['day', '3day', 'week'].includes(viewMode) && (
-              <MobileGrid
-                  daysToShow={getMobileGridDays()}
-                  startDate={getMobileGridStartDate()}
-                  events={events}
-                  holidays={holidays}
-                  departments={departments}
-                  hiddenDeptIds={[]} 
-                  onEventTap={handleEventClick}
-                  onEventHold={handleEventClick} // Opens edit panel immediately
-                  onSlotClick={handleSlotClick}
-                  draftEvent={null}
+          {/* MOBILE SWIPER GRIDS (Day, 3-Day, Week, Month) */}
+          {isMobile && ['day', '3day', 'week', 'month'].includes(viewMode) && (
+              <InfiniteSwiper 
+                  onSwipeRight={() => handleMobileSwipe(1)} // RTL: Pull Future into view
+                  onSwipeLeft={() => handleMobileSwipe(-1)} // RTL: Pull Past into view
+                  renderItem={(offset) => {
+                      if (viewMode === 'month') {
+                          const panelDate = addMonths(currentDate, offset);
+                          return (
+                              <MobileMonthView 
+                                  currentDate={panelDate}
+                                  events={events} // Triple buffer handles rendering surrounding months
+                                  holidays={holidays}
+                                  departments={departments}
+                                  onEventClick={handleEventClick}
+                                  onSlotClick={handleSlotClick}
+                              />
+                          );
+                      } else {
+                          const step = viewMode === '3day' ? 3 : viewMode === 'week' ? 7 : 1;
+                          let panelDate = addDays(currentDate, offset * step);
+                          if (viewMode === 'week') panelDate = startOfWeek(panelDate);
+
+                          return (
+                              <MobileGrid
+                                  daysToShow={getMobileGridDays()}
+                                  startDate={panelDate}
+                                  events={events} 
+                                  holidays={holidays}
+                                  departments={departments}
+                                  hiddenDeptIds={[]} 
+                                  onEventTap={handleEventClick}
+                                  onEventHold={handleEventClick} 
+                                  onSlotClick={handleSlotClick}
+                                  draftEvent={null}
+                              />
+                          );
+                      }
+                  }}
               />
           )}
 
-          {/* AGENDA VIEW */}
+          {/* AGENDA VIEW (List - Non swipable) */}
           {viewMode === 'agenda' && (
              <AgendaView
                 events={events}
@@ -236,7 +245,7 @@ const CalendarGrid = forwardRef<CalendarGridHandle, {}>((props, ref) => {
              />
           )}
 
-          {/* YEAR VIEW (Desktop Usually) */}
+          {/* YEAR VIEW */}
           {viewMode === 'year' && (
              <YearView 
                 currentDate={currentDate}

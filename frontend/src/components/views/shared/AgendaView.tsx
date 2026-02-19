@@ -154,7 +154,7 @@ export default function AgendaView({
   };
 
   return (
-    <div className="h-full w-full overflow-y-auto custom-scrollbar pb-20">
+    <div className="h-full w-full overflow-y-auto scrollbar-hide pb-20">
       {groupedEvents.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4 opacity-50">
           <Layers size={48} />

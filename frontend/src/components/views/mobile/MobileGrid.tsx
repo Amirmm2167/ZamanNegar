@@ -33,58 +33,32 @@ export default function MobileGrid({
   draftEvent
 }: MobileGridProps) {
   const [now, setNow] = useState<Date | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setNow(new Date());
     const interval = setInterval(() => setNow(new Date()), 60000);
-    
-    // Auto-scroll to 8 AM on mount
-    if (scrollRef.current) {
-        const h = new Date().getHours();
-        const offset = Math.max(0, (h - 1) * 60);
-        scrollRef.current.scrollTop = offset;
-    }
-
     return () => clearInterval(interval);
   }, []);
 
-  // --- Day Logic ---
-  // Generate the days based on the startDate passed by the Swiper
+  // --- Day Generation ---
   const days: Date[] = [];
   try {
-      if (daysToShow === 1) {
-          days.push(new Date(startDate));
-      } else if (daysToShow === 3) {
-          // 3 Day view: Start Date is the center? Or start? 
-          // Usually swiper passes the "Center" date.
-          // Let's assume startDate is the first day of the view.
-          for (let i = 0; i < 3; i++) {
-              const d = new Date(startDate);
-              d.setDate(d.getDate() + i);
-              days.push(d);
-          }
-      } else if (daysToShow === 7) {
-          // Week view
-          for (let i = 0; i < 7; i++) {
-              const d = new Date(startDate);
-              d.setDate(d.getDate() + i);
-              days.push(d);
-          }
+      for (let i = 0; i < daysToShow; i++) {
+          const d = new Date(startDate);
+          d.setDate(d.getDate() + i);
+          days.push(d);
       }
   } catch (e) {
       console.error("Error generating dates", e);
   }
 
-  // --- Gesture Logic ---
+  // --- Gesture Logic for Events (Doesn't block swiper) ---
   const holdTimer = useRef<NodeJS.Timeout | null>(null);
   const touchStartPos = useRef<{x: number, y: number} | null>(null);
   const isHolding = useRef(false);
   const hasMoved = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent, event: CalendarEvent) => {
-      // Don't stop propagation immediately, let the swiper know if it's a tap or scroll
-      // But we need to stop vertical scroll if holding
       touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       isHolding.current = false;
       hasMoved.current = false;
@@ -92,7 +66,7 @@ export default function MobileGrid({
       holdTimer.current = setTimeout(() => {
           isHolding.current = true;
           if (navigator.vibrate) navigator.vibrate(50);
-          onEventHold(event); // Trigger hold immediately
+          onEventHold(event);
       }, 500);
   };
 
@@ -101,6 +75,7 @@ export default function MobileGrid({
       const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
       const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
 
+      // Cancel hold if dragging (Swipe or Scroll detected)
       if (dx > 10 || dy > 10) {
           hasMoved.current = true;
           if (holdTimer.current) clearTimeout(holdTimer.current);
@@ -110,9 +85,8 @@ export default function MobileGrid({
   const handleTouchEnd = (e: React.TouchEvent, event: CalendarEvent) => {
       if (holdTimer.current) clearTimeout(holdTimer.current);
 
-      // Only trigger tap if we didn't move and weren't holding
       if (!isHolding.current && !hasMoved.current) {
-          e.stopPropagation(); // Stop click from hitting slot below
+          e.stopPropagation();
           onEventTap(event);
       }
       
@@ -140,10 +114,13 @@ export default function MobileGrid({
     };
   };
 
+  // NOTE: Container is h-auto, not overflow-y-auto. 
+  // The InfiniteSwiper parent handles the scroll.
   return (
-    <div className="flex flex-col h-full w-full bg-[#121212] select-none relative">
-        {/* HEADER */}
-        <div className="flex flex-row border-b border-white/10 h-14 bg-white/5 shrink-0 z-20 relative">
+    <div className="flex flex-col h-full w-full bg-[#121212] select-none">
+        
+        {/* HEADER (Sticky) */}
+        <div className="flex flex-row border-b border-white/10 h-14 bg-[#18181b]/95 backdrop-blur-md shrink-0 sticky top-0 z-30">
             <div className="w-10 border-l border-white/10 bg-black/20"></div>
             {days.map((day, i) => {
                 const isToday = now && day.toDateString() === now.toDateString();
@@ -163,105 +140,88 @@ export default function MobileGrid({
             })}
         </div>
 
-        {/* BODY */}
-        <div 
-            className="flex-1 overflow-y-auto overflow-x-hidden relative scrollbar-hide touch-pan-y" 
-            ref={scrollRef}
-        >
-            <div className="flex flex-row relative h-[1440px]">
+        {/* BODY (Height 1440px strictly) */}
+        <div className="flex flex-row relative h-[1440px]">
+            
+            {/* Time Column */}
+            <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
+                {Array.from({ length: 24 }).map((_, h) => (
+                    <div key={h} className="h-[60px] flex items-start justify-center border-b border-white/5 text-[10px] text-gray-500 font-bold relative pt-1 shrink-0">
+                        <span className="absolute -top-2 bg-[#121212] px-1 rounded">{toPersianDigits(h)}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Grid Columns */}
+            {days.map((day, i) => {
+                const dayEvents = events?.filter(e => {
+                    const eStart = new Date(e.start_time);
+                    return !e.is_all_day && eStart.toDateString() === day.toDateString() && (!e.department_id || !hiddenDeptIds.includes(e.department_id));
+                }) || [];
                 
-                {/* Time Column */}
-                <div className="w-10 flex flex-col border-l border-white/10 bg-black/20 z-10 shrink-0 sticky left-0">
-                    {Array.from({ length: 24 }).map((_, h) => (
-                        <div key={h} className="h-[60px] flex items-start justify-center border-b border-white/5 text-[10px] text-gray-500 font-mono relative pt-1 shrink-0">
-                            <span className="absolute -top-2 bg-[#121212] px-1 rounded">{toPersianDigits(h)}</span>
+                const visualEvents = calculateEventLayout(dayEvents, 'vertical');
+
+                return (
+                    <div key={i} className="flex-1 relative border-r border-white/10 h-full">
+                        {/* Slots */}
+                        <div className="absolute inset-0 flex flex-col z-0">
+                            {Array.from({ length: 24 }).map((_, h) => (
+                                <div 
+                                    key={h} 
+                                    className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors shrink-0" 
+                                    onClick={() => onSlotClick(day, h)}
+                                ></div>
+                            ))}
                         </div>
-                    ))}
-                </div>
 
-                {/* Grid Columns */}
-                {days.map((day, i) => {
-                    const dayEvents = events?.filter(e => {
-                        const eStart = new Date(e.start_time);
-                        return !e.is_all_day && eStart.toDateString() === day.toDateString() && (!e.department_id || !hiddenDeptIds.includes(e.department_id));
-                    }) || [];
-                    
-                    const visualEvents = calculateEventLayout(dayEvents, 'vertical');
-
-                    return (
-                        <div key={i} className="flex-1 relative border-r border-white/10 h-full">
-                            {/* Slots */}
-                            <div className="absolute inset-0 flex flex-col z-0">
-                                {Array.from({ length: 24 }).map((_, h) => (
-                                    <div 
-                                        key={h} 
-                                        className="h-[60px] border-b border-white/5 active:bg-white/5 transition-colors shrink-0" 
-                                        onClick={() => onSlotClick(day, h)}
-                                    ></div>
-                                ))}
-                            </div>
-
-                            {/* Events */}
-                            {visualEvents.map((ev) => {
-                                const original = dayEvents.find(e => e.id === ev.id);
-                                if(!original) return null;
-                                const start = new Date(original.start_time);
-                                const startMin = start.getHours() * 60 + start.getMinutes();
-                                const end = new Date(original.end_time);
-                                const endMin = end.getHours() * 60 + end.getMinutes();
-                                
-                                const topPx = startMin; 
-                                const heightPx = endMin - startMin;
-                                const styleInfo = getEventStyle(original);
-
-                                return (
-                                    <div 
-                                        key={ev.id} 
-                                        onTouchStart={(e) => handleTouchStart(e, original)} 
-                                        onTouchMove={(e) => handleTouchMove(e)} 
-                                        onTouchEnd={(e) => handleTouchEnd(e, original)}
-                                        className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform rounded text-[10px] z-10"
-                                        style={{ 
-                                            top: `${topPx}px`, 
-                                            height: `max(20px, ${heightPx}px)`, 
-                                            right: `${ev.laneIndex * (100 / ev.totalLanes)}%`, 
-                                            width: `${100 / ev.totalLanes}%`, 
-                                            ...styleInfo.style 
-                                        }}
-                                    >
-                                        <span className="font-bold leading-tight truncate pointer-events-none">{original.title}</span>
-                                        <span className="text-[9px] opacity-80 pointer-events-none">
-                                            {toPersianDigits(`${start.getHours()}:${String(start.getMinutes()).padStart(2,'0')}`)}
-                                        </span>
-                                    </div>
-                                );
-                            })}
+                        {/* Events */}
+                        {visualEvents.map((ev) => {
+                            const original = dayEvents.find(e => e.id === ev.id);
+                            if(!original) return null;
+                            const start = new Date(original.start_time);
+                            const startMin = start.getHours() * 60 + start.getMinutes();
+                            const end = new Date(original.end_time);
+                            const endMin = end.getHours() * 60 + end.getMinutes();
                             
-                            {/* Draft Placeholder */}
-                            {draftEvent && draftEvent.date.toDateString() === day.toDateString() && (
-                                <div className="absolute z-20 left-1 right-1 rounded-lg border-2 border-dashed border-emerald-500 bg-emerald-500/10 flex items-center justify-center animate-bounce"
+                            const topPx = startMin; 
+                            const heightPx = endMin - startMin;
+                            const styleInfo = getEventStyle(original);
+
+                            return (
+                                <div 
+                                    key={ev.id} 
+                                    onTouchStart={(e) => handleTouchStart(e, original)} 
+                                    onTouchMove={(e) => handleTouchMove(e)} 
+                                    onTouchEnd={(e) => handleTouchEnd(e, original)}
+                                    className="absolute px-1.5 py-1 flex flex-col overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform rounded text-[10px] z-10"
                                     style={{ 
-                                        top: `${draftEvent.startHour * 60}px`, 
-                                        height: `${(draftEvent.endHour - draftEvent.startHour) * 60}px` 
+                                        top: `${topPx}px`, 
+                                        height: `max(20px, ${heightPx}px)`, 
+                                        right: `${ev.laneIndex * (100 / ev.totalLanes)}%`, 
+                                        width: `${100 / ev.totalLanes}%`, 
+                                        ...styleInfo.style 
                                     }}
                                 >
-                                    <Plus className="text-emerald-400 animate-pulse" size={20} />
+                                    <span className="font-bold leading-tight truncate pointer-events-none">{original.title}</span>
+                                    <span className="text-[9px] font-bold opacity-80 pointer-events-none">
+                                        {toPersianDigits(`${start.getHours()}:${String(start.getMinutes()).padStart(2,'0')}`)}
+                                    </span>
                                 </div>
-                            )}
-                            
-                            {/* Current Time Line */}
-                            {now && day.toDateString() === now.toDateString() && (
-                                <div className="absolute left-0 right-0 h-0.5 bg-red-500 z-20 pointer-events-none" 
-                                     style={{ top: `${now.getHours() * 60 + now.getMinutes()}px` }}>
-                                     <div className="absolute right-[-5px] -top-[4.5px] w-2.5 h-2.5 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]">
-                                        <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
-                                     </div>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
+                            );
+                        })}
+                        
+                        {/* Current Time Line */}
+                        {now && day.toDateString() === now.toDateString() && (
+                            <div className="absolute left-0 right-0 h-0.5 bg-red-500 z-20 pointer-events-none" 
+                                 style={{ top: `${now.getHours() * 60 + now.getMinutes()}px` }}>
+                                 <div className="absolute right-[-5px] -top-[4.5px] w-2.5 h-2.5 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]">
+                                    <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
+                                 </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
         </div>
     </div>
   );
